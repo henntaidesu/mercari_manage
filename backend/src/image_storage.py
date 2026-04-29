@@ -1,0 +1,67 @@
+# -*- coding: utf-8 -*-
+import base64
+import os
+import re
+import uuid
+from typing import Optional
+
+
+BASE64_IMAGE_RE = re.compile(r"^data:image/(png|jpeg|jpg|webp|gif);base64,", re.IGNORECASE)
+
+
+def _backend_root() -> str:
+    return os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+
+
+def get_image_root() -> str:
+    # 按需求使用 imges 目录名
+    return os.path.join(_backend_root(), "imges")
+
+
+def ensure_image_dir() -> str:
+    root = get_image_root()
+    os.makedirs(root, exist_ok=True)
+    return root
+
+
+def is_base64_image(value: Optional[str]) -> bool:
+    if not value or not isinstance(value, str):
+        return False
+    return BASE64_IMAGE_RE.match(value.strip()) is not None
+
+
+def _extension_from_data_url(data_url: str) -> str:
+    m = BASE64_IMAGE_RE.match(data_url.strip())
+    ext = (m.group(1).lower() if m else "jpg")
+    if ext == "jpeg":
+        return "jpg"
+    return ext
+
+
+def save_base64_image(data_url: str, prefix: str = "product") -> str:
+    """
+    保存 data:image/...;base64,... 到 backend/imges，返回可访问路径 /imges/xxx.ext
+    """
+    ensure_image_dir()
+    ext = _extension_from_data_url(data_url)
+    base64_data = data_url.split(",", 1)[1]
+    image_bytes = base64.b64decode(base64_data)
+    filename = f"{prefix}_{uuid.uuid4().hex}.{ext}"
+    abs_path = os.path.join(get_image_root(), filename)
+    with open(abs_path, "wb") as f:
+        f.write(image_bytes)
+    return f"/imges/{filename}"
+
+
+def delete_image_file(path_or_url: Optional[str]) -> None:
+    if not path_or_url or not isinstance(path_or_url, str):
+        return
+    val = path_or_url.strip()
+    if not val.startswith("/imges/"):
+        return
+    filename = val.split("/imges/", 1)[1].strip("/")
+    if not filename:
+        return
+    abs_path = os.path.join(get_image_root(), filename)
+    if os.path.exists(abs_path):
+        os.remove(abs_path)

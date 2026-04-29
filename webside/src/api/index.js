@@ -78,5 +78,8 @@ export const scanApi = {
 
 // 认证
 export const authApi = {
-  login: (data) => http.post('/auth/login', data)
+  login: (data) => http.post('/auth/login', data),
+  listUsers: () => http.get('/auth/users'),
+  createUser: (data) => http.post('/auth/users', data),
+  changePassword: (data) => http.post('/auth/change-password', data)
 }

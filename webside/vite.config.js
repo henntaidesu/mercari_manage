@@ -12,8 +12,13 @@ export default defineConfig({
   server: {
     port: 9600,
     host: true,
+    allowedHosts: ['nas.makurochan.com'],
     proxy: {
       '/api': {
+        target: 'http://localhost:8000',
+        changeOrigin: true
+      },
+      '/imges': {
         target: 'http://localhost:8000',
         changeOrigin: true
       }

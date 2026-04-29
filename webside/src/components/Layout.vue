@@ -86,7 +86,8 @@ const menuItems = [
   { path: '/products', title: '商品管理', icon: 'Goods' },
   { path: '/transactions', title: '出入库记录', icon: 'List' },
   { path: '/warehouses', title: '仓库管理', icon: 'OfficeBuilding' },
-  { path: '/categories', title: '分类管理', icon: 'Collection' }
+  { path: '/categories', title: '分类管理', icon: 'Collection' },
+  { path: '/system', title: '系统管理', icon: 'Setting' }
 ]
 
 const currentTitle = computed(() => {

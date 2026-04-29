@@ -16,7 +16,8 @@ const routes = [
       { path: 'products', name: 'Products', component: () => import('@/views/Products.vue'), meta: { title: '商品管理', icon: 'Goods' } },
       { path: 'transactions', name: 'Transactions', component: () => import('@/views/Transactions.vue'), meta: { title: '出入库记录', icon: 'List' } },
       { path: 'warehouses', name: 'Warehouses', component: () => import('@/views/Warehouses.vue'), meta: { title: '仓库管理', icon: 'OfficeBuilding' } },
-      { path: 'categories', name: 'Categories', component: () => import('@/views/Categories.vue'), meta: { title: '分类管理', icon: 'Collection' } }
+      { path: 'categories', name: 'Categories', component: () => import('@/views/Categories.vue'), meta: { title: '分类管理', icon: 'Collection' } },
+      { path: 'system', name: 'System', component: () => import('@/views/System.vue'), meta: { title: '系统管理', icon: 'Setting' } }
     ]
   }
 ]

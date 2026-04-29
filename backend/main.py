@@ -1,7 +1,9 @@
 from fastapi import FastAPI, Depends
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.staticfiles import StaticFiles
 from src.auth import require_auth
 from src.db_manager import init_database
+from src.image_storage import ensure_image_dir
 from src.routes.categories import router as categories_router
 from src.routes.warehouses import router as warehouses_router
 from src.routes.products import router as products_router
@@ -18,6 +20,8 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+app.mount("/imges", StaticFiles(directory=ensure_image_dir()), name="imges")
 
 auth_required = [Depends(require_auth)]
 

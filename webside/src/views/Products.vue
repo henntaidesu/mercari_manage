@@ -271,6 +271,7 @@
         <div class="product-meta">
           <span class="product-meta-name">{{ contProduct.name || '(未命名)' }}</span>
           <el-tag type="info" size="small">当前库存 {{ contProduct.quantity ?? 0 }} 件</el-tag>
+          <el-tag size="small" effect="plain">所属仓库 {{ contProduct.warehouse_name || '未设置' }}</el-tag>
         </div>
         <div class="cont-actions">
           <el-button @click="resumeContScan">继续扫码</el-button>
