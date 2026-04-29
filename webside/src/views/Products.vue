@@ -4,10 +4,7 @@
       <span class="page-title">商品管理</span>
       <div class="header-actions">
         <el-button type="success" @click="openContScan">
-          <el-icon><VideoCamera /></el-icon> 连续扫码
-        </el-button>
-        <el-button type="primary" class="add-btn" @click="openDialog()">
-          <el-icon><Plus /></el-icon> 新增商品
+          <el-icon><VideoCamera /></el-icon> 扫描条形码
         </el-button>
       </div>
     </div>
@@ -27,7 +24,7 @@
 
     <el-card shadow="never" class="table-card">
       <div class="table-scroll">
-      <el-table :data="list" v-loading="loading" stripe>
+      <el-table :data="pagedList" v-loading="loading" stripe>
         <el-table-column label="正面图" width="80" align="center">
           <template #default="{ row }">
             <el-image
@@ -104,6 +101,15 @@
           </template>
         </el-table-column>
       </el-table>
+      <div class="table-pagination">
+        <el-pagination
+          v-model:current-page="currentPage"
+          :page-size="pageSize"
+          layout="total, prev, pager, next"
+          :total="list.length"
+          :pager-count="5"
+        />
+      </div>
       </div>
     </el-card>
 
@@ -126,7 +132,7 @@
           </el-input>
         </el-form-item>
         <el-form-item label="所属仓库" prop="warehouse_id">
-          <el-select v-model="form.warehouse_id" clearable filterable placeholder="请选择仓库" style="width:100%">
+          <el-select v-model="form.warehouse_id" clearable :filterable="!isIOS" placeholder="请选择仓库" style="width:100%">
             <el-option v-for="w in warehouses" :key="w.id" :label="w.name" :value="w.id" />
           </el-select>
         </el-form-item>
@@ -220,7 +226,7 @@
     <!-- ===== 连续扫码对话框 ===== -->
     <el-dialog
       v-model="contScanVisible"
-      title="连续扫码入库"
+      title="扫描条形码"
       :width="isMobile ? '94vw' : '580px'"
       class="scan-dialog"
       @closed="stopContScan"
@@ -298,7 +304,7 @@
 </template>
 
 <script setup>
-import { ref, onMounted, onBeforeUnmount, nextTick } from 'vue'
+import { ref, computed, onMounted, onBeforeUnmount, nextTick } from 'vue'
 import { ElMessage } from 'element-plus'
 import { productApi, categoryApi, warehouseApi, scanApi } from '@/api/index.js'
 
@@ -308,6 +314,8 @@ const categories = ref([])
 const warehouses = ref([])
 const keyword = ref('')
 const filterCat = ref(null)
+const currentPage = ref(1)
+const pageSize = 10
 const dialogVisible = ref(false)
 const submitting = ref(false)
 const formRef = ref()
@@ -319,6 +327,7 @@ const scanning = ref(false)
 const videoRef = ref()
 const cameraInputRef = ref()
 const isMobile = ref(false)
+const isIOS = ref(false)
 const editingCell = ref('')
 const editingValue = ref('')
 const savingInlineCell = ref('')
@@ -335,6 +344,7 @@ const contScanning = ref(false)
 const contConfirming = ref(false)
 const contVideoRef = ref()
 const contCameraRef = ref()
+const contScanMode = ref('stream') // 'stream' | 'fallback'
 let contStream = null
 let contTimer = null
 const SCAN_INTERVAL_MS = 500
@@ -369,6 +379,9 @@ const rules = {
 
 function updateViewportState() {
   isMobile.value = window.matchMedia('(max-width: 768px)').matches
+  const ua = navigator.userAgent || ''
+  const platform = navigator.platform || ''
+  isIOS.value = /iPhone|iPad|iPod/i.test(ua) || (platform === 'MacIntel' && navigator.maxTouchPoints > 1)
 }
 
 function getCellKey(row, field) {
@@ -424,9 +437,9 @@ async function saveInlineEdit(row, field) {
   }
 }
 
-/** 从 video 元素抓一帧，返回 Blob（JPEG） */
-function captureFrame() {
-  const video = videoRef.value
+/** 从指定 video 元素抓一帧，返回 Blob（JPEG） */
+function captureFrame(videoElRef = videoRef) {
+  const video = videoElRef.value
   if (!video || video.readyState < 2 || !video.videoWidth) return null
   const canvas = document.createElement('canvas')
   canvas.width = video.videoWidth
@@ -441,7 +454,13 @@ async function load() {
   if (keyword.value) params.keyword = keyword.value
   if (filterCat.value) params.category_id = filterCat.value
   list.value = await productApi.list(params).finally(() => (loading.value = false))
+  currentPage.value = 1
 }
+
+const pagedList = computed(() => {
+  const start = (currentPage.value - 1) * pageSize
+  return list.value.slice(start, start + pageSize)
+})
 
 function openDialog(row = null) {
   form.value = row
@@ -612,9 +631,11 @@ async function openContScan() {
 
   const canStream = !!(navigator.mediaDevices?.getUserMedia) && !!window.isSecureContext
   if (!canStream) {
+    contScanMode.value = 'fallback'
     contState.value = 'ios-fallback'
     return
   }
+  contScanMode.value = 'stream'
 
   try {
     contStream = await navigator.mediaDevices.getUserMedia(CAMERA_CONSTRAINTS)
@@ -630,7 +651,7 @@ async function openContScan() {
 function startContTimer() {
   contTimer = setInterval(async () => {
     if (contState.value !== 'scanning' || contScanning.value) return
-    const blob = await captureFrame()
+    const blob = await captureFrame(contVideoRef)
     if (!blob) return
     contScanning.value = true
     try {
@@ -665,11 +686,15 @@ async function handleContBarcode(barcode) {
 }
 
 function resumeContScan() {
-  contState.value = 'scanning'
   contBarcode.value = ''
   contProduct.value = null
-  const canStream = !!(contStream)
-  if (canStream) {
+  if (contScanMode.value === 'fallback') {
+    contState.value = 'ios-fallback'
+    triggerContCapture()
+    return
+  }
+  contState.value = 'scanning'
+  if (contStream) {
     startContTimer()
   }
 }
@@ -760,6 +785,11 @@ onBeforeUnmount(() => {
 .search-card { margin-bottom: 16px; border-radius: 8px; }
 .table-card { border-radius: 8px; }
 .table-scroll { width: 100%; overflow-x: auto; }
+.table-pagination {
+  display: flex;
+  justify-content: flex-end;
+  margin-top: 12px;
+}
 .editable-cell {
   min-height: 24px;
   padding: 2px 6px;

@@ -1,11 +1,13 @@
-from fastapi import FastAPI
+from fastapi import FastAPI, Depends
 from fastapi.middleware.cors import CORSMiddleware
+from src.auth import require_auth
 from src.db_manager import init_database
 from src.routes.categories import router as categories_router
 from src.routes.warehouses import router as warehouses_router
 from src.routes.products import router as products_router
 from src.routes.transactions import router as transactions_router
 from src.routes.scan import router as scan_router
+from src.routes.auth import router as auth_router
 
 app = FastAPI(title="仓储管理系统", version="1.0.0")
 
@@ -17,11 +19,14 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-app.include_router(categories_router)
-app.include_router(warehouses_router)
-app.include_router(products_router)
-app.include_router(transactions_router)
-app.include_router(scan_router)
+auth_required = [Depends(require_auth)]
+
+app.include_router(categories_router, dependencies=auth_required)
+app.include_router(warehouses_router, dependencies=auth_required)
+app.include_router(products_router, dependencies=auth_required)
+app.include_router(transactions_router, dependencies=auth_required)
+app.include_router(scan_router, dependencies=auth_required)
+app.include_router(auth_router)
 
 
 @app.on_event("startup")

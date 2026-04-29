@@ -104,8 +104,10 @@ class ProductModel(BaseModel):
     def find_with_stock(cls, keyword: Optional[str] = None, category_id: Optional[int] = None) -> List[dict]:
         """查询商品列表，附带分类名称"""
         db = cls().db
-        sql = """
-            SELECT p.*, c.name as category_name, w.name as warehouse_name
+        product_fields = list(cls.get_fields().keys())
+        product_select = ", ".join([f"p.[{f}] AS [{f}]" for f in product_fields])
+        sql = f"""
+            SELECT {product_select}, c.name as category_name, w.name as warehouse_name
             FROM [products] p
             LEFT JOIN [categories] c ON c.id = p.category_id
             LEFT JOIN [warehouses] w ON w.id = p.warehouse_id
@@ -122,5 +124,5 @@ class ProductModel(BaseModel):
         rows = db.execute_query(sql, tuple(params))
         if not rows:
             return []
-        field_names = list(cls.get_fields().keys()) + ['category_name', 'warehouse_name']
+        field_names = product_fields + ['category_name', 'warehouse_name']
         return [dict(zip(field_names, row)) for row in rows]

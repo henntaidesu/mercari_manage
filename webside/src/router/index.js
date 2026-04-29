@@ -2,6 +2,12 @@ import { createRouter, createWebHashHistory } from 'vue-router'
 
 const routes = [
   {
+    path: '/login',
+    name: 'Login',
+    component: () => import('@/views/Login.vue'),
+    meta: { public: true, title: '登录' }
+  },
+  {
     path: '/',
     component: () => import('@/components/Layout.vue'),
     children: [
@@ -15,7 +21,26 @@ const routes = [
   }
 ]
 
-export default createRouter({
+const router = createRouter({
   history: createWebHashHistory(),
   routes
 })
+
+router.beforeEach((to, from, next) => {
+  const isPublic = Boolean(to.meta?.public)
+  const token = localStorage.getItem('auth_token')
+
+  if (!isPublic && !token) {
+    next('/login')
+    return
+  }
+
+  if (to.path === '/login' && token) {
+    next('/dashboard')
+    return
+  }
+
+  next()
+})
+
+export default router

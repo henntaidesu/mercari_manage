@@ -6,9 +6,25 @@ const http = axios.create({
   timeout: 15000
 })
 
+http.interceptors.request.use((config) => {
+  const token = localStorage.getItem('auth_token')
+  if (token) {
+    config.headers = config.headers || {}
+    config.headers.Authorization = `Bearer ${token}`
+  }
+  return config
+})
+
 http.interceptors.response.use(
   (res) => res.data,
   (err) => {
+    if (err.response?.status === 401) {
+      localStorage.removeItem('auth_token')
+      localStorage.removeItem('auth_user')
+      if (window.location.hash !== '#/login') {
+        window.location.hash = '#/login'
+      }
+    }
     const msg = err.response?.data?.detail || err.message || '请求失败'
     ElMessage.error(msg)
     return Promise.reject(err)
@@ -58,4 +74,9 @@ export const scanApi = {
       timeout: 8000
     })
   }
+}
+
+// 认证
+export const authApi = {
+  login: (data) => http.post('/auth/login', data)
 }

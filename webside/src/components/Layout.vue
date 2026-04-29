@@ -43,9 +43,11 @@
           </el-breadcrumb>
         </div>
         <div class="header-right">
+          <el-tag size="small" effect="plain">{{ userName }}</el-tag>
           <el-tag type="success" size="small" effect="light">
             <el-icon><CircleCheck /></el-icon> 系统正常
           </el-tag>
+          <el-button text type="danger" @click="handleLogout">退出</el-button>
         </div>
       </el-header>
 
@@ -63,11 +65,21 @@
 
 <script setup>
 import { ref, computed, onMounted, onUnmounted } from 'vue'
-import { useRoute } from 'vue-router'
+import { useRoute, useRouter } from 'vue-router'
+import { ElMessageBox } from 'element-plus'
 
 const route = useRoute()
+const router = useRouter()
 const sidebarOpen = ref(true)
 const isMobile = ref(false)
+const userName = computed(() => {
+  try {
+    const u = JSON.parse(localStorage.getItem('auth_user') || '{}')
+    return u.display_name || u.username || '用户'
+  } catch {
+    return '用户'
+  }
+})
 
 const menuItems = [
   { path: '/dashboard', title: '控制台', icon: 'Odometer' },
@@ -93,6 +105,17 @@ onMounted(() => {
   window.addEventListener('resize', checkMobile)
 })
 onUnmounted(() => window.removeEventListener('resize', checkMobile))
+
+const handleLogout = async () => {
+  await ElMessageBox.confirm('确认退出当前账号？', '提示', {
+    type: 'warning',
+    confirmButtonText: '退出',
+    cancelButtonText: '取消'
+  })
+  localStorage.removeItem('auth_token')
+  localStorage.removeItem('auth_user')
+  router.replace('/login')
+}
 </script>
 
 <style scoped>

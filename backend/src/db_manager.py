@@ -11,6 +11,7 @@ from .models import (
     WarehouseModel,
     ProductModel,
     TransactionModel,
+    UserModel,
 )
 
 
@@ -24,6 +25,7 @@ class DBManager:
     def _get_all_models(self) -> List[Type[BaseModel]]:
         """按依赖顺序返回所有模型类"""
         return [
+            UserModel,        # 无外键依赖（登录依赖）
             CategoryModel,    # 无外键依赖
             WarehouseModel,   # 无外键依赖
             ProductModel,     # 依赖 categories
