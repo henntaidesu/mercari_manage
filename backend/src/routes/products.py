@@ -10,23 +10,27 @@ router = APIRouter(prefix="/api/products", tags=["products"])
 
 
 class ProductCreate(PydanticModel):
-    name: str
+    name: Optional[str] = None
+    barcode: str
     sku: Optional[str] = None
     category_id: Optional[int] = None
     unit: Optional[str] = "件"
     price: Optional[float] = 0.0
     description: Optional[str] = None
-    image: Optional[str] = None
+    image_front: Optional[str] = None
+    image_back: Optional[str] = None
 
 
 class ProductUpdate(PydanticModel):
     name: Optional[str] = None
+    barcode: Optional[str] = None
     sku: Optional[str] = None
     category_id: Optional[int] = None
     unit: Optional[str] = None
     price: Optional[float] = None
     description: Optional[str] = None
-    image: Optional[str] = None
+    image_front: Optional[str] = None
+    image_back: Optional[str] = None
 
 
 def _get_detail(product: ProductModel) -> dict:
@@ -55,9 +59,13 @@ def get_product(pid: int):
 
 @router.post("")
 def create_product(data: ProductCreate):
-    product = ProductModel(**data.model_dump())
+    if not (data.barcode or "").strip():
+        raise HTTPException(status_code=400, detail="条形码必填")
+    payload = data.model_dump()
+    payload['image'] = payload.get('image_front')
+    product = ProductModel(**payload)
     if not product.save():
-        raise HTTPException(status_code=500, detail="保存失败")
+        raise HTTPException(status_code=400, detail="保存失败，条形码或SKU可能重复")
     return _get_detail(product)
 
 
@@ -66,9 +74,15 @@ def update_product(pid: int, data: ProductUpdate):
     product = ProductModel.find_by_id(id=pid)
     if not product:
         raise HTTPException(status_code=404, detail="商品不存在")
-    for field, value in data.model_dump(exclude_none=True).items():
+    update_data = data.model_dump(exclude_none=True)
+    if 'barcode' in update_data and not (update_data.get('barcode') or '').strip():
+        raise HTTPException(status_code=400, detail="条形码不能为空")
+    if 'image_front' in update_data:
+        update_data['image'] = update_data['image_front']
+    for field, value in update_data.items():
         setattr(product, field, value)
-    product.save()
+    if not product.save():
+        raise HTTPException(status_code=400, detail="更新失败，条形码或SKU可能重复")
     return _get_detail(product)
 
 

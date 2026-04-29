@@ -25,7 +25,13 @@ class ProductModel(BaseModel):
             },
             'name': {
                 'type': 'TEXT',
-                'not_null': True,
+                'not_null': False,
+                'default': None,
+            },
+            'barcode': {
+                'type': 'TEXT',
+                'not_null': False,
+                'unique': True,
                 'default': None,
             },
             'sku': {
@@ -59,6 +65,16 @@ class ProductModel(BaseModel):
                 'not_null': False,
                 'default': None,
             },
+            'image_front': {
+                'type': 'TEXT',
+                'not_null': False,
+                'default': None,
+            },
+            'image_back': {
+                'type': 'TEXT',
+                'not_null': False,
+                'default': None,
+            },
             'created_at': {
                 'type': 'DATETIME',
                 'not_null': False,
@@ -71,6 +87,7 @@ class ProductModel(BaseModel):
         return [
             {'name': 'idx_products_name', 'columns': ['name']},
             {'name': 'idx_products_category', 'columns': ['category_id']},
+            {'name': 'idx_products_barcode', 'columns': ['barcode'], 'unique': True},
         ]
 
     @classmethod
@@ -87,8 +104,8 @@ class ProductModel(BaseModel):
         """
         params = []
         if keyword:
-            sql += " AND (p.name LIKE ? OR p.sku LIKE ?)"
-            params += [f"%{keyword}%", f"%{keyword}%"]
+            sql += " AND (p.name LIKE ? OR p.sku LIKE ? OR p.barcode LIKE ?)"
+            params += [f"%{keyword}%", f"%{keyword}%", f"%{keyword}%"]
         if category_id:
             sql += " AND p.category_id = ?"
             params.append(category_id)
@@ -96,9 +113,6 @@ class ProductModel(BaseModel):
         rows = db.execute_query(sql, tuple(params))
         if not rows:
             return []
-        # 获取列名
-        cols = [desc[0] for desc in db.execute_query("PRAGMA table_info(products)")]
-        col_names = [c[1] for c in db.execute_query("PRAGMA table_info(products)")]
         # 手动构建列名（使用 SELECT 返回的列顺序）
         field_names = list(cls.get_fields().keys()) + ['category_name', 'total_stock']
         return [dict(zip(field_names, row)) for row in rows]
