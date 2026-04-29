@@ -40,13 +40,6 @@ export const productApi = {
   remove: (id) => http.delete(`/products/${id}`)
 }
 
-// 库存
-export const inventoryApi = {
-  list: (params) => http.get('/inventory', { params }),
-  summary: () => http.get('/inventory/summary'),
-  update: (id, data) => http.put(`/inventory/${id}`, data)
-}
-
 // 出入库
 export const transactionApi = {
   list: (params) => http.get('/transactions', { params }),

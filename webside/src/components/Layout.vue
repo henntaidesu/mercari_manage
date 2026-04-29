@@ -72,7 +72,6 @@ const isMobile = ref(false)
 const menuItems = [
   { path: '/dashboard', title: '控制台', icon: 'Odometer' },
   { path: '/products', title: '商品管理', icon: 'Goods' },
-  { path: '/inventory', title: '库存管理', icon: 'Box' },
   { path: '/transactions', title: '出入库记录', icon: 'List' },
   { path: '/warehouses', title: '仓库管理', icon: 'OfficeBuilding' },
   { path: '/categories', title: '分类管理', icon: 'Collection' }

@@ -10,7 +10,6 @@ from .models import (
     CategoryModel,
     WarehouseModel,
     ProductModel,
-    InventoryModel,
     TransactionModel,
 )
 
@@ -28,7 +27,6 @@ class DBManager:
             CategoryModel,    # 无外键依赖
             WarehouseModel,   # 无外键依赖
             ProductModel,     # 依赖 categories
-            InventoryModel,   # 依赖 products, warehouses
             TransactionModel, # 依赖 products, warehouses
         ]
 

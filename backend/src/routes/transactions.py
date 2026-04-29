@@ -3,7 +3,7 @@ from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel as PydanticModel
 from typing import Optional
 from ..models.transaction import TransactionModel
-from ..models.inventory import InventoryModel
+from ..models.product import ProductModel
 
 router = APIRouter(prefix="/api/transactions", tags=["transactions"])
 
@@ -41,22 +41,21 @@ def create_transaction(data: TransactionCreate):
         raise HTTPException(status_code=400, detail="类型错误，仅支持 in/out/transfer")
     if data.quantity <= 0:
         raise HTTPException(status_code=400, detail="数量必须大于0")
-    if data.type == "transfer" and not data.target_warehouse_id:
-        raise HTTPException(status_code=400, detail="调拨操作需要指定目标仓库")
+
+    product = ProductModel.find_by_id(id=data.product_id)
+    if not product:
+        raise HTTPException(status_code=404, detail="商品不存在")
+
+    current_qty = product.quantity or 0
 
     if data.type == "in":
-        InventoryModel.upsert(data.product_id, data.warehouse_id, data.quantity)
-
-    elif data.type == "out":
-        ok, current = InventoryModel.deduct(data.product_id, data.warehouse_id, data.quantity)
-        if not ok:
-            raise HTTPException(status_code=400, detail=f"库存不足，当前库存：{current}")
-
-    elif data.type == "transfer":
-        ok, current = InventoryModel.deduct(data.product_id, data.warehouse_id, data.quantity)
-        if not ok:
-            raise HTTPException(status_code=400, detail=f"库存不足，当前库存：{current}")
-        InventoryModel.upsert(data.product_id, data.target_warehouse_id, data.quantity)
+        product.quantity = current_qty + data.quantity
+        product.save()
+    elif data.type in ("out", "transfer"):
+        if current_qty < data.quantity:
+            raise HTTPException(status_code=400, detail=f"库存不足，当前库存：{current_qty}")
+        product.quantity = current_qty - data.quantity
+        product.save()
 
     tx = TransactionModel(
         type=data.type,
@@ -70,7 +69,6 @@ def create_transaction(data: TransactionCreate):
     if not tx.save():
         raise HTTPException(status_code=500, detail="记录保存失败")
 
-    # 返回带关联名称的详情
     result = TransactionModel.find_detail_list(page=1, page_size=1)
     items = result.get('items', [])
     return items[0] if items else tx.to_dict()

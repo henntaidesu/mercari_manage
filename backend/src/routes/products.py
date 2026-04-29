@@ -3,7 +3,6 @@ from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel as PydanticModel
 from typing import Optional
 from ..models.product import ProductModel
-from ..models.inventory import InventoryModel
 from ..models.category import CategoryModel
 
 router = APIRouter(prefix="/api/products", tags=["products"])
@@ -12,10 +11,10 @@ router = APIRouter(prefix="/api/products", tags=["products"])
 class ProductCreate(PydanticModel):
     name: Optional[str] = None
     barcode: str
-    sku: Optional[str] = None
     category_id: Optional[int] = None
     unit: Optional[str] = "件"
     price: Optional[float] = 0.0
+    quantity: Optional[int] = 0
     description: Optional[str] = None
     image_front: Optional[str] = None
     image_back: Optional[str] = None
@@ -24,10 +23,10 @@ class ProductCreate(PydanticModel):
 class ProductUpdate(PydanticModel):
     name: Optional[str] = None
     barcode: Optional[str] = None
-    sku: Optional[str] = None
     category_id: Optional[int] = None
     unit: Optional[str] = None
     price: Optional[float] = None
+    quantity: Optional[int] = None
     description: Optional[str] = None
     image_front: Optional[str] = None
     image_back: Optional[str] = None
@@ -37,10 +36,6 @@ def _get_detail(product: ProductModel) -> dict:
     d = product.to_dict()
     cat = CategoryModel.find_by_id(id=product.category_id) if product.category_id else None
     d['category_name'] = cat.name if cat else None
-    d['total_stock'] = ProductModel.get_total_stock(product.id)
-    # 各仓库库存明细
-    inv_list = InventoryModel.find_all("product_id = ?", (product.id,))
-    d['inventory'] = [i.to_dict() for i in inv_list]
     return d
 
 
@@ -65,7 +60,7 @@ def create_product(data: ProductCreate):
     payload['image'] = payload.get('image_front')
     product = ProductModel(**payload)
     if not product.save():
-        raise HTTPException(status_code=400, detail="保存失败，条形码或SKU可能重复")
+        raise HTTPException(status_code=400, detail="保存失败，条形码可能重复")
     return _get_detail(product)
 
 
@@ -82,7 +77,7 @@ def update_product(pid: int, data: ProductUpdate):
     for field, value in update_data.items():
         setattr(product, field, value)
     if not product.save():
-        raise HTTPException(status_code=400, detail="更新失败，条形码或SKU可能重复")
+        raise HTTPException(status_code=400, detail="更新失败，条形码可能重复")
     return _get_detail(product)
 
 
@@ -91,8 +86,5 @@ def delete_product(pid: int):
     product = ProductModel.find_by_id(id=pid)
     if not product:
         raise HTTPException(status_code=404, detail="商品不存在")
-    if ProductModel.get_total_stock(pid) > 0:
-        raise HTTPException(status_code=400, detail="商品存在库存，无法删除")
-    InventoryModel.delete_all("product_id = ?", (pid,))
     product.delete()
     return {"message": "删除成功"}

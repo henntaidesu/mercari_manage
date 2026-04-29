@@ -55,6 +55,11 @@ class ProductModel(BaseModel):
                 'not_null': False,
                 'default': 0,
             },
+            'quantity': {
+                'type': 'INTEGER',
+                'not_null': False,
+                'default': 0,
+            },
             'description': {
                 'type': 'TEXT',
                 'not_null': False,
@@ -92,37 +97,24 @@ class ProductModel(BaseModel):
 
     @classmethod
     def find_with_stock(cls, keyword: Optional[str] = None, category_id: Optional[int] = None) -> List[dict]:
-        """查询商品列表，附带分类名称和总库存"""
+        """查询商品列表，附带分类名称"""
         db = cls().db
         sql = """
-            SELECT p.*, c.name as category_name,
-                   COALESCE(SUM(i.quantity), 0) as total_stock
+            SELECT p.*, c.name as category_name
             FROM [products] p
             LEFT JOIN [categories] c ON c.id = p.category_id
-            LEFT JOIN [inventory] i ON i.product_id = p.id
             WHERE 1=1
         """
         params = []
         if keyword:
-            sql += " AND (p.name LIKE ? OR p.sku LIKE ? OR p.barcode LIKE ?)"
-            params += [f"%{keyword}%", f"%{keyword}%", f"%{keyword}%"]
+            sql += " AND (p.name LIKE ? OR p.barcode LIKE ?)"
+            params += [f"%{keyword}%", f"%{keyword}%"]
         if category_id:
             sql += " AND p.category_id = ?"
             params.append(category_id)
-        sql += " GROUP BY p.id ORDER BY p.id DESC"
+        sql += " ORDER BY p.id DESC"
         rows = db.execute_query(sql, tuple(params))
         if not rows:
             return []
-        # 手动构建列名（使用 SELECT 返回的列顺序）
-        field_names = list(cls.get_fields().keys()) + ['category_name', 'total_stock']
+        field_names = list(cls.get_fields().keys()) + ['category_name']
         return [dict(zip(field_names, row)) for row in rows]
-
-    @classmethod
-    def get_total_stock(cls, product_id: int) -> int:
-        """获取商品的总库存"""
-        db = cls().db
-        result = db.execute_query(
-            "SELECT COALESCE(SUM(quantity), 0) FROM [inventory] WHERE product_id = ?",
-            (product_id,)
-        )
-        return result[0][0] if result else 0

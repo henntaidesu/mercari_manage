@@ -10,7 +10,7 @@
     <el-card shadow="never" class="search-card">
       <el-row :gutter="12" align="middle">
         <el-col :xs="24" :sm="12" :md="8">
-          <el-input v-model="keyword" placeholder="搜索商品名称 / SKU / 条形码" clearable @change="load" prefix-icon="Search" />
+          <el-input v-model="keyword" placeholder="搜索商品名称 / 条形码" clearable @change="load" prefix-icon="Search" />
         </el-col>
         <el-col :xs="24" :sm="12" :md="6">
           <el-select v-model="filterCat" placeholder="所有分类" clearable @change="load" style="width:100%">
@@ -50,15 +50,14 @@
         <el-table-column label="商品名称" min-width="130">
           <template #default="{ row }">{{ row.name || '-' }}</template>
         </el-table-column>
-        <el-table-column label="SKU" prop="sku" width="120" />
         <el-table-column label="分类" prop="category_name" width="100" />
         <el-table-column label="单位" prop="unit" width="70" align="center" />
         <el-table-column label="单价" prop="price" width="90" align="right">
           <template #default="{ row }">¥{{ Number(row.price || 0).toFixed(2) }}</template>
         </el-table-column>
-        <el-table-column label="总库存" prop="total_stock" width="90" align="center">
+        <el-table-column label="数量" prop="quantity" width="90" align="center">
           <template #default="{ row }">
-            <el-tag :type="row.total_stock > 0 ? 'success' : 'info'" size="small">{{ row.total_stock }}</el-tag>
+            <el-tag :type="(row.quantity || 0) > 0 ? 'success' : 'info'" size="small">{{ row.quantity || 0 }}</el-tag>
           </template>
         </el-table-column>
         <el-table-column label="操作" width="140" fixed="right">
@@ -90,10 +89,6 @@
               <el-input v-model="form.name" placeholder="可选" />
             </el-form-item>
 
-            <el-form-item label="SKU编码">
-              <el-input v-model="form.sku" placeholder="可选，如：P-001" />
-            </el-form-item>
-
             <el-form-item label="分类">
               <el-select v-model="form.category_id" placeholder="选择分类" clearable style="width:100%">
                 <el-option v-for="c in categories" :key="c.id" :label="c.name" :value="c.id" />
@@ -101,21 +96,26 @@
             </el-form-item>
 
             <el-row :gutter="12">
-              <el-col :span="12">
+              <el-col :span="8">
                 <el-form-item label="单位">
                   <el-input v-model="form.unit" placeholder="件" />
                 </el-form-item>
               </el-col>
-              <el-col :span="12">
+              <el-col :span="8">
                 <el-form-item label="单价">
                   <el-input-number v-model="form.price" :min="0" :precision="2" style="width:100%" />
+                </el-form-item>
+              </el-col>
+              <el-col :span="8">
+                <el-form-item label="数量">
+                  <el-input-number v-model="form.quantity" :min="0" :precision="0" style="width:100%" />
                 </el-form-item>
               </el-col>
             </el-row>
           </el-col>
 
           <el-col :span="10">
-            <el-form-item label="正面图">
+            <el-form-item label="正面图" prop="image_front">
               <div class="image-upload-area" @click="triggerUpload('front')">
                 <img v-if="form.image_front" :src="form.image_front" class="preview-img" />
                 <div v-else class="upload-placeholder">
@@ -123,11 +123,11 @@
                   <div class="upload-tip">点击上传正面图</div>
                 </div>
               </div>
-              <input ref="fileInputFront" type="file" accept="image/*" style="display:none" @change="handleImageUpload($event, 'front')" />
+              <input ref="fileInputFront" type="file" accept="image/*" capture="environment" style="display:none" @change="handleImageUpload($event, 'front')" />
               <el-button v-if="form.image_front" size="small" type="danger" text @click="form.image_front = null">移除</el-button>
             </el-form-item>
 
-            <el-form-item label="背面图">
+            <el-form-item label="背面图" prop="image_back">
               <div class="image-upload-area" @click="triggerUpload('back')">
                 <img v-if="form.image_back" :src="form.image_back" class="preview-img" />
                 <div v-else class="upload-placeholder">
@@ -135,7 +135,7 @@
                   <div class="upload-tip">点击上传背面图</div>
                 </div>
               </div>
-              <input ref="fileInputBack" type="file" accept="image/*" style="display:none" @change="handleImageUpload($event, 'back')" />
+              <input ref="fileInputBack" type="file" accept="image/*" capture="environment" style="display:none" @change="handleImageUpload($event, 'back')" />
               <el-button v-if="form.image_back" size="small" type="danger" text @click="form.image_back = null">移除</el-button>
             </el-form-item>
           </el-col>
@@ -160,6 +160,16 @@
         <el-button @click="scanVisible = false">关闭</el-button>
       </template>
     </el-dialog>
+
+    <!-- 拍照扫码降级方案（iOS Safari / 非安全上下文）-->
+    <input
+      ref="cameraInputRef"
+      type="file"
+      accept="image/*"
+      capture="environment"
+      style="display:none"
+      @change="handleCameraCapture"
+    />
   </div>
 </template>
 
@@ -181,25 +191,78 @@ const fileInputBack = ref()
 
 const scanVisible = ref(false)
 const videoRef = ref()
+const cameraInputRef = ref()
 let mediaStream = null
 let scanTimer = null
 let zxingControls = null
+let warnedNonBarcode = false
+const SCAN_INTERVAL_MS = 120
+const CAMERA_CONSTRAINTS = {
+  video: {
+    facingMode: { ideal: 'environment' },
+    width: { ideal: 1280 },
+    height: { ideal: 720 },
+    frameRate: { ideal: 30, max: 60 }
+  },
+  audio: false
+}
 
 const form = ref({
   id: null,
   barcode: '',
   name: '',
-  sku: '',
   category_id: null,
   unit: '件',
   price: 0,
+  quantity: 0,
   description: '',
   image_front: null,
   image_back: null
 })
 
 const rules = {
-  barcode: [{ required: true, message: '请填写或扫描条形码', trigger: 'blur' }]
+  barcode: [{ required: true, message: '请填写或扫描条形码', trigger: 'blur' }],
+  image_front: [{ validator: (_, val, cb) => val ? cb() : cb(new Error('请拍摄或上传正面图')), trigger: 'change' }],
+  image_back: [{ validator: (_, val, cb) => val ? cb() : cb(new Error('请拍摄或上传背面图')), trigger: 'change' }]
+}
+
+const allowedBarcodeFormats = new Set([
+  'EAN_13',
+  'EAN_8',
+  'UPC_A',
+  'UPC_E',
+  'CODE_128',
+  'CODE_39'
+])
+
+function isAllowedBarcode(formatValue) {
+  const name = String(formatValue || '')
+  return allowedBarcodeFormats.has(name)
+}
+
+function isIpadSafari() {
+  const ua = navigator.userAgent || ''
+  const platform = navigator.platform || ''
+  const isIpad = /iPad/i.test(ua) || (platform === 'MacIntel' && navigator.maxTouchPoints > 1)
+  const isSafari = /Safari/i.test(ua) && !/CriOS|FxiOS|EdgiOS|Chrome/i.test(ua)
+  return isIpad && isSafari
+}
+
+function normalizeBarcodeText(rawText) {
+  const text = String(rawText || '').trim()
+  if (!text) return ''
+
+  // 常见场景：条码被识别成 "6 979215 474736" 或夹杂符号
+  const digits = text.replace(/[^\d]/g, '')
+  if ([8, 12, 13, 14].includes(digits.length)) return digits
+
+  // 如果整段文本里包含可用长度的数字片段，也尝试提取
+  const hit = text.match(/\d{8}|\d{12}|\d{13}|\d{14}/g)
+  if (hit?.length) {
+    const best = hit.sort((a, b) => b.length - a.length)[0]
+    return best || ''
+  }
+  return ''
 }
 
 async function load() {
@@ -216,10 +279,10 @@ function openDialog(row = null) {
         id: row.id,
         barcode: row.barcode || '',
         name: row.name || '',
-        sku: row.sku || '',
         category_id: row.category_id || null,
         unit: row.unit || '件',
         price: row.price || 0,
+        quantity: row.quantity || 0,
         description: row.description || '',
         image_front: row.image_front || row.image || null,
         image_back: row.image_back || null
@@ -228,10 +291,10 @@ function openDialog(row = null) {
         id: null,
         barcode: '',
         name: '',
-        sku: '',
         category_id: null,
         unit: '件',
         price: 0,
+        quantity: 0,
         description: '',
         image_front: null,
         image_back: null
@@ -253,8 +316,13 @@ function handleImageUpload(e, side) {
   }
   const reader = new FileReader()
   reader.onload = (ev) => {
-    if (side === 'front') form.value.image_front = ev.target.result
-    else form.value.image_back = ev.target.result
+    if (side === 'front') {
+      form.value.image_front = ev.target.result
+      formRef.value?.validateField('image_front')
+    } else {
+      form.value.image_back = ev.target.result
+      formRef.value?.validateField('image_back')
+    }
   }
   reader.readAsDataURL(file)
   e.target.value = ''
@@ -282,12 +350,29 @@ async function remove(id) {
 }
 
 async function openScanDialog() {
+  stopScan()
+  warnedNonBarcode = false
+
+  // 非安全上下文（HTTP + IP）或浏览器不支持 getUserMedia → 降级为拍照识别
+  const canStream = !!(navigator.mediaDevices?.getUserMedia) && !!window.isSecureContext
+  if (!canStream) {
+    cameraInputRef.value.value = ''
+    cameraInputRef.value.click()
+    return
+  }
+
   scanVisible.value = true
   await nextTick()
 
+  const preferZXing = isIpadSafari()
+  if (preferZXing) {
+    await openScanWithZXing()
+    return
+  }
+
   if ('BarcodeDetector' in window) {
     try {
-      mediaStream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment' } })
+      mediaStream = await navigator.mediaDevices.getUserMedia(CAMERA_CONSTRAINTS)
       videoRef.value.srcObject = mediaStream
       const detector = new window.BarcodeDetector({
         formats: ['ean_13', 'ean_8', 'code_128', 'code_39', 'upc_a', 'upc_e']
@@ -297,11 +382,15 @@ async function openScanDialog() {
         if (!videoRef.value || videoRef.value.readyState < 2) return
         const barcodes = await detector.detect(videoRef.value)
         if (barcodes?.length) {
-          form.value.barcode = barcodes[0].rawValue || ''
+          const hit = barcodes.find((item) => isAllowedBarcode(item.format))
+          if (!hit) return
+          const barcode = normalizeBarcodeText(hit.rawValue)
+          if (!barcode) return
+          form.value.barcode = barcode
           ElMessage.success('扫码成功')
           scanVisible.value = false
         }
-      }, 300)
+      }, SCAN_INTERVAL_MS)
       return
     } catch (err) {
       // 回退到 ZXing
@@ -313,31 +402,34 @@ async function openScanDialog() {
 
 async function openScanWithZXing() {
   try {
-    const { BrowserMultiFormatReader, BarcodeFormat, DecodeHintType } = await import('@zxing/browser')
-    const hints = new Map()
-    hints.set(DecodeHintType.POSSIBLE_FORMATS, [
-      BarcodeFormat.EAN_13,
-      BarcodeFormat.EAN_8,
-      BarcodeFormat.CODE_128,
-      BarcodeFormat.CODE_39,
-      BarcodeFormat.UPC_A,
-      BarcodeFormat.UPC_E
-    ])
-    const reader = new BrowserMultiFormatReader(hints)
-
+    const { BrowserMultiFormatReader } = await import('@zxing/browser')
+    const reader = new BrowserMultiFormatReader()
     zxingControls = await reader.decodeFromConstraints(
-      { video: { facingMode: { ideal: 'environment' } } },
+      CAMERA_CONSTRAINTS,
       videoRef.value,
       (result) => {
         if (result) {
-          form.value.barcode = result.getText() || ''
+          const format = result.getBarcodeFormat?.()
+          const rawText = result.getText?.() || ''
+          const barcode = normalizeBarcodeText(rawText)
+
+          // 优先接受明确的一维条码；其次允许纯数字可用条码串
+          if (!isAllowedBarcode(format) && !barcode) {
+            if (!warnedNonBarcode) {
+              warnedNonBarcode = true
+              ElMessage.warning('当前识别到二维码/无效码，请稍微靠近并对准左侧一维条形码')
+            }
+            return
+          }
+          if (!barcode) return
+          form.value.barcode = barcode
           ElMessage.success('扫码成功')
           scanVisible.value = false
         }
       }
     )
   } catch (err) {
-    ElMessage.error('无法打开摄像头扫码。iPad 请确认使用 Safari 并允许摄像头权限。')
+    ElMessage.error('无法打开摄像头扫码，请检查浏览器摄像头权限（地址栏右侧）后重试。')
   }
 }
 
@@ -353,6 +445,31 @@ function stopScan() {
   if (mediaStream) {
     mediaStream.getTracks().forEach((t) => t.stop())
     mediaStream = null
+  }
+}
+
+async function handleCameraCapture(e) {
+  const file = e.target.files?.[0]
+  if (!file) return
+  e.target.value = ''
+
+  const url = URL.createObjectURL(file)
+  try {
+    const { BrowserMultiFormatReader } = await import('@zxing/browser')
+    const reader = new BrowserMultiFormatReader()
+    const result = await reader.decodeFromImageUrl(url)
+    const rawText = result?.getText?.() || ''
+    const barcode = normalizeBarcodeText(rawText)
+    if (barcode) {
+      form.value.barcode = barcode
+      ElMessage.success('扫码成功')
+    } else {
+      ElMessage.warning('未能识别条形码，请重试并确保照片清晰对准条形码')
+    }
+  } catch {
+    ElMessage.warning('未能识别条形码，请重试并确保照片清晰对准条形码')
+  } finally {
+    URL.revokeObjectURL(url)
   }
 }
 
