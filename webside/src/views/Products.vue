@@ -198,7 +198,7 @@ onMounted(async () => {
 .image-upload-area {
   width: 120px;
   height: 120px;
-  border: 2px dashed #dcdfe6;
+  border: 2px dashed #3b4961;
   border-radius: 8px;
   cursor: pointer;
   display: flex;
@@ -210,5 +210,5 @@ onMounted(async () => {
 .image-upload-area:hover { border-color: #409EFF; }
 .preview-img { width: 100%; height: 100%; object-fit: cover; }
 .upload-placeholder { text-align: center; }
-.upload-tip { font-size: 12px; color: #aaa; margin-top: 6px; }
+.upload-tip { font-size: 12px; color: #8e9bb3; margin-top: 6px; }
 </style>

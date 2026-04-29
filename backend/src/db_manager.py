@@ -64,26 +64,7 @@ class DBManager:
             print(f"[WARN] 数据库初始化完成: {success}/{total}，失败: {', '.join(failed)}")
             return False
 
-        self._seed_default_data()
         return True
-
-    def _seed_default_data(self):
-        """写入默认初始数据"""
-        if CategoryModel.count() == 0:
-            for name, desc in [
-                ("电子产品", "电子类商品"),
-                ("办公用品", "办公室日常用品"),
-                ("食品饮料", "食品及饮料类"),
-                ("服装配件", "服装及配件类"),
-            ]:
-                CategoryModel(name=name, description=desc).save()
-
-        if WarehouseModel.count() == 0:
-            for name, loc, desc in [
-                ("主仓库", "1号楼A区", "主要存储仓库"),
-                ("备用仓库", "2号楼B区", "备用存储仓库"),
-            ]:
-                WarehouseModel(name=name, location=loc, description=desc).save()
 
     def check_integrity(self) -> bool:
         """检查所有表结构完整性"""

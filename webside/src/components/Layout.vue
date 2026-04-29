@@ -111,7 +111,7 @@ onUnmounted(() => window.removeEventListener('resize', checkMobile))
 }
 
 .sidebar {
-  background: #001529;
+  background: #0f1728;
   transition: width 0.25s ease;
   overflow: hidden;
   flex-shrink: 0;
@@ -179,9 +179,9 @@ onUnmounted(() => window.removeEventListener('resize', checkMobile))
   align-items: center;
   justify-content: space-between;
   padding: 0 20px;
-  background: #fff;
-  border-bottom: 1px solid #f0f0f0;
-  box-shadow: 0 1px 4px rgba(0,21,41,0.08);
+  background: #121b2e;
+  border-bottom: 1px solid #253149;
+  box-shadow: 0 1px 6px rgba(0,0,0,0.25);
   height: 56px !important;
   flex-shrink: 0;
 }
@@ -204,7 +204,7 @@ onUnmounted(() => window.removeEventListener('resize', checkMobile))
 
 .main-content {
   overflow-y: auto;
-  background: #f5f6fa;
+  background: #0b1220;
   padding: 20px;
 }
 

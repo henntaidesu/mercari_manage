@@ -102,18 +102,19 @@ onMounted(load)
 
 <style scoped>
 .dashboard { max-width: 1400px; }
-.page-title { font-size: 20px; font-weight: 600; color: #1a1a1a; margin-bottom: 20px; }
+.page-title { font-size: 20px; font-weight: 600; color: #e6edf7; margin-bottom: 20px; }
 .stat-row { margin-bottom: 20px; }
 .stat-row .el-col { margin-bottom: 16px; }
 .stat-card {
-  background: #fff;
+  background: #131c2f;
   border-radius: 8px;
   padding: 16px;
   display: flex;
   align-items: center;
   gap: 14px;
   border-top: 3px solid;
-  box-shadow: 0 1px 4px rgba(0,0,0,0.08);
+  box-shadow: 0 2px 8px rgba(0,0,0,0.3);
+  border: 1px solid #2a3446;
 }
 .stat-icon {
   width: 46px;
@@ -124,8 +125,8 @@ onMounted(load)
   justify-content: center;
   flex-shrink: 0;
 }
-.stat-value { font-size: 22px; font-weight: 700; color: #1a1a1a; }
-.stat-label { font-size: 12px; color: #888; margin-top: 2px; }
+.stat-value { font-size: 22px; font-weight: 700; color: #ecf2ff; }
+.stat-label { font-size: 12px; color: #9ba8bf; margin-top: 2px; }
 .section-card { margin-bottom: 20px; border-radius: 8px; }
 .card-header { display: flex; align-items: center; gap: 8px; font-weight: 600; }
 .empty-tip { text-align: center; padding: 20px; color: #67c23a; display: flex; align-items: center; justify-content: center; gap: 6px; }

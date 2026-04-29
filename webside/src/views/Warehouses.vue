@@ -111,10 +111,10 @@ onMounted(load)
 .warehouse-card { border-radius: 10px; text-align: center; margin-bottom: 16px; }
 .wh-icon { margin-bottom: 10px; }
 .wh-name { font-size: 16px; font-weight: 600; margin-bottom: 4px; }
-.wh-loc { font-size: 12px; color: #888; margin-bottom: 4px; display: flex; align-items: center; justify-content: center; gap: 4px; }
-.wh-desc { font-size: 12px; color: #aaa; margin-bottom: 4px; }
+.wh-loc { font-size: 12px; color: #95a1b7; margin-bottom: 4px; display: flex; align-items: center; justify-content: center; gap: 4px; }
+.wh-desc { font-size: 12px; color: #7f8aa1; margin-bottom: 4px; }
 .wh-stats { display: flex; justify-content: space-around; }
 .wh-stat-val { font-size: 20px; font-weight: 700; color: #409EFF; }
-.wh-stat-label { font-size: 12px; color: #888; }
+.wh-stat-label { font-size: 12px; color: #95a1b7; }
 .wh-actions { display: flex; justify-content: center; gap: 8px; margin-top: 12px; }
 </style>

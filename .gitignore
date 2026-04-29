@@ -80,3 +80,7 @@ vite.config.ts.timestamp-*
 
 # Editor / test
 .vscode-test
+
+# Python bytecode
+*.pyc
+__pycache__/
