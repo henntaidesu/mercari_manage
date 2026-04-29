@@ -1,11 +1,6 @@
 ﻿<template>
   <div>
     <div class="page-header">
-      <div class="header-actions">
-        <el-button type="success" @click="openContScan">
-          <el-icon><VideoCamera /></el-icon> 扫描条形码
-        </el-button>
-      </div>
     </div>
 
     <el-card shadow="never" class="search-card">
@@ -18,12 +13,23 @@
             <el-option v-for="c in categories" :key="c.id" :label="c.name" :value="c.id" />
           </el-select>
         </el-col>
+        <el-col :xs="24" :sm="24" :md="10" class="search-actions">
+          <el-button type="success" @click="openContScan">
+            条码录入
+          </el-button>
+          <el-button type="primary" @click="openLookupScan">
+            条码寻找
+          </el-button>
+          <el-button type="warning" @click="openNoBarcodeEntry">
+            无码录入
+          </el-button>
+        </el-col>
       </el-row>
     </el-card>
 
     <el-card shadow="never" class="table-card">
       <div class="table-scroll">
-      <el-table :data="pagedList" v-loading="loading" stripe>
+      <el-table :data="pagedList" v-loading="loading" stripe :size="isMobile ? 'small' : 'default'">
         <el-table-column label="正面图" width="80" align="center">
           <template #default="{ row }">
             <el-image
@@ -100,7 +106,7 @@
             </el-tag>
           </template>
         </el-table-column>
-        <el-table-column label="操作" width="240" fixed="right">
+        <el-table-column label="操作" :width="isMobile ? 180 : 240" :fixed="isMobile ? false : 'right'">
           <template #default="{ row }">
             <div class="row-actions">
               <el-button size="small" type="success" @click="openOcrForRow(row)">OCR</el-button>
@@ -242,7 +248,7 @@
     <!-- ===== 连续扫码对话框 ===== -->
     <el-dialog
       v-model="contScanVisible"
-      title="扫描条形码"
+      title="条形码录入"
       :width="isMobile ? '94vw' : '580px'"
       class="scan-dialog"
       @closed="stopContScan"
@@ -317,6 +323,36 @@
         <el-button @click="contScanVisible = false">关闭</el-button>
       </template>
     </el-dialog>
+
+    <!-- ===== 条形码寻找对话框 ===== -->
+    <el-dialog
+      v-model="lookupScanVisible"
+      title="条形码寻找"
+      :width="isMobile ? '94vw' : '640px'"
+      class="scan-dialog"
+      @closed="stopLookupScan"
+    >
+      <div class="scan-box">
+        <video ref="lookupVideoRef" class="scan-video" autoplay playsinline muted />
+        <div class="scan-tip">
+          <span v-if="lookupScanning" class="scanning-hint">识别中…</span>
+          <span v-else>扫描后自动定位该条形码物品</span>
+        </div>
+      </div>
+      <template #footer>
+        <el-button @click="triggerLookupCapture" v-if="lookupScanMode === 'fallback'">拍照识别</el-button>
+        <el-button @click="lookupScanVisible = false">关闭</el-button>
+      </template>
+    </el-dialog>
+
+    <input
+      ref="lookupCameraRef"
+      type="file"
+      accept="image/*"
+      capture="environment"
+      style="display:none"
+      @change="handleLookupCapture"
+    />
     <!-- ===== OCR 框选弹窗 ===== -->
     <el-dialog
       v-model="ocrVisible"
@@ -421,6 +457,15 @@ const contCameraRef = ref()
 const contScanMode = ref('stream') // 'stream' | 'fallback'
 let contStream = null
 let contTimer = null
+
+// ---- 条形码寻找状态 ----
+const lookupScanVisible = ref(false)
+const lookupScanning = ref(false)
+const lookupVideoRef = ref()
+const lookupCameraRef = ref()
+const lookupScanMode = ref('stream') // 'stream' | 'fallback'
+let lookupStream = null
+let lookupTimer = null
 const SCAN_INTERVAL_MS = 500
 const CAMERA_CONSTRAINTS = {
   video: {
@@ -760,6 +805,14 @@ function openDialog(row = null) {
   dialogVisible.value = true
 }
 
+function openNoBarcodeEntry() {
+  openDialog()
+  const uuid = (typeof crypto !== 'undefined' && crypto.randomUUID)
+    ? crypto.randomUUID()
+    : `nb-${Date.now()}-${Math.random().toString(16).slice(2, 10)}`
+  form.value.barcode = uuid
+}
+
 function triggerUpload(side) {
   if (side === 'front') fileInputFront.value?.click()
   else fileInputBack.value?.click()
@@ -900,6 +953,7 @@ async function openContScan() {
   if (!canStream) {
     contScanMode.value = 'fallback'
     contState.value = 'ios-fallback'
+    triggerContCapture()
     return
   }
   contScanMode.value = 'stream'
@@ -1025,10 +1079,94 @@ async function handleContCapture(e) {
   }
 }
 
+// ============ 条形码寻找函数 ============
+
+async function openLookupScan() {
+  stopLookupScan()
+  const canStream = !!(navigator.mediaDevices?.getUserMedia) && !!window.isSecureContext
+  if (!canStream) {
+    lookupScanMode.value = 'fallback'
+    lookupScanVisible.value = false
+    triggerLookupCapture()
+    return
+  }
+  lookupScanMode.value = 'stream'
+  lookupScanVisible.value = true
+  await nextTick()
+
+  try {
+    lookupStream = await navigator.mediaDevices.getUserMedia(CAMERA_CONSTRAINTS)
+    lookupVideoRef.value.srcObject = lookupStream
+    await new Promise((resolve) => { lookupVideoRef.value.onloadedmetadata = resolve })
+    lookupTimer = setInterval(async () => {
+      if (!lookupScanVisible.value || lookupScanning.value) return
+      const blob = await captureFrame(lookupVideoRef)
+      if (!blob) return
+      lookupScanning.value = true
+      try {
+        const res = await scanApi.scanBarcode(blob)
+        if (res?.found && res.barcode) {
+          await handleLookupBarcode(res.barcode)
+        }
+      } catch {
+        // 静默失败，继续扫
+      } finally {
+        lookupScanning.value = false
+      }
+    }, SCAN_INTERVAL_MS)
+  } catch {
+    ElMessage.error('无法打开摄像头，请检查权限后重试')
+    lookupScanVisible.value = false
+  }
+}
+
+async function handleLookupBarcode(barcode) {
+  keyword.value = barcode
+  filterCat.value = null
+  await load()
+  ElMessage.success(`已定位条形码：${barcode}`)
+  lookupScanVisible.value = false
+}
+
+function stopLookupScan() {
+  clearInterval(lookupTimer)
+  lookupTimer = null
+  if (lookupStream) {
+    lookupStream.getTracks().forEach((t) => t.stop())
+    lookupStream = null
+  }
+  lookupScanning.value = false
+}
+
+function triggerLookupCapture() {
+  lookupCameraRef.value.value = ''
+  lookupCameraRef.value.click()
+}
+
+async function handleLookupCapture(e) {
+  const file = e.target.files?.[0]
+  if (!file) return
+  e.target.value = ''
+  lookupScanning.value = true
+  try {
+    const res = await scanApi.scanBarcode(file)
+    if (res?.found && res.barcode) {
+      await handleLookupBarcode(res.barcode)
+    } else {
+      ElMessage.warning('未识别到条形码，请重拍')
+    }
+  } catch {
+    ElMessage.warning('识别失败，请重试')
+  } finally {
+    lookupScanning.value = false
+  }
+}
+
 // ============ 生命周期 ============
 
 onBeforeUnmount(stopScan)
 onBeforeUnmount(stopContScan)
+onBeforeUnmount(stopLookupScan)
 
 onMounted(async () => {
   updateViewportState()
@@ -1043,6 +1181,7 @@ onBeforeUnmount(() => {
   window.removeEventListener('resize', updateViewportState)
   stopScan()
   stopContScan()
+  stopLookupScan()
 })
 </script>
 
@@ -1050,6 +1189,7 @@ onBeforeUnmount(() => {
 .page-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px; }
 .page-title { font-size: 20px; font-weight: 600; }
 .search-card { margin-bottom: 16px; border-radius: 8px; }
+.search-actions { display: flex; justify-content: flex-end; }
 .table-card { border-radius: 8px; }
 .table-scroll { width: 100%; overflow-x: auto; }
 .table-pagination {
@@ -1154,6 +1294,24 @@ onBeforeUnmount(() => {
 .scan-tip { color: #9aa7be; font-size: 13px; text-align: center; }
 
 @media (max-width: 768px) {
+  .search-card :deep(.el-row) {
+    row-gap: 8px;
+  }
+  .search-actions {
+    justify-content: stretch;
+  }
+  .search-actions :deep(.el-button) {
+    width: 100%;
+  }
+  .table-scroll {
+    -webkit-overflow-scrolling: touch;
+  }
+  .row-actions {
+    gap: 4px;
+  }
+  .row-actions :deep(.el-button) {
+    padding: 5px 8px;
+  }
   .page-header {
     flex-direction: column;
     align-items: stretch;
