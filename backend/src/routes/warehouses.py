@@ -2,10 +2,11 @@
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel as PydanticModel
 from typing import Optional
+from ..database import DatabaseManager
 from ..models.warehouse import WarehouseModel
-from ..models.inventory import InventoryModel
 
 router = APIRouter(prefix="/api/warehouses", tags=["warehouses"])
+db = DatabaseManager()
 
 
 class WarehouseCreate(PydanticModel):
@@ -61,9 +62,12 @@ def delete_warehouse(wid: int):
     wh = WarehouseModel.find_by_id(id=wid)
     if not wh:
         raise HTTPException(status_code=404, detail="仓库不存在")
-    has_stock = InventoryModel.find_all("warehouse_id = ? AND quantity > 0", (wid,), limit=1)
+    has_stock = db.execute_query(
+        "SELECT 1 FROM [inventory] WHERE warehouse_id = ? AND quantity > 0 LIMIT 1",
+        (wid,),
+    )
     if has_stock:
         raise HTTPException(status_code=400, detail="仓库存在库存，无法删除")
-    InventoryModel.delete_all("warehouse_id = ?", (wid,))
+    db.execute_update("DELETE FROM [inventory] WHERE warehouse_id = ?", (wid,))
     wh.delete()
     return {"message": "删除成功"}

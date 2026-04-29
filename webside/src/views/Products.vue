@@ -73,77 +73,50 @@
       </el-table>
     </el-card>
 
-    <el-dialog v-model="dialogVisible" :title="form.id ? '编辑商品' : '新增商品'" width="760px" destroy-on-close>
-      <el-form :model="form" :rules="rules" ref="formRef" label-width="90px">
-        <el-row :gutter="16">
-          <el-col :span="14">
-            <el-form-item label="条形码" prop="barcode">
-              <el-input v-model="form.barcode" placeholder="条形码必填" clearable>
-                <template #append>
-                  <el-button @click="openScanDialog"><el-icon><Camera /></el-icon> 扫码</el-button>
-                </template>
-              </el-input>
-            </el-form-item>
+    <el-dialog v-model="dialogVisible" :title="form.id ? '编辑商品' : '新增商品'" width="520px" destroy-on-close>
+      <el-form :model="form" :rules="rules" ref="formRef">
+        <!-- 条形码行 -->
+        <el-form-item prop="barcode">
+          <el-input v-model="form.barcode" placeholder="条形码（必填）" size="large" clearable>
+            <template #append>
+              <el-button @click="openScanDialog">
+                <el-icon><Camera /></el-icon> 扫码
+              </el-button>
+            </template>
+          </el-input>
+        </el-form-item>
 
-            <el-form-item label="商品名称">
-              <el-input v-model="form.name" placeholder="可选" />
-            </el-form-item>
-
-            <el-form-item label="分类">
-              <el-select v-model="form.category_id" placeholder="选择分类" clearable style="width:100%">
-                <el-option v-for="c in categories" :key="c.id" :label="c.name" :value="c.id" />
-              </el-select>
-            </el-form-item>
-
-            <el-row :gutter="12">
-              <el-col :span="8">
-                <el-form-item label="单位">
-                  <el-input v-model="form.unit" placeholder="件" />
-                </el-form-item>
-              </el-col>
-              <el-col :span="8">
-                <el-form-item label="单价">
-                  <el-input-number v-model="form.price" :min="0" :precision="2" style="width:100%" />
-                </el-form-item>
-              </el-col>
-              <el-col :span="8">
-                <el-form-item label="数量">
-                  <el-input-number v-model="form.quantity" :min="0" :precision="0" style="width:100%" />
-                </el-form-item>
-              </el-col>
-            </el-row>
-          </el-col>
-
-          <el-col :span="10">
-            <el-form-item label="正面图" prop="image_front">
-              <div class="image-upload-area" @click="triggerUpload('front')">
+        <!-- 正面图 / 背面图 -->
+        <el-row :gutter="20">
+          <el-col :span="12">
+            <el-form-item prop="image_front" style="display:block">
+              <div class="img-label">正面图</div>
+              <div class="image-upload-area large" @click="triggerUpload('front')">
                 <img v-if="form.image_front" :src="form.image_front" class="preview-img" />
                 <div v-else class="upload-placeholder">
-                  <el-icon size="28" color="#ccc"><Camera /></el-icon>
+                  <el-icon size="36" color="#4a5a72"><Camera /></el-icon>
                   <div class="upload-tip">点击上传正面图</div>
                 </div>
               </div>
               <input ref="fileInputFront" type="file" accept="image/*" capture="environment" style="display:none" @change="handleImageUpload($event, 'front')" />
-              <el-button v-if="form.image_front" size="small" type="danger" text @click="form.image_front = null">移除</el-button>
+              <el-button v-if="form.image_front" size="small" type="danger" text style="margin-top:4px" @click="form.image_front = null">移除</el-button>
             </el-form-item>
-
-            <el-form-item label="背面图" prop="image_back">
-              <div class="image-upload-area" @click="triggerUpload('back')">
+          </el-col>
+          <el-col :span="12">
+            <el-form-item prop="image_back" style="display:block">
+              <div class="img-label">背面图</div>
+              <div class="image-upload-area large" @click="triggerUpload('back')">
                 <img v-if="form.image_back" :src="form.image_back" class="preview-img" />
                 <div v-else class="upload-placeholder">
-                  <el-icon size="28" color="#ccc"><Camera /></el-icon>
+                  <el-icon size="36" color="#4a5a72"><Camera /></el-icon>
                   <div class="upload-tip">点击上传背面图</div>
                 </div>
               </div>
               <input ref="fileInputBack" type="file" accept="image/*" capture="environment" style="display:none" @change="handleImageUpload($event, 'back')" />
-              <el-button v-if="form.image_back" size="small" type="danger" text @click="form.image_back = null">移除</el-button>
+              <el-button v-if="form.image_back" size="small" type="danger" text style="margin-top:4px" @click="form.image_back = null">移除</el-button>
             </el-form-item>
           </el-col>
         </el-row>
-
-        <el-form-item label="描述">
-          <el-input v-model="form.description" type="textarea" :rows="3" placeholder="可选商品描述" />
-        </el-form-item>
       </el-form>
       <template #footer>
         <el-button @click="dialogVisible = false">取消</el-button>
@@ -278,24 +251,24 @@ function openDialog(row = null) {
     ? {
         id: row.id,
         barcode: row.barcode || '',
-        name: row.name || '',
+        name: row.name || null,
+        sku: row.sku || null,
         category_id: row.category_id || null,
-        unit: row.unit || '件',
-        price: row.price || 0,
-        quantity: row.quantity || 0,
-        description: row.description || '',
+        unit: row.unit || null,
+        price: row.price || null,
+        description: row.description || null,
         image_front: row.image_front || row.image || null,
         image_back: row.image_back || null
       }
     : {
         id: null,
         barcode: '',
-        name: '',
+        name: null,
+        sku: null,
         category_id: null,
-        unit: '件',
-        price: 0,
-        quantity: 0,
-        description: '',
+        unit: null,
+        price: null,
+        description: null,
         image_front: null,
         image_back: null
       }
@@ -499,10 +472,15 @@ onMounted(async () => {
   overflow: hidden;
   transition: border-color 0.2s;
 }
+.image-upload-area.large {
+  width: 100%;
+  height: 180px;
+}
 .image-upload-area:hover { border-color: #409EFF; }
 .preview-img { width: 100%; height: 100%; object-fit: cover; }
 .upload-placeholder { text-align: center; }
-.upload-tip { font-size: 12px; color: #8e9bb3; margin-top: 6px; }
+.upload-tip { font-size: 12px; color: #8e9bb3; margin-top: 8px; }
+.img-label { font-size: 13px; color: #8e9bb3; margin-bottom: 8px; }
 
 .scan-box { display: flex; flex-direction: column; gap: 10px; }
 .scan-video {
