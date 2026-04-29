@@ -62,12 +62,11 @@ def delete_warehouse(wid: int):
     wh = WarehouseModel.find_by_id(id=wid)
     if not wh:
         raise HTTPException(status_code=404, detail="仓库不存在")
-    has_stock = db.execute_query(
-        "SELECT 1 FROM [inventory] WHERE warehouse_id = ? AND quantity > 0 LIMIT 1",
-        (wid,),
+    has_tx = db.execute_query(
+        "SELECT 1 FROM [transactions] WHERE warehouse_id = ? OR target_warehouse_id = ? LIMIT 1",
+        (wid, wid),
     )
-    if has_stock:
-        raise HTTPException(status_code=400, detail="仓库存在库存，无法删除")
-    db.execute_update("DELETE FROM [inventory] WHERE warehouse_id = ?", (wid,))
+    if has_tx:
+        raise HTTPException(status_code=400, detail="仓库存在出入库记录，无法删除")
     wh.delete()
     return {"message": "删除成功"}

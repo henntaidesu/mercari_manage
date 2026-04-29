@@ -58,15 +58,42 @@ class WarehouseModel(BaseModel):
 
     @classmethod
     def get_stats(cls, warehouse_id: int) -> Dict[str, int]:
-        """获取仓库的库存统计"""
+        """获取仓库统计（基于 transactions 计算净库存）"""
         db = cls().db
         total_qty = db.execute_query(
-            "SELECT COALESCE(SUM(quantity), 0) FROM [inventory] WHERE warehouse_id = ?",
-            (warehouse_id,)
+            """
+            SELECT COALESCE(SUM(
+                CASE
+                    WHEN type = 'in' AND warehouse_id = ? THEN quantity
+                    WHEN type = 'out' AND warehouse_id = ? THEN -quantity
+                    WHEN type = 'transfer' AND warehouse_id = ? THEN -quantity
+                    WHEN type = 'transfer' AND target_warehouse_id = ? THEN quantity
+                    ELSE 0
+                END
+            ), 0)
+            FROM [transactions]
+            """,
+            (warehouse_id, warehouse_id, warehouse_id, warehouse_id)
         )
         product_types = db.execute_query(
-            "SELECT COUNT(*) FROM [inventory] WHERE warehouse_id = ?",
-            (warehouse_id,)
+            """
+            SELECT COUNT(*) FROM (
+                SELECT product_id,
+                       SUM(
+                           CASE
+                               WHEN type = 'in' AND warehouse_id = ? THEN quantity
+                               WHEN type = 'out' AND warehouse_id = ? THEN -quantity
+                               WHEN type = 'transfer' AND warehouse_id = ? THEN -quantity
+                               WHEN type = 'transfer' AND target_warehouse_id = ? THEN quantity
+                               ELSE 0
+                           END
+                       ) AS net_qty
+                FROM [transactions]
+                GROUP BY product_id
+                HAVING net_qty > 0
+            ) t
+            """,
+            (warehouse_id, warehouse_id, warehouse_id, warehouse_id)
         )
         return {
             'total_quantity': total_qty[0][0] if total_qty else 0,

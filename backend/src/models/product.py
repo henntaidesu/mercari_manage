@@ -45,6 +45,11 @@ class ProductModel(BaseModel):
                 'not_null': False,
                 'default': None,
             },
+            'warehouse_id': {
+                'type': 'INTEGER',
+                'not_null': False,
+                'default': None,
+            },
             'unit': {
                 'type': 'TEXT',
                 'not_null': False,
@@ -100,9 +105,10 @@ class ProductModel(BaseModel):
         """查询商品列表，附带分类名称"""
         db = cls().db
         sql = """
-            SELECT p.*, c.name as category_name
+            SELECT p.*, c.name as category_name, w.name as warehouse_name
             FROM [products] p
             LEFT JOIN [categories] c ON c.id = p.category_id
+            LEFT JOIN [warehouses] w ON w.id = p.warehouse_id
             WHERE 1=1
         """
         params = []
@@ -116,5 +122,5 @@ class ProductModel(BaseModel):
         rows = db.execute_query(sql, tuple(params))
         if not rows:
             return []
-        field_names = list(cls.get_fields().keys()) + ['category_name']
+        field_names = list(cls.get_fields().keys()) + ['category_name', 'warehouse_name']
         return [dict(zip(field_names, row)) for row in rows]

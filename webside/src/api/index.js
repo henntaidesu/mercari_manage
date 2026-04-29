@@ -35,13 +35,27 @@ export const warehouseApi = {
 export const productApi = {
   list: (params) => http.get('/products', { params }),
   get: (id) => http.get(`/products/${id}`),
+  findByBarcode: (barcode) => http.get(`/products/barcode/${encodeURIComponent(barcode)}`),
   create: (data) => http.post('/products', data),
   update: (id, data) => http.put(`/products/${id}`, data),
-  remove: (id) => http.delete(`/products/${id}`)
+  remove: (id) => http.delete(`/products/${id}`),
+  stockIn: (id, data) => http.post(`/products/${id}/stock-in`, data)
 }
 
 // 出入库
 export const transactionApi = {
   list: (params) => http.get('/transactions', { params }),
   create: (data) => http.post('/transactions', data)
+}
+
+// 条形码识别（后端 ZXing）
+export const scanApi = {
+  scanBarcode: (blob) => {
+    const fd = new FormData()
+    fd.append('file', blob, 'frame.jpg')
+    return http.post('/scan-barcode', fd, {
+      headers: { 'Content-Type': 'multipart/form-data' },
+      timeout: 8000
+    })
+  }
 }
