@@ -5,7 +5,7 @@ from typing import Optional
 from ..database import DatabaseManager
 from ..image_storage import is_base64_image, save_base64_image, delete_image_file
 
-router = APIRouter(prefix="/api/products", tags=["products"])
+router = APIRouter(prefix="/api/inventory", tags=["inventory"])
 db = DatabaseManager()
 
 PRODUCT_COLUMNS = [
@@ -67,7 +67,7 @@ def _query_product_with_joins(where_sql: str = "", params: tuple = ()) -> list[d
     select_cols = ", ".join([f"p.[{c}]" for c in PRODUCT_COLUMNS])
     sql = f"""
         SELECT {select_cols}, c.name AS category_name, w.name AS warehouse_name
-        FROM [products] p
+        FROM [inventory] p
         LEFT JOIN [categories] c ON c.id = p.category_id
         LEFT JOIN [warehouses] w ON w.id = p.warehouse_id
         WHERE 1=1 {where_sql}
@@ -77,7 +77,7 @@ def _query_product_with_joins(where_sql: str = "", params: tuple = ()) -> list[d
 
 
 def _product_exists(pid: int) -> bool:
-    return bool(db.execute_query("SELECT 1 FROM [products] WHERE id = ? LIMIT 1", (pid,)))
+    return bool(db.execute_query("SELECT 1 FROM [inventory] WHERE id = ? LIMIT 1", (pid,)))
 
 
 def _warehouse_exists(wid: int) -> bool:
@@ -99,7 +99,7 @@ def _convert_image_payload(image_value: Optional[str], prefix: str) -> Optional[
 
 
 @router.get("")
-def list_products(keyword: Optional[str] = None, category_id: Optional[int] = None):
+def list_inventory(keyword: Optional[str] = None, category_id: Optional[int] = None):
     where_parts = []
     params = []
     if keyword:
@@ -115,10 +115,10 @@ def list_products(keyword: Optional[str] = None, category_id: Optional[int] = No
 @router.get("/barcode/{barcode}")
 def find_by_barcode(barcode: str):
     """根据条形码精确查找商品（用于连续扫码流程）"""
-    products = _query_product_with_joins(" AND p.barcode = ? LIMIT 1", (barcode.strip(),))
-    if not products:
+    inventory_items = _query_product_with_joins(" AND p.barcode = ? LIMIT 1", (barcode.strip(),))
+    if not inventory_items:
         return {"found": False, "product": None}
-    return {"found": True, "product": products[0]}
+    return {"found": True, "product": inventory_items[0]}
 
 
 @router.post("/{pid}/stock-in")
@@ -127,7 +127,7 @@ def stock_in_product(pid: int, data: StockInRequest):
     if not _product_exists(pid):
         raise HTTPException(status_code=404, detail="商品不存在")
     affected = db.execute_update(
-        "UPDATE [products] SET quantity = COALESCE(quantity, 0) + ? WHERE id = ?",
+        "UPDATE [inventory] SET quantity = COALESCE(quantity, 0) + ? WHERE id = ?",
         (data.quantity, pid),
     )
     if affected <= 0:
@@ -141,16 +141,16 @@ def stock_in_product(pid: int, data: StockInRequest):
             """,
             ("in", pid, data.warehouse_id, data.quantity, data.remark or "扫码快速入库"),
         )
-    new_qty = db.execute_query("SELECT quantity FROM [products] WHERE id = ?", (pid,))
+    new_qty = db.execute_query("SELECT quantity FROM [inventory] WHERE id = ?", (pid,))
     return {"success": True, "new_quantity": (new_qty[0][0] if new_qty else 0), "product_id": pid}
 
 
 @router.get("/{pid}")
 def get_product(pid: int):
-    products = _query_product_with_joins(" AND p.id = ? LIMIT 1", (pid,))
-    if not products:
+    inventory_items = _query_product_with_joins(" AND p.id = ? LIMIT 1", (pid,))
+    if not inventory_items:
         raise HTTPException(status_code=404, detail="商品不存在")
-    return products[0]
+    return inventory_items[0]
 
 
 @router.post("")
@@ -164,7 +164,7 @@ def create_product(data: ProductCreate):
     try:
         new_id = db.execute_insert(
             """
-            INSERT INTO [products] (
+            INSERT INTO [inventory] (
                 name, barcode, category_id, warehouse_id, unit, price, quantity,
                 description, image, image_front, image_back
             ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
@@ -185,8 +185,8 @@ def create_product(data: ProductCreate):
         )
     except Exception:
         raise HTTPException(status_code=400, detail="保存失败，条形码可能重复")
-    products = _query_product_with_joins(" AND p.id = ? LIMIT 1", (new_id,))
-    return products[0] if products else {"id": new_id}
+    inventory_items = _query_product_with_joins(" AND p.id = ? LIMIT 1", (new_id,))
+    return inventory_items[0] if inventory_items else {"id": new_id}
 
 
 @router.put("/{pid}")
@@ -198,7 +198,7 @@ def update_product(pid: int, data: ProductUpdate):
         raise HTTPException(status_code=400, detail="条形码不能为空")
     if 'barcode' in update_data:
         update_data['barcode'] = update_data['barcode'].strip()
-    existing = db.execute_query("SELECT image_front, image_back FROM [products] WHERE id = ? LIMIT 1", (pid,))
+    existing = db.execute_query("SELECT image_front, image_back FROM [inventory] WHERE id = ? LIMIT 1", (pid,))
     old_front = existing[0][0] if existing else None
     old_back = existing[0][1] if existing else None
 
@@ -225,22 +225,22 @@ def update_product(pid: int, data: ProductUpdate):
         set_sql = ", ".join([f"[{k}] = ?" for k in update_data.keys()])
         params = tuple(update_data.values()) + (pid,)
         try:
-            db.execute_update(f"UPDATE [products] SET {set_sql} WHERE id = ?", params)
+            db.execute_update(f"UPDATE [inventory] SET {set_sql} WHERE id = ?", params)
         except Exception:
             raise HTTPException(status_code=400, detail="更新失败，条形码可能重复")
-    products = _query_product_with_joins(" AND p.id = ? LIMIT 1", (pid,))
-    if not products:
+    inventory_items = _query_product_with_joins(" AND p.id = ? LIMIT 1", (pid,))
+    if not inventory_items:
         raise HTTPException(status_code=400, detail="更新失败，条形码可能重复")
-    return products[0]
+    return inventory_items[0]
 
 
 @router.delete("/{pid}")
 def delete_product(pid: int):
     if not _product_exists(pid):
         raise HTTPException(status_code=404, detail="商品不存在")
-    images = db.execute_query("SELECT image_front, image_back FROM [products] WHERE id = ? LIMIT 1", (pid,))
+    images = db.execute_query("SELECT image_front, image_back FROM [inventory] WHERE id = ? LIMIT 1", (pid,))
     if images:
         delete_image_file(images[0][0])
         delete_image_file(images[0][1])
-    db.execute_update("DELETE FROM [products] WHERE id = ?", (pid,))
+    db.execute_update("DELETE FROM [inventory] WHERE id = ?", (pid,))
     return {"message": "删除成功"}

@@ -29,12 +29,17 @@ class DBManager:
             CategoryModel,    # 无外键依赖
             WarehouseModel,   # 无外键依赖
             ProductModel,     # 依赖 categories
-            TransactionModel, # 依赖 products, warehouses
+            TransactionModel, # 依赖 inventory, warehouses
         ]
 
     def initialize_database(self) -> bool:
         """初始化数据库：按顺序检查/创建所有表，删除代码中不存在的表"""
         print("正在初始化数据库...")
+
+        # 表重命名迁移：products -> inventory
+        if self.db.table_exists("products") and not self.db.table_exists("inventory"):
+            print("检测到旧表 products，正在迁移为 inventory ...")
+            self.db.execute_update("ALTER TABLE [products] RENAME TO [inventory]")
 
         defined_tables = {m.get_table_name() for m in self.models}
         db_tables = self.db.get_all_tables()

@@ -56,6 +56,6 @@ class CategoryModel(BaseModel):
         """获取该分类下的商品数量"""
         db = cls().db
         result = db.execute_query(
-            "SELECT COUNT(*) FROM [products] WHERE category_id = ?", (category_id,)
+            "SELECT COUNT(*) FROM [inventory] WHERE category_id = ?", (category_id,)
         )
         return result[0][0] if result else 0

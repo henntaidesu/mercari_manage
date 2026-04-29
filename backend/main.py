@@ -6,7 +6,7 @@ from src.db_manager import init_database
 from src.image_storage import ensure_image_dir
 from src.routes.categories import router as categories_router
 from src.routes.warehouses import router as warehouses_router
-from src.routes.products import router as products_router
+from src.routes.inventory import router as inventory_router
 from src.routes.transactions import router as transactions_router
 from src.routes.scan import router as scan_router
 from src.routes.auth import router as auth_router
@@ -28,7 +28,7 @@ auth_required = [Depends(require_auth)]
 
 app.include_router(categories_router, dependencies=auth_required)
 app.include_router(warehouses_router, dependencies=auth_required)
-app.include_router(products_router, dependencies=auth_required)
+app.include_router(inventory_router, dependencies=auth_required)
 app.include_router(transactions_router, dependencies=auth_required)
 app.include_router(scan_router, dependencies=auth_required)
 app.include_router(ocr_router, dependencies=auth_required)

@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 """
-将 products 表中的 base64 图片迁移为本地文件路径。
+将 inventory 表中的 base64 图片迁移为本地文件路径。
 
 用法：
   python scripts/migrate_base64_images.py
@@ -20,7 +20,7 @@ from src.image_storage import is_base64_image, save_base64_image  # noqa: E402
 
 def main():
     db = DatabaseManager()
-    rows = db.execute_query("SELECT id, image, image_front, image_back FROM [products] ORDER BY id ASC")
+    rows = db.execute_query("SELECT id, image, image_front, image_back FROM [inventory] ORDER BY id ASC")
     converted = 0
 
     for row in rows:
@@ -45,7 +45,7 @@ def main():
 
         set_sql = ", ".join([f"[{k}] = ?" for k in update_data.keys()])
         params = tuple(update_data.values()) + (pid,)
-        db.execute_update(f"UPDATE [products] SET {set_sql} WHERE id = ?", params)
+        db.execute_update(f"UPDATE [inventory] SET {set_sql} WHERE id = ?", params)
         converted += 1
         print(f"[OK] product_id={pid} 已迁移")
 

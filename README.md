@@ -29,7 +29,7 @@ mercari/
 │   ├── routes/       # API 路由
 │   │   ├── categories.py
 │   │   ├── warehouses.py
-│   │   ├── products.py
+│   │   ├── inventory.py
 │   │   ├── inventory.py
 │   │   └── transactions.py
 │   └── requirements.txt

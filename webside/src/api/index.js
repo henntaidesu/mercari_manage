@@ -47,15 +47,15 @@ export const warehouseApi = {
   remove: (id) => http.delete(`/warehouses/${id}`)
 }
 
-// 商品
-export const productApi = {
-  list: (params) => http.get('/products', { params }),
-  get: (id) => http.get(`/products/${id}`),
-  findByBarcode: (barcode) => http.get(`/products/barcode/${encodeURIComponent(barcode)}`),
-  create: (data) => http.post('/products', data),
-  update: (id, data) => http.put(`/products/${id}`, data),
-  remove: (id) => http.delete(`/products/${id}`),
-  stockIn: (id, data) => http.post(`/products/${id}/stock-in`, data)
+// 库存
+export const inventoryApi = {
+  list: (params) => http.get('/inventory', { params }),
+  get: (id) => http.get(`/inventory/${id}`),
+  findByBarcode: (barcode) => http.get(`/inventory/barcode/${encodeURIComponent(barcode)}`),
+  create: (data) => http.post('/inventory', data),
+  update: (id, data) => http.put(`/inventory/${id}`, data),
+  remove: (id) => http.delete(`/inventory/${id}`),
+  stockIn: (id, data) => http.post(`/inventory/${id}/stock-in`, data)
 }
 
 // 出入库

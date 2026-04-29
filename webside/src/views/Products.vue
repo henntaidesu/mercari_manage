@@ -1,7 +1,7 @@
 ﻿<template>
   <div>
     <div class="page-header">
-      <span class="page-title">商品管理</span>
+      <span class="page-title">库存管理</span>
       <div class="header-actions">
         <el-button type="success" @click="openContScan">
           <el-icon><VideoCamera /></el-icon> 扫描条形码
@@ -90,15 +90,17 @@
             </el-tag>
           </template>
         </el-table-column>
-        <el-table-column label="操作" width="200" fixed="right">
+        <el-table-column label="操作" width="240" fixed="right">
           <template #default="{ row }">
-            <el-button size="small" type="success" @click="openOcrForRow(row)">OCR</el-button>
-            <el-button size="small" @click="openDialog(row)">编辑</el-button>
-            <el-popconfirm title="确认删除该商品？" @confirm="remove(row.id)">
-              <template #reference>
-                <el-button size="small" type="danger">删除</el-button>
-              </template>
-            </el-popconfirm>
+            <div class="row-actions">
+              <el-button size="small" type="success" @click="openOcrForRow(row)">OCR</el-button>
+              <el-button size="small" @click="openDialog(row)">编辑</el-button>
+              <el-popconfirm title="确认删除该商品？" @confirm="remove(row.id)">
+                <template #reference>
+                  <el-button size="small" type="danger">删除</el-button>
+                </template>
+              </el-popconfirm>
+            </div>
           </template>
         </el-table-column>
       </el-table>
@@ -358,7 +360,7 @@
 <script setup>
 import { ref, computed, onMounted, onBeforeUnmount, nextTick } from 'vue'
 import { ElMessage } from 'element-plus'
-import { productApi, categoryApi, warehouseApi, scanApi, ocrApi } from '@/api/index.js'
+import { inventoryApi, categoryApi, warehouseApi, scanApi, ocrApi } from '@/api/index.js'
 
 const list = ref([])
 const loading = ref(false)
@@ -606,7 +608,7 @@ async function _ocrSendRegion() {
     if (res?.text) {
       if (ocrTargetRow.value) {
         // 从列表行直接调用：直接保存到后端并更新行数据
-        await productApi.update(ocrTargetRow.value.id, { name: res.text })
+        await inventoryApi.update(ocrTargetRow.value.id, { name: res.text })
         ocrTargetRow.value.name = res.text
         ElMessage.success(`识别成功并已保存：${res.text}`)
       } else {
@@ -666,7 +668,7 @@ async function saveInlineEdit(row, field) {
   }
   savingInlineCell.value = key
   try {
-    await productApi.update(row.id, { [field]: newValue })
+    await inventoryApi.update(row.id, { [field]: newValue })
     row[field] = newValue
     ElMessage.success('已更新')
   } finally {
@@ -694,7 +696,7 @@ async function load() {
   const params = {}
   if (keyword.value) params.keyword = keyword.value
   if (filterCat.value) params.category_id = filterCat.value
-  list.value = await productApi.list(params).finally(() => (loading.value = false))
+  list.value = await inventoryApi.list(params).finally(() => (loading.value = false))
   currentPage.value = 1
 }
 
@@ -765,8 +767,8 @@ async function submit() {
   submitting.value = true
   try {
     const payload = { ...form.value }
-    if (payload.id) await productApi.update(payload.id, payload)
-    else await productApi.create(payload)
+    if (payload.id) await inventoryApi.update(payload.id, payload)
+    else await inventoryApi.create(payload)
     ElMessage.success('保存成功')
     dialogVisible.value = false
     load()
@@ -776,7 +778,7 @@ async function submit() {
 }
 
 async function remove(id) {
-  await productApi.remove(id)
+  await inventoryApi.remove(id)
   ElMessage.success('删除成功')
   load()
 }
@@ -913,7 +915,7 @@ async function handleContBarcode(barcode) {
   contBarcode.value = barcode
 
   try {
-    const res = await productApi.findByBarcode(barcode)
+    const res = await inventoryApi.findByBarcode(barcode)
     if (res?.found) {
       contProduct.value = res.product
       contState.value = 'found'
@@ -943,7 +945,7 @@ function resumeContScan() {
 async function confirmStockIn() {
   contConfirming.value = true
   try {
-    const res = await productApi.stockIn(contProduct.value.id, {
+    const res = await inventoryApi.stockIn(contProduct.value.id, {
       quantity: 1,
       remark: '连续扫码入库'
     })
@@ -1044,6 +1046,12 @@ onBeforeUnmount(() => {
 .inline-input { width: 100%; }
 .cell-center { text-align: center; }
 .cell-right { text-align: right; }
+.row-actions {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: nowrap;
+}
 
 .image-upload-area {
   width: 120px;

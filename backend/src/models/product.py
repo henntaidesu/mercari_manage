@@ -12,7 +12,7 @@ class ProductModel(BaseModel):
 
     @classmethod
     def get_table_name(cls) -> str:
-        return "products"
+        return "inventory"
 
     @classmethod
     def get_fields(cls) -> Dict[str, Dict[str, Any]]:
@@ -95,9 +95,9 @@ class ProductModel(BaseModel):
     @classmethod
     def get_indexes(cls) -> List[Dict[str, Any]]:
         return [
-            {'name': 'idx_products_name', 'columns': ['name']},
-            {'name': 'idx_products_category', 'columns': ['category_id']},
-            {'name': 'idx_products_barcode', 'columns': ['barcode'], 'unique': True},
+            {'name': 'idx_inventory_name', 'columns': ['name']},
+            {'name': 'idx_inventory_category', 'columns': ['category_id']},
+            {'name': 'idx_inventory_barcode', 'columns': ['barcode'], 'unique': True},
         ]
 
     @classmethod
@@ -108,7 +108,7 @@ class ProductModel(BaseModel):
         product_select = ", ".join([f"p.[{f}] AS [{f}]" for f in product_fields])
         sql = f"""
             SELECT {product_select}, c.name as category_name, w.name as warehouse_name
-            FROM [products] p
+            FROM [inventory] p
             LEFT JOIN [categories] c ON c.id = p.category_id
             LEFT JOIN [warehouses] w ON w.id = p.warehouse_id
             WHERE 1=1

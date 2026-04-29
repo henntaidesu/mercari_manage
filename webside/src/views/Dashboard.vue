@@ -45,26 +45,26 @@
 
 <script setup>
 import { ref, onMounted } from 'vue'
-import { productApi, transactionApi } from '@/api/index.js'
+import { inventoryApi, transactionApi } from '@/api/index.js'
 
 const summary = ref({})
 const recentTx = ref([])
 
 const statCards = [
-  { key: 'total_products', label: '商品种类', icon: 'Goods', color: '#409EFF' },
+  { key: 'total_inventory', label: '库存条目', icon: 'Goods', color: '#409EFF' },
   { key: 'total_quantity', label: '总库存量', icon: 'Box', color: '#E6A23C' },
   { key: 'today_in', label: '今日入库', icon: 'Top', color: '#67C23A' },
   { key: 'today_out', label: '今日出库', icon: 'Bottom', color: '#F56C6C' }
 ]
 
 async function load() {
-  const [products, tx] = await Promise.all([
-    productApi.list(),
+  const [inventoryItems, tx] = await Promise.all([
+    inventoryApi.list(),
     transactionApi.list({ page_size: 10 })
   ])
-  const totalQuantity = products.reduce((sum, p) => sum + (p.quantity || 0), 0)
+  const totalQuantity = inventoryItems.reduce((sum, p) => sum + (p.quantity || 0), 0)
   summary.value = {
-    total_products: products.length,
+    total_inventory: inventoryItems.length,
     total_quantity: totalQuantity,
     today_in: tx.today_in ?? '-',
     today_out: tx.today_out ?? '-'

@@ -86,7 +86,7 @@ class TransactionModel(BaseModel):
         db = cls().db
         base_sql = """
             FROM [transactions] t
-            JOIN [products] p ON p.id = t.product_id
+            JOIN [inventory] p ON p.id = t.product_id
             JOIN [warehouses] w ON w.id = t.warehouse_id
             LEFT JOIN [warehouses] tw ON tw.id = t.target_warehouse_id
             WHERE 1=1
