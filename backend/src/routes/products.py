@@ -154,7 +154,9 @@ def get_product(pid: int):
 def create_product(data: ProductCreate):
     if not (data.barcode or "").strip():
         raise HTTPException(status_code=400, detail="条形码必填")
-    if data.warehouse_id and not _warehouse_exists(data.warehouse_id):
+    if data.warehouse_id is None:
+        raise HTTPException(status_code=400, detail="所属仓库必填")
+    if not _warehouse_exists(data.warehouse_id):
         raise HTTPException(status_code=400, detail="所属仓库不存在")
     image_front_path = _convert_image_payload(data.image_front, "product_front")
     image_back_path = _convert_image_payload(data.image_back, "product_back")
@@ -194,9 +196,10 @@ def update_product(pid: int, data: ProductUpdate):
         raise HTTPException(status_code=400, detail="条形码不能为空")
     if 'barcode' in update_data:
         update_data['barcode'] = update_data['barcode'].strip()
-    existing = db.execute_query("SELECT image_front, image_back FROM [inventory] WHERE id = ? LIMIT 1", (pid,))
+    existing = db.execute_query("SELECT image_front, image_back, warehouse_id FROM [inventory] WHERE id = ? LIMIT 1", (pid,))
     old_front = existing[0][0] if existing else None
     old_back = existing[0][1] if existing else None
+    old_warehouse_id = existing[0][2] if existing else None
 
     if 'image_front' in update_data:
         new_front = _convert_image_payload(update_data.get('image_front'), "product_front")
@@ -209,8 +212,11 @@ def update_product(pid: int, data: ProductUpdate):
         update_data['image_back'] = new_back
         if old_back and old_back != new_back:
             delete_image_file(old_back)
-    if 'warehouse_id' in update_data and update_data['warehouse_id']:
-        if not _warehouse_exists(update_data['warehouse_id']):
+    final_warehouse_id = update_data['warehouse_id'] if 'warehouse_id' in update_data else old_warehouse_id
+    if final_warehouse_id is None:
+        raise HTTPException(status_code=400, detail="所属仓库必填")
+    if 'warehouse_id' in update_data:
+        if not _warehouse_exists(final_warehouse_id):
             raise HTTPException(status_code=400, detail="所属仓库不存在")
     allowed_fields = {
         "name", "barcode", "category_id", "warehouse_id", "price", "quantity",

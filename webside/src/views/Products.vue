@@ -15,7 +15,7 @@
         </el-col>
         <el-col :xs="24" :sm="24" :md="10" class="search-actions">
           <el-button type="success" @click="openContScan">
-            条码录入
+            条码入库
           </el-button>
           <el-button type="primary" @click="openLookupScan">
             条码寻找
@@ -267,7 +267,6 @@
         <el-icon size="50" color="#4a5a72"><Camera /></el-icon>
         <p style="color:#8e9bb3;margin:12px 0">当前环境不支持实时扫码，请拍照识别</p>
         <el-button type="primary" @click="triggerContCapture">拍照识别</el-button>
-        <input ref="contCameraRef" type="file" accept="image/*" capture="environment" style="display:none" @change="handleContCapture" />
       </div>
 
       <!-- 找到商品 -->
@@ -352,6 +351,15 @@
       capture="environment"
       style="display:none"
       @change="handleLookupCapture"
+    />
+
+    <input
+      ref="contCameraRef"
+      type="file"
+      accept="image/*"
+      capture="environment"
+      style="display:none"
+      @change="handleContCapture"
     />
     <!-- ===== OCR 框选弹窗 ===== -->
     <el-dialog
@@ -482,8 +490,9 @@ const form = ref({
   barcode: '',
   name: '',
   category_id: null,
+  warehouse_id: null,
   price: 0,
-  quantity: 0,
+  quantity: 1,
   description: '',
   image_front: null,
   image_back: null
@@ -491,6 +500,7 @@ const form = ref({
 
 const rules = {
   barcode: [{ required: true, message: '请填写或扫描条形码', trigger: 'blur' }],
+  warehouse_id: [{ required: true, message: '请选择所属仓库', trigger: 'change' }],
   image_front: [{ validator: (_, val, cb) => val ? cb() : cb(new Error('请拍摄或上传正面图')), trigger: 'change' }],
   image_back: [{ validator: (_, val, cb) => val ? cb() : cb(new Error('请拍摄或上传背面图')), trigger: 'change' }]
 }
@@ -797,7 +807,7 @@ function openDialog(row = null) {
         category_id: null,
         warehouse_id: null,
         price: 0,
-        quantity: 0,
+        quantity: 1,
         description: null,
         image_front: null,
         image_back: null
@@ -945,18 +955,20 @@ async function openContScan() {
   stopContScan()
   contBarcode.value = ''
   contProduct.value = null
-  contState.value = 'scanning'
-  contScanVisible.value = true
-  await nextTick()
-
   const canStream = !!(navigator.mediaDevices?.getUserMedia) && !!window.isSecureContext
-  if (!canStream) {
+  // 与“条码寻找”保持同颗粒度：
+  // fallback 模式（iOS / 非安全上下文）直接唤起系统相机，不显示扫码弹窗
+  if (!canStream || isIOS.value) {
     contScanMode.value = 'fallback'
-    contState.value = 'ios-fallback'
+    contScanVisible.value = false
     triggerContCapture()
     return
   }
+
   contScanMode.value = 'stream'
+  contState.value = 'scanning'
+  contScanVisible.value = true
+  await nextTick()
 
   try {
     contStream = await navigator.mediaDevices.getUserMedia(CAMERA_CONSTRAINTS)
@@ -1021,9 +1033,14 @@ function resumeContScan() {
 }
 
 async function confirmStockIn() {
+  if (!contProduct.value?.warehouse_id) {
+    ElMessage.warning('该商品未设置所属仓库，请先编辑商品后再入库')
+    return
+  }
   contConfirming.value = true
   try {
     const res = await inventoryApi.stockIn(contProduct.value.id, {
+      warehouse_id: contProduct.value.warehouse_id,
       quantity: 1,
       remark: '连续扫码入库'
     })
