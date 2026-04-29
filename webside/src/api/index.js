@@ -64,6 +64,11 @@ export const transactionApi = {
   create: (data) => http.post('/transactions', data)
 }
 
+// OCR 识别
+export const ocrApi = {
+  ocrRegion: (base64Image) => http.post('/ocr-region', { image: base64Image })
+}
+
 // 条形码识别（后端 ZXing）
 export const scanApi = {
   scanBarcode: (blob) => {

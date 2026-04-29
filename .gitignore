@@ -83,5 +83,6 @@ vite.config.ts.timestamp-*
 # Python bytecode
 *.py[cod]
 __pycache__/
-backend/mercariDB.db
+backend/mercariDB.db*
 backend/imges/
+

@@ -90,8 +90,9 @@
             </el-tag>
           </template>
         </el-table-column>
-        <el-table-column label="操作" width="140" fixed="right">
+        <el-table-column label="操作" width="200" fixed="right">
           <template #default="{ row }">
+            <el-button size="small" type="success" @click="openOcrForRow(row)">OCR</el-button>
             <el-button size="small" @click="openDialog(row)">编辑</el-button>
             <el-popconfirm title="确认删除该商品？" @confirm="remove(row.id)">
               <template #reference>
@@ -167,7 +168,10 @@
                 </div>
               </div>
               <input ref="fileInputFront" type="file" accept="image/*" capture="environment" style="display:none" @change="handleImageUpload($event, 'front')" />
-              <el-button v-if="form.image_front" size="small" type="danger" text style="margin-top:4px" @click="form.image_front = null">移除</el-button>
+              <div class="img-actions">
+                <el-button v-if="form.image_front" size="small" type="danger" text @click="form.image_front = null">移除</el-button>
+                <el-button v-if="form.image_front" size="small" type="primary" text @click="openOcr('front')">OCR识别名称</el-button>
+              </div>
             </el-form-item>
           </el-col>
           <el-col :xs="24" :sm="12">
@@ -181,7 +185,10 @@
                 </div>
               </div>
               <input ref="fileInputBack" type="file" accept="image/*" capture="environment" style="display:none" @change="handleImageUpload($event, 'back')" />
-              <el-button v-if="form.image_back" size="small" type="danger" text style="margin-top:4px" @click="form.image_back = null">移除</el-button>
+              <div class="img-actions">
+                <el-button v-if="form.image_back" size="small" type="danger" text @click="form.image_back = null">移除</el-button>
+                <el-button v-if="form.image_back" size="small" type="primary" text @click="openOcr('back')">OCR识别名称</el-button>
+              </div>
             </el-form-item>
           </el-col>
         </el-row>
@@ -301,13 +308,57 @@
         <el-button @click="contScanVisible = false">关闭</el-button>
       </template>
     </el-dialog>
+    <!-- ===== OCR 框选弹窗 ===== -->
+    <el-dialog
+      v-model="ocrVisible"
+      title="框选文字区域 → OCR识别名称"
+      :width="isMobile ? '96vw' : '700px'"
+      class="ocr-dialog"
+      destroy-on-close
+      @opened="initOcrCanvas"
+    >
+      <div v-if="ocrTargetRow" class="ocr-img-tabs">
+        <el-button
+          :type="ocrSide === 'front' ? 'primary' : 'default'"
+          size="small"
+          @click="switchOcrSide('front')"
+          :disabled="!getOcrSrc('front')"
+        >正面图</el-button>
+        <el-button
+          :type="ocrSide === 'back' ? 'primary' : 'default'"
+          size="small"
+          @click="switchOcrSide('back')"
+          :disabled="!getOcrSrc('back')"
+        >背面图</el-button>
+      </div>
+      <p class="ocr-hint">在图片上拖动框选要识别的文字区域，松手后自动识别写入商品名称</p>
+      <div class="ocr-canvas-wrap" ref="ocrWrapRef">
+        <canvas
+          ref="ocrCanvasRef"
+          class="ocr-canvas"
+          @mousedown.prevent="ocrDragStart"
+          @mousemove.prevent="ocrDragMove"
+          @mouseup.prevent="ocrDragEnd"
+          @mouseleave.prevent="ocrDragEnd"
+          @touchstart.prevent="ocrDragStart"
+          @touchmove.prevent="ocrDragMove"
+          @touchend.prevent="ocrDragEnd"
+        />
+      </div>
+      <div v-if="ocrLoading" class="ocr-loading">
+        <span class="scanning-hint">识别中，请稍候…</span>
+      </div>
+      <template #footer>
+        <el-button @click="ocrVisible = false">取消</el-button>
+      </template>
+    </el-dialog>
   </div>
 </template>
 
 <script setup>
 import { ref, computed, onMounted, onBeforeUnmount, nextTick } from 'vue'
 import { ElMessage } from 'element-plus'
-import { productApi, categoryApi, warehouseApi, scanApi } from '@/api/index.js'
+import { productApi, categoryApi, warehouseApi, scanApi, ocrApi } from '@/api/index.js'
 
 const list = ref([])
 const loading = ref(false)
@@ -332,6 +383,18 @@ const isIOS = ref(false)
 const editingCell = ref('')
 const editingValue = ref('')
 const savingInlineCell = ref('')
+
+// ---- OCR 状态 ----
+const ocrVisible = ref(false)
+const ocrSide = ref('front')
+const ocrTargetRow = ref(null)  // 从列表行直接调用时存储 row
+const ocrCanvasRef = ref()
+const ocrWrapRef = ref()
+const ocrLoading = ref(false)
+let _ocrDrawing = false
+let _ocrStart = { x: 0, y: 0 }
+let _ocrRect = { x: 0, y: 0, w: 0, h: 0 }
+let _ocrNativeImg = null
 let mediaStream = null
 let scanTimer = null
 
@@ -383,6 +446,183 @@ function updateViewportState() {
   const ua = navigator.userAgent || ''
   const platform = navigator.platform || ''
   isIOS.value = /iPhone|iPad|iPod/i.test(ua) || (platform === 'MacIntel' && navigator.maxTouchPoints > 1)
+}
+
+// ============ OCR 框选 ============
+
+function getOcrSrc(side) {
+  if (ocrTargetRow.value) {
+    return side === 'front'
+      ? (ocrTargetRow.value.image_front || ocrTargetRow.value.image)
+      : ocrTargetRow.value.image_back
+  }
+  return side === 'front' ? form.value.image_front : form.value.image_back
+}
+
+function openOcr(side) {
+  ocrTargetRow.value = null
+  ocrSide.value = side
+  _ocrReset()
+  ocrVisible.value = true
+}
+
+function openOcrForRow(row) {
+  ocrTargetRow.value = row
+  // 优先正面，若无则背面
+  ocrSide.value = (row.image_front || row.image) ? 'front' : 'back'
+  _ocrReset()
+  ocrVisible.value = true
+}
+
+function switchOcrSide(side) {
+  ocrSide.value = side
+  _ocrReset()
+  initOcrCanvas()
+}
+
+function _ocrReset() {
+  _ocrNativeImg = null
+  _ocrDrawing = false
+  _ocrRect = { x: 0, y: 0, w: 0, h: 0 }
+}
+
+async function initOcrCanvas() {
+  await nextTick()
+  const canvas = ocrCanvasRef.value
+  const wrap = ocrWrapRef.value
+  if (!canvas || !wrap) return
+  const src = getOcrSrc(ocrSide.value)
+  if (!src) return
+  _ocrNativeImg = null
+  const ctx = canvas.getContext('2d')
+  ctx.clearRect(0, 0, canvas.width, canvas.height)
+  await new Promise((resolve, reject) => {
+    const img = new Image()
+    img.crossOrigin = 'anonymous'
+    img.onload = () => {
+      _ocrNativeImg = img
+      canvas.width = wrap.clientWidth
+      canvas.height = Math.round((img.naturalHeight / img.naturalWidth) * wrap.clientWidth)
+      ctx.drawImage(img, 0, 0, canvas.width, canvas.height)
+      resolve()
+    }
+    img.onerror = reject
+    img.src = src
+  }).catch(() => {
+    ElMessage.error('图片加载失败，无法进行 OCR')
+  })
+}
+
+function _ocrGetPos(e) {
+  const canvas = ocrCanvasRef.value
+  const rect = canvas.getBoundingClientRect()
+  const scaleX = canvas.width / rect.width
+  const scaleY = canvas.height / rect.height
+  let clientX, clientY
+  if (e.touches && e.touches.length > 0) {
+    clientX = e.touches[0].clientX
+    clientY = e.touches[0].clientY
+  } else if (e.changedTouches && e.changedTouches.length > 0) {
+    clientX = e.changedTouches[0].clientX
+    clientY = e.changedTouches[0].clientY
+  } else {
+    clientX = e.clientX
+    clientY = e.clientY
+  }
+  return {
+    x: Math.max(0, Math.min(canvas.width, Math.round((clientX - rect.left) * scaleX))),
+    y: Math.max(0, Math.min(canvas.height, Math.round((clientY - rect.top) * scaleY))),
+  }
+}
+
+function _ocrRedraw() {
+  const canvas = ocrCanvasRef.value
+  if (!canvas || !_ocrNativeImg) return
+  const ctx = canvas.getContext('2d')
+  ctx.clearRect(0, 0, canvas.width, canvas.height)
+  ctx.drawImage(_ocrNativeImg, 0, 0, canvas.width, canvas.height)
+  const { x, y, w, h } = _ocrRect
+  if (w > 2 && h > 2) {
+    ctx.strokeStyle = '#409EFF'
+    ctx.lineWidth = 2
+    ctx.setLineDash([6, 3])
+    ctx.strokeRect(x, y, w, h)
+    ctx.fillStyle = 'rgba(64,158,255,0.12)'
+    ctx.fillRect(x, y, w, h)
+  }
+}
+
+function ocrDragStart(e) {
+  _ocrDrawing = true
+  _ocrStart = _ocrGetPos(e)
+  _ocrRect = { x: _ocrStart.x, y: _ocrStart.y, w: 0, h: 0 }
+}
+
+function ocrDragMove(e) {
+  if (!_ocrDrawing) return
+  const cur = _ocrGetPos(e)
+  _ocrRect = {
+    x: Math.min(_ocrStart.x, cur.x),
+    y: Math.min(_ocrStart.y, cur.y),
+    w: Math.abs(cur.x - _ocrStart.x),
+    h: Math.abs(cur.y - _ocrStart.y),
+  }
+  _ocrRedraw()
+}
+
+async function ocrDragEnd(e) {
+  if (!_ocrDrawing) return
+  _ocrDrawing = false
+  const cur = _ocrGetPos(e)
+  _ocrRect = {
+    x: Math.min(_ocrStart.x, cur.x),
+    y: Math.min(_ocrStart.y, cur.y),
+    w: Math.abs(cur.x - _ocrStart.x),
+    h: Math.abs(cur.y - _ocrStart.y),
+  }
+  _ocrRedraw()
+  if (_ocrRect.w < 10 || _ocrRect.h < 10) return
+  await _ocrSendRegion()
+}
+
+async function _ocrSendRegion() {
+  if (!_ocrNativeImg) return
+  const { x, y, w, h } = _ocrRect
+  const canvas = ocrCanvasRef.value
+  const scaleX = _ocrNativeImg.naturalWidth / canvas.width
+  const scaleY = _ocrNativeImg.naturalHeight / canvas.height
+  const crop = document.createElement('canvas')
+  crop.width = Math.round(w * scaleX)
+  crop.height = Math.round(h * scaleY)
+  crop.getContext('2d').drawImage(
+    _ocrNativeImg,
+    Math.round(x * scaleX), Math.round(y * scaleY), crop.width, crop.height,
+    0, 0, crop.width, crop.height
+  )
+  const base64 = crop.toDataURL('image/jpeg', 0.95)
+  ocrLoading.value = true
+  try {
+    const res = await ocrApi.ocrRegion(base64)
+    if (res?.text) {
+      if (ocrTargetRow.value) {
+        // 从列表行直接调用：直接保存到后端并更新行数据
+        await productApi.update(ocrTargetRow.value.id, { name: res.text })
+        ocrTargetRow.value.name = res.text
+        ElMessage.success(`识别成功并已保存：${res.text}`)
+      } else {
+        // 从编辑弹窗调用：写入表单
+        form.value.name = res.text
+        ElMessage.success(`识别成功：${res.text}`)
+      }
+      ocrVisible.value = false
+    } else {
+      ElMessage.warning('未识别到文字，请重新框选更清晰的区域')
+    }
+  } catch {
+    ElMessage.error('OCR 识别失败，请确认后端已安装 easyocr 并已重启服务')
+  } finally {
+    ocrLoading.value = false
+  }
 }
 
 function getCellKey(row, field) {
@@ -826,8 +1066,16 @@ onBeforeUnmount(() => {
 .upload-placeholder { text-align: center; }
 .upload-tip { font-size: 12px; color: #8e9bb3; margin-top: 8px; }
 .img-label { font-size: 13px; color: #8e9bb3; margin-bottom: 8px; }
+.img-actions { display: flex; gap: 6px; margin-top: 4px; flex-wrap: wrap; }
 .scanning-hint { color: #409EFF; animation: pulse 1s infinite; }
 @keyframes pulse { 0%,100% { opacity:1; } 50% { opacity:0.4; } }
+
+/* ---- OCR ---- */
+.ocr-hint { font-size: 13px; color: #8e9bb3; text-align: center; margin-bottom: 10px; }
+.ocr-img-tabs { display: flex; gap: 8px; margin-bottom: 10px; }
+.ocr-canvas-wrap { width: 100%; background: #000; border-radius: 6px; overflow: hidden; }
+.ocr-canvas { display: block; width: 100%; cursor: crosshair; touch-action: none; user-select: none; }
+.ocr-loading { text-align: center; padding: 10px 0; }
 
 /* ---- 连续扫码结果区 ---- */
 .header-actions { display: flex; gap: 10px; }

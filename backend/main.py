@@ -10,6 +10,7 @@ from src.routes.products import router as products_router
 from src.routes.transactions import router as transactions_router
 from src.routes.scan import router as scan_router
 from src.routes.auth import router as auth_router
+from src.routes.ocr import router as ocr_router
 
 app = FastAPI(title="仓储管理系统", version="1.0.0")
 
@@ -30,6 +31,7 @@ app.include_router(warehouses_router, dependencies=auth_required)
 app.include_router(products_router, dependencies=auth_required)
 app.include_router(transactions_router, dependencies=auth_required)
 app.include_router(scan_router, dependencies=auth_required)
+app.include_router(ocr_router, dependencies=auth_required)
 app.include_router(auth_router)
 
 
