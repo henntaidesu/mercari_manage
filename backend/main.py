@@ -12,7 +12,7 @@ from src.routes.scan import router as scan_router
 from src.routes.auth import router as auth_router
 from src.routes.ocr import router as ocr_router
 
-app = FastAPI(title="仓储管理系统", version="1.0.0")
+app = FastAPI(title="mercari 物品管理", version="1.0.0")
 
 app.add_middleware(
     CORSMiddleware,
@@ -42,4 +42,4 @@ def startup():
 
 @app.get("/api/health")
 def health():
-    return {"status": "ok", "message": "仓储管理系统运行中"}
+    return {"status": "ok", "message": "mercari 物品管理运行中"}

@@ -14,7 +14,6 @@ PRODUCT_COLUMNS = [
     "barcode",
     "sku",
     "category_id",
-    "unit",
     "price",
     "quantity",
     "description",
@@ -37,7 +36,6 @@ class ProductCreate(PydanticModel):
     barcode: str
     category_id: Optional[int] = None
     warehouse_id: Optional[int] = None
-    unit: Optional[str] = "件"
     price: Optional[float] = 0.0
     quantity: Optional[int] = 1
     description: Optional[str] = None
@@ -50,7 +48,6 @@ class ProductUpdate(PydanticModel):
     barcode: Optional[str] = None
     category_id: Optional[int] = None
     warehouse_id: Optional[int] = None
-    unit: Optional[str] = None
     price: Optional[float] = None
     quantity: Optional[int] = None
     description: Optional[str] = None
@@ -165,16 +162,15 @@ def create_product(data: ProductCreate):
         new_id = db.execute_insert(
             """
             INSERT INTO [inventory] (
-                name, barcode, category_id, warehouse_id, unit, price, quantity,
+                name, barcode, category_id, warehouse_id, price, quantity,
                 description, image, image_front, image_back
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             (
                 data.name,
                 data.barcode.strip(),
                 data.category_id,
                 data.warehouse_id,
-                data.unit,
                 data.price,
                 data.quantity,
                 data.description,
@@ -217,7 +213,7 @@ def update_product(pid: int, data: ProductUpdate):
         if not _warehouse_exists(update_data['warehouse_id']):
             raise HTTPException(status_code=400, detail="所属仓库不存在")
     allowed_fields = {
-        "name", "barcode", "category_id", "warehouse_id", "unit", "price", "quantity",
+        "name", "barcode", "category_id", "warehouse_id", "price", "quantity",
         "description", "image", "image_front", "image_back",
     }
     update_data = {k: v for k, v in update_data.items() if k in allowed_fields}

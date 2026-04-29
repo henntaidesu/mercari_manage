@@ -45,7 +45,7 @@
         <el-table-column label="数量" width="90" align="center">
           <template #default="{ row }">
             <span :class="row.type === 'in' ? 'text-green' : row.type === 'out' ? 'text-red' : 'text-orange'">
-              {{ row.type === 'in' ? '+' : row.type === 'out' ? '-' : '⇄' }}{{ row.quantity }} {{ row.unit }}
+              {{ row.type === 'in' ? '+' : row.type === 'out' ? '-' : '⇄' }}{{ row.quantity }}
             </span>
           </template>
         </el-table-column>

@@ -4,7 +4,7 @@
       <template #header>
         <div class="title-wrap">
           <el-icon size="26"><UserFilled /></el-icon>
-          <span>仓储管理系统登录</span>
+          <span>mercari 物品管理登录</span>
         </div>
       </template>
 

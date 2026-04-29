@@ -105,7 +105,7 @@ class TransactionModel(BaseModel):
         total = db.execute_query(f"SELECT COUNT(*) {base_sql}", tuple(params))[0][0]
 
         select_sql = f"""
-            SELECT t.id, t.type, t.product_id, p.name as product_name, p.unit,
+            SELECT t.id, t.type, t.product_id, p.name as product_name,
                    t.warehouse_id, w.name as warehouse_name,
                    t.target_warehouse_id, tw.name as target_warehouse_name,
                    t.quantity, t.remark, t.operator, t.created_at
@@ -116,7 +116,7 @@ class TransactionModel(BaseModel):
         params += [page_size, (page - 1) * page_size]
         rows = db.execute_query(select_sql, tuple(params))
 
-        keys = ['id', 'type', 'product_id', 'product_name', 'unit',
+        keys = ['id', 'type', 'product_id', 'product_name',
                 'warehouse_id', 'warehouse_name',
                 'target_warehouse_id', 'target_warehouse_name',
                 'quantity', 'remark', 'operator', 'created_at']

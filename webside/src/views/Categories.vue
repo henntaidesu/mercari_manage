@@ -1,7 +1,7 @@
 <template>
   <div>
     <div class="page-header">
-      <span class="page-title">分类管理</span>
+      <span class="page-title">游戏分类</span>
       <el-button type="primary" @click="openDialog()">
         <el-icon><Plus /></el-icon> 新增分类
       </el-button>

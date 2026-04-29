@@ -50,11 +50,6 @@ class ProductModel(BaseModel):
                 'not_null': False,
                 'default': None,
             },
-            'unit': {
-                'type': 'TEXT',
-                'not_null': False,
-                'default': "'件'",
-            },
             'price': {
                 'type': 'REAL',
                 'not_null': False,

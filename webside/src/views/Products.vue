@@ -1,7 +1,6 @@
 ﻿<template>
   <div>
     <div class="page-header">
-      <span class="page-title">库存管理</span>
       <div class="header-actions">
         <el-button type="success" @click="openContScan">
           <el-icon><VideoCamera /></el-icon> 扫描条形码
@@ -69,14 +68,25 @@
             <div v-else class="editable-cell" @click="startInlineEdit(row, 'name')">{{ row.name || '-' }}</div>
           </template>
         </el-table-column>
-        <el-table-column label="分类" prop="category_name" width="100" />
-        <el-table-column label="所属仓库" min-width="150">
-          <template #default="{ row }">{{ row.warehouse_name || '-' }}</template>
-        </el-table-column>
-        <el-table-column label="单位" prop="unit" width="90" align="center">
+        <el-table-column label="游戏分类" width="120">
           <template #default="{ row }">
-            <div class="cell-center">{{ row.unit || '-' }}</div>
+            <el-select
+              v-if="editingCategoryRowId === row.id"
+              :model-value="row.category_id"
+              size="small"
+              style="width: 100%"
+              placeholder="选择分类"
+              @change="saveCategoryInline(row, $event)"
+              @visible-change="(v) => { if (!v) editingCategoryRowId = null }"
+            >
+              <el-option label="未分类" :value="null" />
+              <el-option v-for="c in categories" :key="c.id" :label="c.name" :value="c.id" />
+            </el-select>
+            <div v-else class="editable-cell" @click="editingCategoryRowId = row.id">{{ row.category_name || '未分类' }}</div>
           </template>
+        </el-table-column>
+        <el-table-column label="所属仓库" width="120">
+          <template #default="{ row }">{{ row.warehouse_name || '-' }}</template>
         </el-table-column>
         <el-table-column label="单价" prop="price" width="90" align="right">
           <template #default="{ row }">
@@ -126,7 +136,13 @@
       <el-form :model="form" :rules="rules" ref="formRef">
         <!-- 条形码行 -->
         <el-form-item prop="barcode">
-          <el-input v-model="form.barcode" placeholder="条形码（必填）" size="large" clearable>
+          <el-input
+            v-model="form.barcode"
+            placeholder="条形码（必填）"
+            size="large"
+            clearable
+            :disabled="Boolean(form.id)"
+          >
             <template #append>
               <el-button @click="openScanDialog">
                 <el-icon><Camera /></el-icon> 扫码
@@ -134,20 +150,12 @@
             </template>
           </el-input>
         </el-form-item>
-        <el-form-item label="所属仓库" prop="warehouse_id">
-          <el-select v-model="form.warehouse_id" clearable :filterable="!isIOS" placeholder="请选择仓库" style="width:100%">
-            <el-option v-for="w in warehouses" :key="w.id" :label="w.name" :value="w.id" />
-          </el-select>
-        </el-form-item>
         <el-row :gutter="12">
-          <el-col :xs="24" :sm="8">
-            <el-form-item label="单位" prop="unit">
-              <el-input v-model="form.unit" placeholder="如：件/盒/瓶" clearable />
-            </el-form-item>
-          </el-col>
-          <el-col :xs="24" :sm="8">
-            <el-form-item label="单价" prop="price">
-              <el-input-number v-model="form.price" :min="0" :precision="2" :step="0.1" style="width:100%" />
+          <el-col :xs="24" :sm="16">
+            <el-form-item label="所属仓库" prop="warehouse_id">
+              <el-select v-model="form.warehouse_id" clearable :filterable="!isIOS" placeholder="请选择仓库" style="width:100%">
+                <el-option v-for="w in warehouses" :key="w.id" :label="w.name" :value="w.id" />
+              </el-select>
             </el-form-item>
           </el-col>
           <el-col :xs="24" :sm="8">
@@ -156,7 +164,6 @@
             </el-form-item>
           </el-col>
         </el-row>
-
         <!-- 正面图 / 背面图 -->
         <el-row :gutter="20">
           <el-col :xs="24" :sm="12">
@@ -385,6 +392,7 @@ const isIOS = ref(false)
 const editingCell = ref('')
 const editingValue = ref('')
 const savingInlineCell = ref('')
+const editingCategoryRowId = ref(null)
 
 // ---- OCR 状态 ----
 const ocrVisible = ref(false)
@@ -429,7 +437,6 @@ const form = ref({
   barcode: '',
   name: '',
   category_id: null,
-  unit: '件',
   price: 0,
   quantity: 0,
   description: '',
@@ -680,6 +687,23 @@ async function saveInlineEdit(row, field) {
   }
 }
 
+async function saveCategoryInline(row, categoryId) {
+  const normalizedCategoryId = categoryId || null
+  if ((row.category_id || null) === normalizedCategoryId) {
+    editingCategoryRowId.value = null
+    return
+  }
+  try {
+    await inventoryApi.update(row.id, { category_id: normalizedCategoryId })
+    row.category_id = normalizedCategoryId
+    const matched = categories.value.find((c) => c.id === normalizedCategoryId)
+    row.category_name = matched?.name || null
+    ElMessage.success('游戏分类已更新')
+  } finally {
+    editingCategoryRowId.value = null
+  }
+}
+
 /** 从指定 video 元素抓一帧，返回 Blob（JPEG） */
 function captureFrame(videoElRef = videoRef) {
   const video = videoElRef.value
@@ -714,8 +738,8 @@ function openDialog(row = null) {
         sku: row.sku || null,
         category_id: row.category_id || null,
         warehouse_id: row.warehouse_id || null,
-        unit: row.unit || null,
-        price: row.price || null,
+        price: row.price ?? 0,
+        quantity: row.quantity ?? 0,
         description: row.description || null,
         image_front: row.image_front || row.image || null,
         image_back: row.image_back || null
@@ -727,8 +751,8 @@ function openDialog(row = null) {
         sku: null,
         category_id: null,
         warehouse_id: null,
-        unit: null,
-        price: null,
+        price: 0,
+        quantity: 0,
         description: null,
         image_front: null,
         image_back: null
