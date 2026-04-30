@@ -1,18 +1,18 @@
 # -*- coding: utf-8 -*-
 """
-成本记录表模型
+订单表模型
 """
 
 from typing import Dict, Any, List, Optional
 from ..base_model import BaseModel
 
 
-class CostRecordModel(BaseModel):
-    """成本记录表"""
+class OrderModel(BaseModel):
+    """订单表"""
 
     @classmethod
     def get_table_name(cls) -> str:
-        return "cost_records"
+        return "orders"
 
     @classmethod
     def get_fields(cls) -> Dict[str, Dict[str, Any]]:
@@ -23,50 +23,36 @@ class CostRecordModel(BaseModel):
                 'autoincrement': True,
                 'not_null': True,
             },
-            'cost_date': {
+            'order_no': {
+                'type': 'TEXT',
+                'not_null': True,
+                'unique': True,
+                'default': None,
+            },
+            'order_date': {
                 'type': 'TEXT',
                 'not_null': True,
                 'default': None,
             },
-            'type': {
+            'customer_name': {
+                'type': 'TEXT',
+                'not_null': False,
+                'default': None,
+            },
+            'status': {
                 'type': 'TEXT',
                 'not_null': True,
-                'default': None,
-            },
-            'item_name': {
-                'type': 'TEXT',
-                'not_null': False,
-                'default': None,
-            },
-            'item_image': {
-                'type': 'TEXT',
-                'not_null': False,
-                'default': None,
+                'default': "'pending'",
             },
             'amount': {
                 'type': 'REAL',
                 'not_null': True,
                 'default': 0,
             },
-            'quantity': {
-                'type': 'INTEGER',
-                'not_null': True,
-                'default': 1,
-            },
-            'warehouse_id': {
-                'type': 'INTEGER',
-                'not_null': False,
-                'default': None,
-            },
             'remark': {
                 'type': 'TEXT',
                 'not_null': False,
                 'default': None,
-            },
-            'operator': {
-                'type': 'TEXT',
-                'not_null': False,
-                'default': "'管理员'",
             },
             'created_at': {
                 'type': 'DATETIME',
@@ -78,16 +64,16 @@ class CostRecordModel(BaseModel):
     @classmethod
     def get_indexes(cls) -> List[Dict[str, Any]]:
         return [
-            {'name': 'idx_cost_records_date', 'columns': ['cost_date']},
-            {'name': 'idx_cost_records_type', 'columns': ['type']},
-            {'name': 'idx_cost_records_warehouse', 'columns': ['warehouse_id']},
+            {'name': 'idx_orders_order_no', 'columns': ['order_no'], 'unique': True},
+            {'name': 'idx_orders_order_date', 'columns': ['order_date']},
+            {'name': 'idx_orders_status', 'columns': ['status']},
         ]
 
     @classmethod
     def find_detail_list(
         cls,
-        cost_type: Optional[str] = None,
-        warehouse_id: Optional[int] = None,
+        keyword: Optional[str] = None,
+        status: Optional[str] = None,
         start_date: Optional[str] = None,
         end_date: Optional[str] = None,
         page: int = 1,
@@ -95,38 +81,33 @@ class CostRecordModel(BaseModel):
     ) -> Dict[str, Any]:
         db = cls().db
         base_sql = """
-            FROM [cost_records] c
-            LEFT JOIN [warehouses] w ON w.id = c.warehouse_id
+            FROM [orders] o
             WHERE 1=1
         """
         params = []
-
-        if cost_type:
-            base_sql += " AND c.type = ?"
-            params.append(cost_type)
-        if warehouse_id:
-            base_sql += " AND c.warehouse_id = ?"
-            params.append(warehouse_id)
+        if keyword:
+            base_sql += " AND (o.order_no LIKE ? OR o.customer_name LIKE ?)"
+            kw = f"%{keyword}%"
+            params += [kw, kw]
+        if status:
+            base_sql += " AND o.status = ?"
+            params.append(status)
         if start_date:
-            base_sql += " AND c.cost_date >= ?"
+            base_sql += " AND o.order_date >= ?"
             params.append(start_date)
         if end_date:
-            base_sql += " AND c.cost_date <= ?"
+            base_sql += " AND o.order_date <= ?"
             params.append(end_date)
 
         total = db.execute_query(f"SELECT COUNT(*) {base_sql}", tuple(params))[0][0]
-
         select_sql = f"""
-            SELECT c.id, c.cost_date, c.type, c.item_name, c.item_image, c.amount, c.quantity, c.warehouse_id, w.name as warehouse_name,
-                   c.remark, c.operator, c.created_at
+            SELECT o.id, o.order_no, o.order_date, o.customer_name, o.status, o.amount, o.remark, o.created_at
             {base_sql}
-            ORDER BY c.cost_date DESC, c.id DESC
+            ORDER BY o.order_date DESC, o.id DESC
             LIMIT ? OFFSET ?
         """
-        query_params = params + [page_size, (page - 1) * page_size]
-        rows = db.execute_query(select_sql, tuple(query_params))
-
-        keys = ['id', 'cost_date', 'type', 'item_name', 'item_image', 'amount', 'quantity', 'warehouse_id', 'warehouse_name', 'remark', 'operator', 'created_at']
+        rows = db.execute_query(select_sql, tuple(params + [page_size, (page - 1) * page_size]))
+        keys = ['id', 'order_no', 'order_date', 'customer_name', 'status', 'amount', 'remark', 'created_at']
         return {
             'total': total,
             'page': page,

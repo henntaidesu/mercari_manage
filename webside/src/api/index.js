@@ -78,7 +78,23 @@ export const costRecordApi = {
   list: (params) => http.get('/cost-records', { params }),
   create: (data) => http.post('/cost-records', data),
   update: (id, data) => http.put(`/cost-records/${id}`, data),
-  remove: (id) => http.delete(`/cost-records/${id}`)
+  remove: (id) => http.delete(`/cost-records/${id}`),
+  uploadImage: (file) => {
+    const fd = new FormData()
+    fd.append('file', file, file?.name || 'cost.jpg')
+    return http.post('/cost-records/upload-image', fd, {
+      headers: { 'Content-Type': 'multipart/form-data' },
+      timeout: 15000
+    })
+  }
+}
+
+// 订单管理
+export const orderApi = {
+  list: (params) => http.get('/orders', { params }),
+  create: (data) => http.post('/orders', data),
+  update: (id, data) => http.put(`/orders/${id}`, data),
+  remove: (id) => http.delete(`/orders/${id}`)
 }
 
 // OCR 识别

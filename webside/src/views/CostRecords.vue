@@ -37,7 +37,21 @@
 
     <el-card shadow="never" class="table-card">
       <el-table :data="list" v-loading="loading" stripe>
-        <el-table-column label="日期" prop="cost_date" width="120" />
+        <el-table-column label="物品图" width="90" align="center">
+          <template #default="{ row }">
+            <el-image
+              v-if="row.item_image"
+              :src="row.item_image"
+              :preview-src-list="[row.item_image]"
+              :hide-on-click-modal="true"
+              :preview-teleported="true"
+              :z-index="4000"
+              style="width:40px;height:40px;border-radius:4px;object-fit:cover"
+              fit="cover"
+            />
+            <span v-else>-</span>
+          </template>
+        </el-table-column>
         <el-table-column label="类型" width="110" align="center">
           <template #default="{ row }">
             <el-tag :type="typeMap[row.type]?.tag || 'info'" size="small" effect="light">
@@ -45,6 +59,7 @@
             </el-tag>
           </template>
         </el-table-column>
+        <el-table-column label="物品名称" prop="item_name" min-width="140" />
         <el-table-column label="金额" width="120" align="right">
           <template #default="{ row }">
             <span class="amount">¥{{ Number(row.amount || 0).toFixed(2) }}</span>
@@ -62,6 +77,7 @@
         </el-table-column>
         <el-table-column label="备注" prop="remark" min-width="180" show-overflow-tooltip />
         <el-table-column label="操作人" prop="operator" width="100" />
+        <el-table-column label="日期" prop="cost_date" width="120" />
         <el-table-column label="操作" width="150" fixed="right">
           <template #default="{ row }">
             <el-button size="small" @click="openEdit(row)">编辑</el-button>
@@ -103,12 +119,48 @@
             <el-option v-for="item in typeOptions" :key="item.value" :label="item.label" :value="item.value" />
           </el-select>
         </el-form-item>
-        <el-form-item label="金额" prop="amount">
-          <el-input-number v-model="form.amount" :min="0.01" :precision="2" :step="10" style="width: 100%" />
+        <el-form-item label="物品名称" prop="item_name">
+          <el-input v-model="form.item_name" placeholder="请输入物品名称" maxlength="60" clearable />
         </el-form-item>
-        <el-form-item label="数量" prop="quantity">
-          <el-input-number v-model="form.quantity" :min="1" :precision="0" :step="1" style="width: 100%" />
+        <el-form-item label="物品图">
+          <div class="image-row">
+            <div class="image-upload-box" @click="fileInputRef?.click()">
+              <img v-if="form.item_image" :src="form.item_image" class="image-preview" />
+              <span v-else class="image-placeholder">点击上传</span>
+            </div>
+            <div class="image-actions">
+              <el-button size="small" @click="fileInputRef?.click()" :loading="uploadingImage">选择图片</el-button>
+              <el-button size="small" type="danger" text @click="clearImage" :disabled="!form.item_image">移除</el-button>
+            </div>
+          </div>
+          <input ref="fileInputRef" type="file" accept="image/*" style="display:none" @change="handleImageUpload" />
         </el-form-item>
+        <el-row :gutter="12">
+          <el-col :span="12">
+            <el-form-item label="单价" prop="amount">
+              <el-input-number
+                v-model="form.amount"
+                :min="0.01"
+                :precision="2"
+                :controls="false"
+                placeholder="请输入单价"
+                style="width: 100%"
+              />
+            </el-form-item>
+          </el-col>
+          <el-col :span="12">
+            <el-form-item label="数量" prop="quantity">
+              <el-input-number
+                v-model="form.quantity"
+                :min="1"
+                :precision="0"
+                :controls="false"
+                placeholder="请输入数量"
+                style="width: 100%"
+              />
+            </el-form-item>
+          </el-col>
+        </el-row>
         <el-form-item label="仓库">
           <el-select v-model="form.warehouse_id" clearable placeholder="可不选" style="width: 100%">
             <el-option v-for="w in warehouses" :key="w.id" :label="w.name" :value="w.id" />
@@ -141,6 +193,8 @@ const warehouses = ref([])
 const dateRange = ref([])
 const dialogVisible = ref(false)
 const formRef = ref()
+const fileInputRef = ref()
+const uploadingImage = ref(false)
 
 const filters = ref({
   type: '',
@@ -167,7 +221,9 @@ const createDefaultForm = () => ({
   id: null,
   cost_date: new Date().toISOString().slice(0, 10),
   type: 'purchase',
-  amount: 0,
+  item_name: '',
+  item_image: '',
+  amount: null,
   quantity: 1,
   warehouse_id: null,
   remark: '',
@@ -178,6 +234,7 @@ const form = ref(createDefaultForm())
 const rules = {
   cost_date: [{ required: true, message: '请选择日期', trigger: 'change' }],
   type: [{ required: true, message: '请选择类型', trigger: 'change' }],
+  item_name: [{ required: true, message: '请输入物品名称', trigger: 'blur' }],
   amount: [{ required: true, message: '请输入金额', trigger: 'blur' }],
   quantity: [{ required: true, message: '请输入数量', trigger: 'blur' }],
 }
@@ -223,6 +280,8 @@ function openEdit(row) {
     id: row.id,
     cost_date: row.cost_date,
     type: row.type,
+    item_name: row.item_name || '',
+    item_image: row.item_image || '',
     amount: Number(row.amount || 0),
     quantity: Number(row.quantity || 1),
     warehouse_id: row.warehouse_id || null,
@@ -237,6 +296,8 @@ async function submit() {
   const payload = {
     cost_date: form.value.cost_date,
     type: form.value.type,
+    item_name: String(form.value.item_name || '').trim(),
+    item_image: form.value.item_image || null,
     amount: Number(form.value.amount || 0),
     quantity: Number(form.value.quantity || 0),
     warehouse_id: form.value.warehouse_id,
@@ -255,6 +316,28 @@ async function submit() {
   } finally {
     submitting.value = false
   }
+}
+
+async function handleImageUpload(e) {
+  const file = e.target.files?.[0]
+  e.target.value = ''
+  if (!file) return
+  if (file.size > 5 * 1024 * 1024) {
+    ElMessage.warning('图片不能超过5MB')
+    return
+  }
+  uploadingImage.value = true
+  try {
+    const res = await costRecordApi.uploadImage(file)
+    form.value.item_image = res.path || ''
+    ElMessage.success('图片上传成功')
+  } finally {
+    uploadingImage.value = false
+  }
+}
+
+function clearImage() {
+  form.value.item_image = ''
 }
 
 async function remove(id) {
@@ -296,5 +379,34 @@ onMounted(async () => {
 .amount {
   color: #f56c6c;
   font-weight: 600;
+}
+.image-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+.image-upload-box {
+  width: 64px;
+  height: 64px;
+  border: 1px dashed #4b5f7d;
+  border-radius: 6px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+  cursor: pointer;
+}
+.image-preview {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+.image-placeholder {
+  font-size: 12px;
+  color: #8ea2c0;
+}
+.image-actions {
+  display: flex;
+  gap: 8px;
 }
 </style>

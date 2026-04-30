@@ -4,6 +4,7 @@ import os
 import re
 import uuid
 from typing import Optional
+from fastapi import UploadFile, HTTPException
 
 
 BASE64_IMAGE_RE = re.compile(r"^data:image/(png|jpeg|jpg|webp|gif);base64,", re.IGNORECASE)
@@ -50,6 +51,27 @@ def save_base64_image(data_url: str, prefix: str = "product") -> str:
     abs_path = os.path.join(get_image_root(), filename)
     with open(abs_path, "wb") as f:
         f.write(image_bytes)
+    return f"/imges/{filename}"
+
+
+async def save_upload_image(file: UploadFile, prefix: str = "file") -> str:
+    ensure_image_dir()
+    if not (file.content_type or "").startswith("image/"):
+        raise HTTPException(status_code=400, detail="请上传图片文件")
+    content = await file.read()
+    if not content:
+        raise HTTPException(status_code=400, detail="图片内容为空")
+    if len(content) > 5 * 1024 * 1024:
+        raise HTTPException(status_code=400, detail="图片不能超过5MB")
+    ext = (file.filename or "").rsplit(".", 1)[-1].lower() if "." in (file.filename or "") else "jpg"
+    if ext not in {"jpg", "jpeg", "png", "webp", "gif"}:
+        ext = "jpg"
+    if ext == "jpeg":
+        ext = "jpg"
+    filename = f"{prefix}_{uuid.uuid4().hex}.{ext}"
+    abs_path = os.path.join(get_image_root(), filename)
+    with open(abs_path, "wb") as f:
+        f.write(content)
     return f"/imges/{filename}"
 
 

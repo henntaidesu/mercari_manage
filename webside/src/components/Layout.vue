@@ -90,6 +90,7 @@ const menuItems = [
   { path: '/inventory', title: '库存管理', icon: 'Goods' },
   { path: '/transactions', title: '出入库记录', icon: 'List' },
   { path: '/cost-records', title: '成本记录', icon: 'Money' },
+  { path: '/orders', title: '订单管理', icon: 'Tickets' },
   { path: '/warehouses', title: '仓库管理', icon: 'OfficeBuilding' },
   { path: '/categories', title: '游戏分类', icon: 'Collection' },
   { path: '/system', title: '系统管理', icon: 'Setting' }
