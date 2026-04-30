@@ -1,7 +1,6 @@
 <template>
   <div>
     <div class="page-header">
-      <span class="page-title">游戏分类</span>
       <el-button type="primary" @click="openDialog()">
         <el-icon><Plus /></el-icon> 新增分类
       </el-button>
@@ -91,6 +90,5 @@ onMounted(load)
 
 <style scoped>
 .page-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px; }
-.page-title { font-size: 20px; font-weight: 600; }
 .table-card { border-radius: 8px; }
 </style>

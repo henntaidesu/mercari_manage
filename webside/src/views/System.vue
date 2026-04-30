@@ -1,7 +1,6 @@
 <template>
   <div>
     <div class="page-header">
-      <span class="page-title">系统管理</span>
       <el-button type="primary" @click="openUserDialog">
         <el-icon><Plus /></el-icon> 新增用户
       </el-button>
@@ -168,7 +167,6 @@ onMounted(loadUsers)
 
 <style scoped>
 .page-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px; }
-.page-title { font-size: 20px; font-weight: 600; }
 .table-card { border-radius: 8px; margin-bottom: 16px; }
 .card-title { font-weight: 600; }
 .pwd-tip { font-size: 12px; color: #94a3b8; margin-top: 8px; }

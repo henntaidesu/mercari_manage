@@ -1,7 +1,6 @@
 <template>
   <div>
     <div class="page-header">
-      <span class="page-title">订单管理</span>
       <el-button type="primary" @click="openCreate">新增订单</el-button>
     </div>
 
@@ -257,10 +256,6 @@ onMounted(() => {
   justify-content: space-between;
   align-items: center;
   margin-bottom: 16px;
-}
-.page-title {
-  font-size: 20px;
-  font-weight: 600;
 }
 .search-card {
   margin-bottom: 16px;

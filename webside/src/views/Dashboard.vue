@@ -1,7 +1,5 @@
 <template>
   <div class="dashboard">
-    <div class="page-title">控制台</div>
-
     <!-- 统计卡片 -->
     <el-row :gutter="16" class="stat-row">
       <el-col :xs="12" :sm="12" :md="8" :lg="4" v-for="card in statCards" :key="card.label">
@@ -77,7 +75,6 @@ onMounted(load)
 
 <style scoped>
 .dashboard { max-width: 1400px; }
-.page-title { font-size: 20px; font-weight: 600; color: #e6edf7; margin-bottom: 20px; }
 .stat-row { margin-bottom: 20px; }
 .stat-row .el-col { margin-bottom: 16px; }
 .stat-card {

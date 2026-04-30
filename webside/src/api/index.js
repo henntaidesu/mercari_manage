@@ -97,7 +97,7 @@ export const orderApi = {
   remove: (id) => http.delete(`/orders/${id}`)
 }
 
-// 煤炉账号管理
+// 煤炉账号
 export const meiluAccountApi = {
   list: (params) => http.get('/meilu-accounts', { params }),
   create: (data) => http.post('/meilu-accounts', data),

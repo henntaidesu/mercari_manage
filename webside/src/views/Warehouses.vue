@@ -1,7 +1,6 @@
 <template>
   <div>
     <div class="page-header">
-      <span class="page-title">仓库管理</span>
       <el-button type="primary" @click="openDialog()">
         <el-icon><Plus /></el-icon> 新增仓库
       </el-button>
@@ -107,7 +106,6 @@ onMounted(load)
 
 <style scoped>
 .page-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px; }
-.page-title { font-size: 20px; font-weight: 600; }
 .warehouse-card { border-radius: 10px; text-align: center; margin-bottom: 16px; }
 .wh-icon { margin-bottom: 10px; }
 .wh-name { font-size: 16px; font-weight: 600; margin-bottom: 4px; }

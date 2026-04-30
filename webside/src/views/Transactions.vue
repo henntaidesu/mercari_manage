@@ -1,9 +1,5 @@
 <template>
   <div>
-    <div class="page-header">
-      <span class="page-title">出入库记录</span>
-    </div>
-
     <!-- 筛选 -->
     <el-card shadow="never" class="search-card">
       <el-row :gutter="12" align="middle">
@@ -111,8 +107,6 @@ onMounted(async () => {
 </script>
 
 <style scoped>
-.page-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px; }
-.page-title { font-size: 20px; font-weight: 600; }
 .search-card { margin-bottom: 16px; border-radius: 8px; }
 .table-card { border-radius: 8px; }
 .pagination { margin-top: 16px; display: flex; justify-content: flex-end; }

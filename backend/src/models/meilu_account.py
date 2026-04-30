@@ -8,7 +8,7 @@ from ..base_model import BaseModel
 
 
 class MeiluAccountModel(BaseModel):
-    """煤炉账号管理"""
+    """煤炉账号"""
 
     @classmethod
     def get_table_name(cls) -> str:

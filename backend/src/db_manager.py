@@ -35,7 +35,7 @@ class DBManager:
             TransactionModel, # 依赖 inventory, warehouses
             CostRecordModel,  # 依赖 warehouses（可为空）
             OrderModel,       # 订单管理
-            MeiluAccountModel,  # 煤炉账号管理
+            MeiluAccountModel,  # 煤炉账号
         ]
 
     def initialize_database(self) -> bool:

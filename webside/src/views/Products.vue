@@ -1,8 +1,5 @@
 ﻿<template>
   <div>
-    <div class="page-header">
-    </div>
-
     <el-card shadow="never" class="search-card">
       <el-row :gutter="0" align="middle" class="search-row">
         <el-col :xs="24" :md="16" class="search-left-group">
@@ -1310,8 +1307,6 @@ onBeforeUnmount(() => {
 </script>
 
 <style scoped>
-.page-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px; }
-.page-title { font-size: 20px; font-weight: 600; }
 .search-card { margin-bottom: 16px; border-radius: 8px; }
 .search-actions { display: flex; justify-content: flex-end; }
 .search-row {
@@ -1468,14 +1463,6 @@ onBeforeUnmount(() => {
   }
   .row-actions :deep(.el-button) {
     padding: 5px 8px;
-  }
-  .page-header {
-    flex-direction: column;
-    align-items: stretch;
-    gap: 10px;
-  }
-  .page-title {
-    font-size: 18px;
   }
   .add-btn {
     width: 100%;
