@@ -6,6 +6,7 @@ from .transaction import TransactionModel
 from .user import UserModel
 from .cost_record import CostRecordModel
 from .order import OrderModel
+from .meilu_account import MeiluAccountModel
 
 __all__ = [
     'CategoryModel',
@@ -15,4 +16,5 @@ __all__ = [
     'UserModel',
     'CostRecordModel',
     'OrderModel',
+    'MeiluAccountModel',
 ]

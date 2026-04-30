@@ -97,6 +97,14 @@ export const orderApi = {
   remove: (id) => http.delete(`/orders/${id}`)
 }
 
+// 煤炉账号管理
+export const meiluAccountApi = {
+  list: (params) => http.get('/meilu-accounts', { params }),
+  create: (data) => http.post('/meilu-accounts', data),
+  update: (id, data) => http.put(`/meilu-accounts/${id}`, data),
+  remove: (id) => http.delete(`/meilu-accounts/${id}`)
+}
+
 // OCR 识别
 export const ocrApi = {
   ocrRegion: (base64Image) => http.post('/ocr-region', { image: base64Image })

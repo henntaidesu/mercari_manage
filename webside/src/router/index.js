@@ -17,6 +17,7 @@ const routes = [
       { path: 'transactions', name: 'Transactions', component: () => import('@/views/Transactions.vue'), meta: { title: '出入库记录', icon: 'List' } },
       { path: 'cost-records', name: 'CostRecords', component: () => import('@/views/CostRecords.vue'), meta: { title: '成本记录', icon: 'Money' } },
       { path: 'orders', name: 'Orders', component: () => import('@/views/Orders.vue'), meta: { title: '订单管理', icon: 'Tickets' } },
+      { path: 'meilu-accounts', name: 'MeiluAccounts', component: () => import('@/views/MeiluAccounts.vue'), meta: { title: '煤炉账号管理', icon: 'User' } },
       { path: 'warehouses', name: 'Warehouses', component: () => import('@/views/Warehouses.vue'), meta: { title: '仓库管理', icon: 'OfficeBuilding' } },
       { path: 'categories', name: 'Categories', component: () => import('@/views/Categories.vue'), meta: { title: '游戏分类', icon: 'Collection' } },
       { path: 'system', name: 'System', component: () => import('@/views/System.vue'), meta: { title: '系统管理', icon: 'Setting' } }
