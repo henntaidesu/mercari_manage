@@ -11,6 +11,7 @@ from src.routes.transactions import router as transactions_router
 from src.routes.scan import router as scan_router
 from src.routes.auth import router as auth_router
 from src.routes.ocr import router as ocr_router
+from src.routes.cost_records import router as cost_records_router
 
 app = FastAPI(title="mercari 物品管理", version="1.0.0")
 
@@ -32,6 +33,7 @@ app.include_router(inventory_router, dependencies=auth_required)
 app.include_router(transactions_router, dependencies=auth_required)
 app.include_router(scan_router, dependencies=auth_required)
 app.include_router(ocr_router, dependencies=auth_required)
+app.include_router(cost_records_router, dependencies=auth_required)
 app.include_router(auth_router)
 
 

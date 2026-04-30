@@ -12,6 +12,7 @@ from .models import (
     ProductModel,
     TransactionModel,
     UserModel,
+    CostRecordModel,
 )
 
 
@@ -30,6 +31,7 @@ class DBManager:
             WarehouseModel,   # 无外键依赖
             ProductModel,     # 依赖 categories
             TransactionModel, # 依赖 inventory, warehouses
+            CostRecordModel,  # 依赖 warehouses（可为空）
         ]
 
     def initialize_database(self) -> bool:

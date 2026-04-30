@@ -89,6 +89,7 @@ const menuItems = [
   { path: '/dashboard', title: '控制台', icon: 'Odometer' },
   { path: '/inventory', title: '库存管理', icon: 'Goods' },
   { path: '/transactions', title: '出入库记录', icon: 'List' },
+  { path: '/cost-records', title: '成本记录', icon: 'Money' },
   { path: '/warehouses', title: '仓库管理', icon: 'OfficeBuilding' },
   { path: '/categories', title: '游戏分类', icon: 'Collection' },
   { path: '/system', title: '系统管理', icon: 'Setting' }

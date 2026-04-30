@@ -73,6 +73,14 @@ export const transactionApi = {
   create: (data) => http.post('/transactions', data)
 }
 
+// 成本记录
+export const costRecordApi = {
+  list: (params) => http.get('/cost-records', { params }),
+  create: (data) => http.post('/cost-records', data),
+  update: (id, data) => http.put(`/cost-records/${id}`, data),
+  remove: (id) => http.delete(`/cost-records/${id}`)
+}
+
 // OCR 识别
 export const ocrApi = {
   ocrRegion: (base64Image) => http.post('/ocr-region', { image: base64Image })
