@@ -13,7 +13,6 @@
         <el-table-column label="分类名称" prop="name" />
         <el-table-column label="描述" prop="description" show-overflow-tooltip />
         <el-table-column label="商品数量" prop="product_count" width="100" align="center" />
-        <el-table-column label="创建时间" prop="created_at" width="160" />
         <el-table-column label="操作" width="140" fixed="right">
           <template #default="{ row }">
             <el-button size="small" @click="openDialog(row)">编辑</el-button>

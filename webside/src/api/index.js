@@ -52,10 +52,19 @@ export const inventoryApi = {
   list: (params) => http.get('/inventory', { params }),
   get: (id) => http.get(`/inventory/${id}`),
   findByBarcode: (barcode) => http.get(`/inventory/barcode/${encodeURIComponent(barcode)}`),
+  findByImage: (file) => {
+    const fd = new FormData()
+    fd.append('file', file, file?.name || 'query.jpg')
+    return http.post('/inventory/find-by-image', fd, {
+      headers: { 'Content-Type': 'multipart/form-data' },
+      timeout: 15000
+    })
+  },
   create: (data) => http.post('/inventory', data),
   update: (id, data) => http.put(`/inventory/${id}`, data),
   remove: (id) => http.delete(`/inventory/${id}`),
-  stockIn: (id, data) => http.post(`/inventory/${id}/stock-in`, data)
+  stockIn: (id, data) => http.post(`/inventory/${id}/stock-in`, data),
+  stockOut: (id, data) => http.post(`/inventory/${id}/stock-out`, data)
 }
 
 // 出入库

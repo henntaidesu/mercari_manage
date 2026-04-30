@@ -4,21 +4,28 @@
     </div>
 
     <el-card shadow="never" class="search-card">
-      <el-row :gutter="12" align="middle">
-        <el-col :xs="24" :sm="12" :md="8">
-          <el-input v-model="keyword" placeholder="搜索商品名称 / 条形码" clearable @change="load" prefix-icon="Search" />
-        </el-col>
-        <el-col :xs="24" :sm="12" :md="6">
-          <el-select v-model="filterCat" placeholder="所有分类" clearable @change="load" style="width:100%">
+      <el-row :gutter="0" align="middle" class="search-row">
+        <el-col :xs="24" :md="16" class="search-left-group">
+          <el-input v-model="keyword" class="search-input-control" placeholder="搜索商品名称 / 条形码" clearable @change="load" prefix-icon="Search" />
+          <el-select v-model="filterCat" class="search-select-control" placeholder="所有分类" clearable @change="load">
             <el-option v-for="c in categories" :key="c.id" :label="c.name" :value="c.id" />
           </el-select>
+          <el-select v-model="filterWarehouse" class="search-select-control" placeholder="所有仓库" clearable @change="load">
+            <el-option v-for="w in warehouses" :key="w.id" :label="w.name" :value="w.id" />
+          </el-select>
         </el-col>
-        <el-col :xs="24" :sm="24" :md="10" class="search-actions">
-          <el-button type="success" @click="openContScan">
+        <el-col :xs="24" :md="8" class="search-actions">
+          <el-button type="success" @click="openContScan('in')">
             条码入库
+          </el-button>
+          <el-button type="danger" @click="openContScan('out')">
+            条码出库
           </el-button>
           <el-button type="primary" @click="openLookupScan">
             条码寻找
+          </el-button>
+          <el-button type="info" @click="openImageFind">
+            拍照寻找
           </el-button>
           <el-button type="warning" @click="openNoBarcodeEntry">
             无码录入
@@ -156,12 +163,35 @@
             </template>
           </el-input>
         </el-form-item>
+        <el-form-item label="游戏分类" prop="category_id">
+          <el-select v-model="form.category_id" clearable :filterable="!isIOS" placeholder="请选择分类" style="width:100%">
+            <el-option v-for="c in categories" :key="c.id" :label="c.name" :value="c.id" />
+          </el-select>
+          <div class="quick-create-row">
+            <el-input
+              v-model="newCategoryName"
+              placeholder="输入新分类名称"
+              clearable
+              @keyup.enter="createCategoryQuick"
+            />
+            <el-button type="primary" plain @click="createCategoryQuick">新建分类</el-button>
+          </div>
+        </el-form-item>
         <el-row :gutter="12">
           <el-col :xs="24" :sm="16">
             <el-form-item label="所属仓库" prop="warehouse_id">
               <el-select v-model="form.warehouse_id" clearable :filterable="!isIOS" placeholder="请选择仓库" style="width:100%">
                 <el-option v-for="w in warehouses" :key="w.id" :label="w.name" :value="w.id" />
               </el-select>
+              <div class="quick-create-row">
+                <el-input
+                  v-model="newWarehouseName"
+                  placeholder="输入新仓库名称"
+                  clearable
+                  @keyup.enter="createWarehouseQuick"
+                />
+                <el-button type="primary" plain @click="createWarehouseQuick">新建仓库</el-button>
+              </div>
             </el-form-item>
           </el-col>
           <el-col :xs="24" :sm="8">
@@ -248,7 +278,7 @@
     <!-- ===== 连续扫码对话框 ===== -->
     <el-dialog
       v-model="contScanVisible"
-      title="条形码录入"
+      :title="contAction === 'out' ? '条码出库' : '条码入库'"
       :width="isMobile ? '94vw' : '580px'"
       class="scan-dialog"
       @closed="stopContScan"
@@ -296,8 +326,8 @@
         </div>
         <div class="cont-actions">
           <el-button @click="resumeContScan">继续扫码</el-button>
-          <el-button type="primary" size="large" :loading="contConfirming" @click="confirmStockIn">
-            确认入库 +1
+          <el-button type="primary" size="large" :loading="contConfirming" @click="confirmContAction">
+            {{ contAction === 'out' ? '确认出库 -1' : '确认入库 +1' }}
           </el-button>
         </div>
       </div>
@@ -314,7 +344,7 @@
         </div>
         <div class="cont-actions">
           <el-button @click="resumeContScan">继续扫码</el-button>
-          <el-button type="primary" @click="openAddFromScan">新增商品</el-button>
+          <el-button v-if="contAction !== 'out'" type="primary" @click="openAddFromScan">新增商品</el-button>
         </div>
       </div>
 
@@ -351,6 +381,15 @@
       capture="environment"
       style="display:none"
       @change="handleLookupCapture"
+    />
+
+    <input
+      ref="imageFindCameraRef"
+      type="file"
+      accept="image/*"
+      capture="environment"
+      style="display:none"
+      @change="handleImageFindCapture"
     />
 
     <input
@@ -419,8 +458,9 @@ const categories = ref([])
 const warehouses = ref([])
 const keyword = ref('')
 const filterCat = ref(null)
+const filterWarehouse = ref(null)
 const currentPage = ref(1)
-const pageSize = 10
+const pageSize = 15
 const dialogVisible = ref(false)
 const submitting = ref(false)
 const formRef = ref()
@@ -437,6 +477,8 @@ const editingCell = ref('')
 const editingValue = ref('')
 const savingInlineCell = ref('')
 const editingCategoryRowId = ref(null)
+const newCategoryName = ref('')
+const newWarehouseName = ref('')
 
 // ---- OCR 状态 ----
 const ocrVisible = ref(false)
@@ -457,6 +499,7 @@ const contScanVisible = ref(false)
 const contState = ref('scanning')   // 'scanning' | 'found' | 'notfound' | 'ios-fallback'
 const contBarcode = ref('')
 const contProduct = ref(null)
+const contAction = ref('in') // 'in' | 'out'
 const contWarehouseId = ref(null)
 const contScanning = ref(false)
 const contConfirming = ref(false)
@@ -471,6 +514,7 @@ const lookupScanVisible = ref(false)
 const lookupScanning = ref(false)
 const lookupVideoRef = ref()
 const lookupCameraRef = ref()
+const imageFindCameraRef = ref()
 const lookupScanMode = ref('stream') // 'stream' | 'fallback'
 let lookupStream = null
 let lookupTimer = null
@@ -759,6 +803,32 @@ async function saveCategoryInline(row, categoryId) {
   }
 }
 
+async function createCategoryQuick() {
+  const name = newCategoryName.value.trim()
+  if (!name) {
+    ElMessage.warning('请输入分类名称')
+    return
+  }
+  const created = await categoryApi.create({ name })
+  categories.value = await categoryApi.list()
+  form.value.category_id = created?.id ?? form.value.category_id
+  newCategoryName.value = ''
+  ElMessage.success('分类创建成功')
+}
+
+async function createWarehouseQuick() {
+  const name = newWarehouseName.value.trim()
+  if (!name) {
+    ElMessage.warning('请输入仓库名称')
+    return
+  }
+  const created = await warehouseApi.create({ name })
+  warehouses.value = await warehouseApi.list()
+  form.value.warehouse_id = created?.id ?? form.value.warehouse_id
+  newWarehouseName.value = ''
+  ElMessage.success('仓库创建成功')
+}
+
 /** 从指定 video 元素抓一帧，返回 Blob（JPEG） */
 function captureFrame(videoElRef = videoRef) {
   const video = videoElRef.value
@@ -775,6 +845,7 @@ async function load() {
   const params = {}
   if (keyword.value) params.keyword = keyword.value
   if (filterCat.value) params.category_id = filterCat.value
+  if (filterWarehouse.value) params.warehouse_id = filterWarehouse.value
   list.value = await inventoryApi.list(params).finally(() => (loading.value = false))
   currentPage.value = 1
 }
@@ -951,8 +1022,9 @@ async function handleCameraCapture(e) {
 
 // ============ 连续扫码函数 ============
 
-async function openContScan() {
+async function openContScan(action = 'in') {
   stopContScan()
+  contAction.value = action === 'out' ? 'out' : 'in'
   contBarcode.value = ''
   contProduct.value = null
   const canStream = !!(navigator.mediaDevices?.getUserMedia) && !!window.isSecureContext
@@ -1032,21 +1104,22 @@ function resumeContScan() {
   }
 }
 
-async function confirmStockIn() {
+async function confirmContAction() {
   if (!contProduct.value?.warehouse_id) {
-    ElMessage.warning('该商品未设置所属仓库，请先编辑商品后再入库')
+    ElMessage.warning('该商品未设置所属仓库，请先编辑商品后再操作')
     return
   }
   contConfirming.value = true
   try {
-    const res = await inventoryApi.stockIn(contProduct.value.id, {
+    const apiCall = contAction.value === 'out' ? inventoryApi.stockOut : inventoryApi.stockIn
+    const res = await apiCall(contProduct.value.id, {
       warehouse_id: contProduct.value.warehouse_id,
       quantity: 1,
-      remark: '连续扫码入库'
+      remark: contAction.value === 'out' ? '连续扫码出库' : '连续扫码入库'
     })
-    ElMessage.success(`入库成功，当前库存：${res.new_quantity} 件`)
+    ElMessage.success(`${contAction.value === 'out' ? '出库' : '入库'}成功，当前库存：${res.new_quantity} 件`)
     load()
-    resumeContScan()
+    contScanVisible.value = false
   } catch {
     // 错误由 axios 拦截器统一提示
   } finally {
@@ -1085,6 +1158,10 @@ async function handleContCapture(e) {
   try {
     const res = await scanApi.scanBarcode(file)
     if (res?.found && res.barcode) {
+      if (!contScanVisible.value) {
+        contScanVisible.value = true
+        await nextTick()
+      }
       await handleContBarcode(res.barcode)
     } else {
       ElMessage.warning('未识别到条形码，请重拍')
@@ -1179,6 +1256,36 @@ async function handleLookupCapture(e) {
   }
 }
 
+function openImageFind() {
+  if (!imageFindCameraRef.value) return
+  imageFindCameraRef.value.value = ''
+  imageFindCameraRef.value.click()
+}
+
+async function handleImageFindCapture(e) {
+  const file = e.target.files?.[0]
+  if (!file) return
+  e.target.value = ''
+  loading.value = true
+  try {
+    const res = await inventoryApi.findByImage(file)
+    if (res?.found && res.product) {
+      keyword.value = res.product.barcode || res.product.name || ''
+      filterCat.value = null
+      filterWarehouse.value = null
+      await load()
+      const distanceText = Number.isFinite(res.distance) ? `（相似度距离 ${res.distance}）` : ''
+      ElMessage.success(`已匹配到商品：${res.product.name || res.product.barcode}${distanceText}`)
+    } else {
+      ElMessage.warning('未找到匹配商品，请拍摄更清晰的正面图后重试')
+    }
+  } catch {
+    // 错误提示由拦截器处理
+  } finally {
+    loading.value = false
+  }
+}
+
 // ============ 生命周期 ============
 
 onBeforeUnmount(stopScan)
@@ -1207,6 +1314,28 @@ onBeforeUnmount(() => {
 .page-title { font-size: 20px; font-weight: 600; }
 .search-card { margin-bottom: 16px; border-radius: 8px; }
 .search-actions { display: flex; justify-content: flex-end; }
+.search-row {
+  justify-content: space-between;
+}
+.search-left-group {
+  display: flex;
+  align-items: center;
+  gap: 20px;
+}
+.search-input-control,
+.search-select-control {
+  width: 180px;
+  max-width: 180px;
+}
+.quick-create-row {
+  display: flex;
+  gap: 8px;
+  margin-top: 8px;
+  width: 100%;
+}
+.quick-create-row :deep(.el-input) {
+  flex: 1;
+}
 .table-card { border-radius: 8px; }
 .table-scroll { width: 100%; overflow-x: auto; }
 .table-pagination {
@@ -1313,6 +1442,17 @@ onBeforeUnmount(() => {
 @media (max-width: 768px) {
   .search-card :deep(.el-row) {
     row-gap: 8px;
+  }
+  .search-left-group {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    width: 100%;
+  }
+  .search-input-control,
+  .search-select-control {
+    width: 100%;
+    max-width: none;
   }
   .search-actions {
     justify-content: stretch;

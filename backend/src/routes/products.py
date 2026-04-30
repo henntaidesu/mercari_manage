@@ -1,9 +1,13 @@
 # -*- coding: utf-8 -*-
-from fastapi import APIRouter, HTTPException
+import io
+import os
+import base64
+from fastapi import APIRouter, HTTPException, UploadFile, File
 from pydantic import BaseModel as PydanticModel
 from typing import Optional
+from PIL import Image
 from ..database import DatabaseManager
-from ..image_storage import is_base64_image, save_base64_image, delete_image_file
+from ..image_storage import is_base64_image, save_base64_image, delete_image_file, get_image_root
 
 router = APIRouter(prefix="/api/inventory", tags=["inventory"])
 db = DatabaseManager()
@@ -95,8 +99,52 @@ def _convert_image_payload(image_value: Optional[str], prefix: str) -> Optional[
     return val
 
 
+def _to_dhash(image: Image.Image) -> int:
+    """计算 64bit dHash，用于快速近似匹配"""
+    gray = image.convert("L").resize((9, 8), Image.Resampling.LANCZOS)
+    pixels = list(gray.getdata())
+    value = 0
+    bit = 0
+    for y in range(8):
+        row_offset = y * 9
+        for x in range(8):
+            left = pixels[row_offset + x]
+            right = pixels[row_offset + x + 1]
+            if left > right:
+                value |= (1 << bit)
+            bit += 1
+    return value
+
+
+def _hamming_distance(a: int, b: int) -> int:
+    return (a ^ b).bit_count()
+
+
+def _load_image_for_match(image_value: Optional[str]) -> Optional[Image.Image]:
+    if not image_value or not isinstance(image_value, str):
+        return None
+    val = image_value.strip()
+    if not val:
+        return None
+    try:
+        if val.startswith("data:image/"):
+            b64 = val.split(",", 1)[1] if "," in val else val
+            return Image.open(io.BytesIO(base64.b64decode(b64))).convert("RGB")
+        if val.startswith("/imges/"):
+            abs_path = os.path.join(get_image_root(), val.split("/imges/", 1)[1].strip("/"))
+            if os.path.exists(abs_path):
+                return Image.open(abs_path).convert("RGB")
+    except Exception:
+        return None
+    return None
+
+
 @router.get("")
-def list_inventory(keyword: Optional[str] = None, category_id: Optional[int] = None):
+def list_inventory(
+    keyword: Optional[str] = None,
+    category_id: Optional[int] = None,
+    warehouse_id: Optional[int] = None,
+):
     where_parts = []
     params = []
     if keyword:
@@ -105,6 +153,9 @@ def list_inventory(keyword: Optional[str] = None, category_id: Optional[int] = N
     if category_id:
         where_parts.append("AND p.category_id = ?")
         params.append(category_id)
+    if warehouse_id:
+        where_parts.append("AND p.warehouse_id = ?")
+        params.append(warehouse_id)
     where_sql = " " + " ".join(where_parts) + " ORDER BY p.id DESC"
     return _query_product_with_joins(where_sql, tuple(params))
 
@@ -116,6 +167,46 @@ def find_by_barcode(barcode: str):
     if not inventory_items:
         return {"found": False, "product": None}
     return {"found": True, "product": inventory_items[0]}
+
+
+@router.post("/find-by-image")
+async def find_by_image(file: UploadFile = File(...)):
+    """根据上传的正面照片匹配最相近库存商品"""
+    if not (file.content_type or "").startswith("image/"):
+        raise HTTPException(status_code=400, detail="请上传图片文件")
+    content = await file.read()
+    if not content:
+        raise HTTPException(status_code=400, detail="图片内容为空")
+    try:
+        query_img = Image.open(io.BytesIO(content)).convert("RGB")
+    except Exception:
+        raise HTTPException(status_code=400, detail="图片解析失败，请重试")
+
+    query_hash = _to_dhash(query_img)
+    rows = db.execute_query("SELECT id, image_front, image FROM [inventory]")
+    best_id = None
+    best_distance = 999
+
+    for pid, image_front, image in rows:
+        candidate_img = _load_image_for_match(image_front) or _load_image_for_match(image)
+        if candidate_img is None:
+            continue
+        distance = _hamming_distance(query_hash, _to_dhash(candidate_img))
+        if distance < best_distance:
+            best_distance = distance
+            best_id = pid
+
+    if best_id is None:
+        return {"found": False, "product": None, "distance": None}
+
+    # 经验阈值：dHash 64bit，距离越小越像；>18 误匹配概率明显增高
+    if best_distance > 18:
+        return {"found": False, "product": None, "distance": best_distance}
+
+    matched = _query_product_with_joins(" AND p.id = ? LIMIT 1", (best_id,))
+    if not matched:
+        return {"found": False, "product": None, "distance": best_distance}
+    return {"found": True, "product": matched[0], "distance": best_distance}
 
 
 @router.post("/{pid}/stock-in")
@@ -137,6 +228,36 @@ def stock_in_product(pid: int, data: StockInRequest):
             ) VALUES (?, ?, ?, ?, ?)
             """,
             ("in", pid, data.warehouse_id, data.quantity, data.remark or "扫码快速入库"),
+        )
+    new_qty = db.execute_query("SELECT quantity FROM [inventory] WHERE id = ?", (pid,))
+    return {"success": True, "new_quantity": (new_qty[0][0] if new_qty else 0), "product_id": pid}
+
+
+@router.post("/{pid}/stock-out")
+def stock_out_product(pid: int, data: StockInRequest):
+    """连续扫码出库：库存 -N；若提供 warehouse_id 则同时写入事务记录"""
+    if not _product_exists(pid):
+        raise HTTPException(status_code=404, detail="商品不存在")
+    if data.quantity <= 0:
+        raise HTTPException(status_code=400, detail="出库数量必须大于0")
+    current_qty_row = db.execute_query("SELECT quantity FROM [inventory] WHERE id = ? LIMIT 1", (pid,))
+    current_qty = (current_qty_row[0][0] if current_qty_row else 0) or 0
+    if current_qty < data.quantity:
+        raise HTTPException(status_code=400, detail=f"库存不足，当前库存：{current_qty}")
+    affected = db.execute_update(
+        "UPDATE [inventory] SET quantity = COALESCE(quantity, 0) - ? WHERE id = ?",
+        (data.quantity, pid),
+    )
+    if affected <= 0:
+        raise HTTPException(status_code=500, detail="库存更新失败")
+    if data.warehouse_id:
+        db.execute_insert(
+            """
+            INSERT INTO [transactions] (
+                type, product_id, warehouse_id, quantity, remark
+            ) VALUES (?, ?, ?, ?, ?)
+            """,
+            ("out", pid, data.warehouse_id, data.quantity, data.remark or "扫码快速出库"),
         )
     new_qty = db.execute_query("SELECT quantity FROM [inventory] WHERE id = ?", (pid,))
     return {"success": True, "new_quantity": (new_qty[0][0] if new_qty else 0), "product_id": pid}

@@ -34,11 +34,6 @@ class CategoryModel(BaseModel):
                 'not_null': False,
                 'default': None,
             },
-            'created_at': {
-                'type': 'DATETIME',
-                'not_null': False,
-                'default': 'CURRENT_TIMESTAMP',
-            },
         }
 
     @classmethod
