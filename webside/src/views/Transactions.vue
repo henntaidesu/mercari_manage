@@ -2,21 +2,18 @@
   <div>
     <!-- 筛选 -->
     <el-card shadow="never" class="search-card">
-      <el-row :gutter="12" align="middle">
-        <el-col :xs="12" :sm="8" :md="5">
+      <el-row :gutter="0" align="middle" class="search-row">
+        <el-col :xs="24" :md="16" class="search-left-group">
           <el-select v-model="filters.type" placeholder="操作类型" clearable @change="load" style="width:100%">
             <el-option label="入库" value="in" />
             <el-option label="出库" value="out" />
             <el-option label="调拨" value="transfer" />
           </el-select>
-        </el-col>
-        <el-col :xs="12" :sm="8" :md="5">
           <el-select v-model="filters.warehouse_id" placeholder="选择仓库" clearable @change="load" style="width:100%">
             <el-option v-for="w in warehouses" :key="w.id" :label="w.name" :value="w.id" />
           </el-select>
         </el-col>
-        <el-col :xs="24" :sm="8" :md="5">
-          <el-button @click="resetFilters">重置</el-button>
+        <el-col :xs="24" :md="8" class="search-actions">
         </el-col>
       </el-row>
     </el-card>
@@ -108,6 +105,9 @@ onMounted(async () => {
 
 <style scoped>
 .search-card { margin-bottom: 16px; border-radius: 8px; }
+.search-row { justify-content: space-between; }
+.search-left-group { display: flex; align-items: center; gap: 20px; }
+.search-actions { display: flex; justify-content: flex-end; }
 .table-card { border-radius: 8px; }
 .pagination { margin-top: 16px; display: flex; justify-content: flex-end; }
 .text-green { color: #67c23a; font-weight: 600; }

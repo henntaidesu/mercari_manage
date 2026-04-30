@@ -1,26 +1,20 @@
 <template>
   <div>
-    <div class="page-header">
-      <el-button type="primary" @click="openCreate">新增账号</el-button>
-    </div>
-
     <el-card shadow="never" class="search-card">
-      <el-row :gutter="12" align="middle">
-        <el-col :xs="24" :sm="12" :md="8">
+      <el-row :gutter="0" align="middle" class="search-row">
+        <el-col :xs="24" :md="16" class="search-left-group">
           <el-input
             v-model="filters.keyword"
             placeholder="搜索账号名称/登录账号"
             clearable
             @change="onFilterChange"
           />
-        </el-col>
-        <el-col :xs="24" :sm="12" :md="6">
           <el-select v-model="filters.status" placeholder="账号状态" clearable style="width: 100%" @change="onFilterChange">
             <el-option v-for="item in statusOptions" :key="item.value" :label="item.label" :value="item.value" />
           </el-select>
         </el-col>
-        <el-col :xs="24" :sm="24" :md="10">
-          <el-button @click="resetFilters">重置</el-button>
+        <el-col :xs="24" :md="8" class="search-actions">
+          <el-button type="primary" @click="openCreate">新增账号</el-button>
         </el-col>
       </el-row>
     </el-card>
@@ -211,15 +205,22 @@ onMounted(() => {
 </script>
 
 <style scoped>
-.page-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  margin-bottom: 16px;
-}
 .search-card {
   margin-bottom: 16px;
   border-radius: 8px;
+}
+.search-row {
+  justify-content: space-between;
+}
+.search-left-group {
+  display: flex;
+  align-items: center;
+  gap: 20px;
+}
+.search-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 20px;
 }
 .table-card {
   border-radius: 8px;

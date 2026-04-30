@@ -1,22 +1,14 @@
 <template>
   <div>
-    <div class="page-header">
-      <el-button type="primary" @click="openCreate">新增记录</el-button>
-    </div>
-
     <el-card shadow="never" class="search-card">
-      <el-row :gutter="12" align="middle">
-        <el-col :xs="24" :sm="8" :md="5">
+      <el-row :gutter="0" align="middle" class="search-row">
+        <el-col :xs="24" :md="16" class="search-left-group">
           <el-select v-model="filters.type" placeholder="成本类型" clearable @change="onFilterChange" style="width: 100%">
             <el-option v-for="item in typeOptions" :key="item.value" :label="item.label" :value="item.value" />
           </el-select>
-        </el-col>
-        <el-col :xs="24" :sm="8" :md="5">
           <el-select v-model="filters.warehouse_id" placeholder="选择仓库" clearable @change="onFilterChange" style="width: 100%">
             <el-option v-for="w in warehouses" :key="w.id" :label="w.name" :value="w.id" />
           </el-select>
-        </el-col>
-        <el-col :xs="24" :sm="8" :md="8">
           <el-date-picker
             v-model="dateRange"
             type="daterange"
@@ -24,12 +16,11 @@
             start-placeholder="开始日期"
             end-placeholder="结束日期"
             value-format="YYYY-MM-DD"
-            style="width: 100%"
             @change="onFilterChange"
           />
         </el-col>
-        <el-col :xs="24" :sm="24" :md="6">
-          <el-button @click="resetFilters">重置</el-button>
+        <el-col :xs="24" :md="8" class="search-actions">
+          <el-button type="primary" @click="openCreate">新增记录</el-button>
         </el-col>
       </el-row>
     </el-card>
@@ -111,7 +102,7 @@
     >
       <el-form :model="form" :rules="rules" ref="formRef" label-width="78px">
         <el-form-item label="日期" prop="cost_date">
-          <el-date-picker v-model="form.cost_date" type="date" value-format="YYYY-MM-DD" style="width: 100%" />
+          <el-date-picker v-model="form.cost_date" type="date" value-format="YYYY-MM-DD" />
         </el-form-item>
         <el-form-item label="类型" prop="type">
           <el-select v-model="form.type" placeholder="请选择类型" style="width: 100%">
@@ -353,15 +344,22 @@ onMounted(async () => {
 </script>
 
 <style scoped>
-.page-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  margin-bottom: 16px;
-}
 .search-card {
   margin-bottom: 16px;
   border-radius: 8px;
+}
+.search-row {
+  justify-content: space-between;
+}
+.search-left-group {
+  display: flex;
+  align-items: center;
+  gap: 20px;
+}
+.search-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 20px;
 }
 .table-card {
   border-radius: 8px;

@@ -63,4 +63,17 @@ html, body, #app {
 .el-dialog {
   --el-dialog-bg-color: #131c2f;
 }
+
+.el-input,
+.el-select,
+.el-date-editor.el-input__wrapper,
+.el-date-editor.el-input {
+  width: 180px !important;
+}
+
+.el-range-editor.el-input__wrapper,
+.el-date-editor--daterange {
+  width: 180px !important;
+  min-width: 180px !important;
+}
 </style>

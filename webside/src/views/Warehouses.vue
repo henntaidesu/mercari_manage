@@ -1,10 +1,12 @@
 <template>
   <div>
-    <div class="page-header">
-      <el-button type="primary" @click="openDialog()">
-        <el-icon><Plus /></el-icon> 新增仓库
-      </el-button>
-    </div>
+    <el-card shadow="never" class="search-card">
+      <el-row justify="end">
+        <el-button type="primary" @click="openDialog()">
+          <el-icon><Plus /></el-icon> 新增仓库
+        </el-button>
+      </el-row>
+    </el-card>
 
     <el-row :gutter="16">
       <el-col :xs="24" :sm="12" :md="8" :lg="6" v-for="w in list" :key="w.id">
@@ -105,7 +107,7 @@ onMounted(load)
 </script>
 
 <style scoped>
-.page-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px; }
+.search-card { margin-bottom: 16px; border-radius: 8px; }
 .warehouse-card { border-radius: 10px; text-align: center; margin-bottom: 16px; }
 .wh-icon { margin-bottom: 10px; }
 .wh-name { font-size: 16px; font-weight: 600; margin-bottom: 4px; }

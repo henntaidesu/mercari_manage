@@ -1,10 +1,12 @@
 <template>
   <div>
-    <div class="page-header">
-      <el-button type="primary" @click="openDialog()">
-        <el-icon><Plus /></el-icon> 新增分类
-      </el-button>
-    </div>
+    <el-card shadow="never" class="search-card">
+      <el-row justify="end">
+        <el-button type="primary" @click="openDialog()">
+          <el-icon><Plus /></el-icon> 新增分类
+        </el-button>
+      </el-row>
+    </el-card>
 
     <el-card shadow="never" class="table-card">
       <el-table :data="list" v-loading="loading" stripe>
@@ -89,6 +91,6 @@ onMounted(load)
 </script>
 
 <style scoped>
-.page-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px; }
+.search-card { margin-bottom: 16px; border-radius: 8px; }
 .table-card { border-radius: 8px; }
 </style>

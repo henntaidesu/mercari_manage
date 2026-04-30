@@ -1,10 +1,12 @@
 <template>
   <div>
-    <div class="page-header">
-      <el-button type="primary" @click="openUserDialog">
-        <el-icon><Plus /></el-icon> 新增用户
-      </el-button>
-    </div>
+    <el-card shadow="never" class="search-card">
+      <el-row justify="end">
+        <el-button type="primary" @click="openUserDialog">
+          <el-icon><Plus /></el-icon> 新增用户
+        </el-button>
+      </el-row>
+    </el-card>
 
     <el-row :gutter="16">
       <el-col :xs="24" :lg="14">
@@ -166,7 +168,7 @@ onMounted(loadUsers)
 </script>
 
 <style scoped>
-.page-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px; }
+.search-card { margin-bottom: 16px; border-radius: 8px; }
 .table-card { border-radius: 8px; margin-bottom: 16px; }
 .card-title { font-weight: 600; }
 .pwd-tip { font-size: 12px; color: #94a3b8; margin-top: 8px; }

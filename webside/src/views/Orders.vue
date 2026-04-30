@@ -1,25 +1,17 @@
 <template>
   <div>
-    <div class="page-header">
-      <el-button type="primary" @click="openCreate">新增订单</el-button>
-    </div>
-
     <el-card shadow="never" class="search-card">
-      <el-row :gutter="12" align="middle">
-        <el-col :xs="24" :sm="8" :md="6">
+      <el-row :gutter="0" align="middle" class="search-row">
+        <el-col :xs="24" :md="16" class="search-left-group">
           <el-input
             v-model="filters.keyword"
             placeholder="搜索订单号/客户"
             clearable
             @change="onFilterChange"
           />
-        </el-col>
-        <el-col :xs="24" :sm="8" :md="6">
           <el-select v-model="filters.status" placeholder="订单状态" clearable style="width: 100%" @change="onFilterChange">
             <el-option v-for="item in statusOptions" :key="item.value" :label="item.label" :value="item.value" />
           </el-select>
-        </el-col>
-        <el-col :xs="24" :sm="8" :md="8">
           <el-date-picker
             v-model="dateRange"
             type="daterange"
@@ -31,8 +23,8 @@
             @change="onFilterChange"
           />
         </el-col>
-        <el-col :xs="24" :sm="24" :md="4">
-          <el-button @click="resetFilters">重置</el-button>
+        <el-col :xs="24" :md="8" class="search-actions">
+          <el-button type="primary" @click="openCreate">新增订单</el-button>
         </el-col>
       </el-row>
     </el-card>
@@ -251,15 +243,22 @@ onMounted(() => {
 </script>
 
 <style scoped>
-.page-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  margin-bottom: 16px;
-}
 .search-card {
   margin-bottom: 16px;
   border-radius: 8px;
+}
+.search-row {
+  justify-content: space-between;
+}
+.search-left-group {
+  display: flex;
+  align-items: center;
+  gap: 20px;
+}
+.search-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 20px;
 }
 .table-card {
   border-radius: 8px;

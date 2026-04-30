@@ -1315,6 +1315,7 @@ onBeforeUnmount(() => {
 .search-left-group {
   display: flex;
   align-items: center;
+  justify-content: flex-start;
   gap: 20px;
 }
 .search-input-control,
