@@ -29,30 +29,25 @@
       </el-row>
     </el-card>
 
-    <div class="stats-section" v-loading="statsLoading">
-      <div class="stats-cards-grid">
-        <el-card shadow="hover" class="stat-tile stat-tile--count">
-          <div class="stat-tile__label">笔数</div>
-          <div class="stat-tile__value">{{ stats.total_count }}</div>
-        </el-card>
-        <el-card shadow="hover" class="stat-tile stat-tile--amount">
-          <div class="stat-tile__label">金额</div>
-          <div class="stat-tile__value">{{ Math.round(stats.sum_amount) }}</div>
-        </el-card>
-        <el-card shadow="hover" class="stat-tile stat-tile--fee">
-          <div class="stat-tile__label">手续费</div>
-          <div class="stat-tile__value">{{ Math.round(stats.sum_service_fee) }}</div>
-        </el-card>
-        <el-card shadow="hover" class="stat-tile stat-tile--fee">
-          <div class="stat-tile__label">快递费</div>
-          <div class="stat-tile__value">{{ Math.round(stats.sum_shipping_fee) }}</div>
-        </el-card>
-        <el-card shadow="hover" class="stat-tile stat-tile--net">
-          <div class="stat-tile__label">净收益</div>
-          <div class="stat-tile__value">{{ Math.round(stats.sum_net_income) }}</div>
-        </el-card>
-      </div>
-    </div>
+    <el-card class="section-card order-stats-wrap" shadow="never" v-loading="statsLoading">
+      <el-row :gutter="16" class="stat-row order-stat-row">
+        <el-col :xs="12" :sm="12" :md="8" :lg="4" v-for="card in orderStatCards" :key="card.label">
+          <div
+            class="stat-card order-stat-card"
+            :class="card.cardClass"
+            :style="{ borderTopColor: card.color }"
+          >
+            <div class="stat-icon" :style="{ background: card.color + '20', color: card.color }">
+              <el-icon size="22"><component :is="card.icon" /></el-icon>
+            </div>
+            <div class="stat-info">
+              <div class="stat-value" :class="card.valueClass">{{ card.display }}</div>
+              <div class="stat-label">{{ card.label }}</div>
+            </div>
+          </div>
+        </el-col>
+      </el-row>
+    </el-card>
 
     <el-card shadow="never" class="table-card">
       <el-table :data="list" v-loading="loading" stripe>
@@ -312,6 +307,54 @@ const stats = ref({
   sum_shipping_fee: 0,
   sum_net_income: 0,
 })
+
+/** 与控制台「订单统计」卡片一致（布局与样式）；数值仍对应当前列表筛选条件 */
+const orderStatCards = computed(() => {
+  const o = stats.value
+  return [
+    {
+      label: '订单笔数',
+      display: o.total_count ?? 0,
+      icon: 'Document',
+      color: '#409EFF',
+      cardClass: '',
+      valueClass: '',
+    },
+    {
+      label: '金额合计',
+      display: Math.round(Number(o.sum_amount || 0)),
+      icon: 'Money',
+      color: '#E6A23C',
+      cardClass: '',
+      valueClass: '',
+    },
+    {
+      label: '手续费合计',
+      display: Math.round(Number(o.sum_service_fee || 0)),
+      icon: 'Histogram',
+      color: '#F56C6C',
+      cardClass: '',
+      valueClass: '',
+    },
+    {
+      label: '快递费合计',
+      display: Math.round(Number(o.sum_shipping_fee || 0)),
+      icon: 'Box',
+      color: '#F56C6C',
+      cardClass: '',
+      valueClass: '',
+    },
+    {
+      label: '净收益合计',
+      display: Math.round(Number(o.sum_net_income || 0)),
+      icon: 'TrendCharts',
+      color: '#67C23A',
+      cardClass: '',
+      valueClass: '',
+    },
+  ]
+})
+
 const list = ref([])
 const total = ref(0)
 const page = ref(1)
@@ -721,56 +764,51 @@ onMounted(() => {
   margin-bottom: 16px;
   border-radius: 8px;
 }
-.stats-section {
+.section-card {
+  margin-bottom: 20px;
+  border-radius: 8px;
+}
+.order-stats-wrap {
+  margin-bottom: 20px;
+}
+.order-stat-row {
+  margin-bottom: 0;
+}
+.stat-row {
+  margin-bottom: 20px;
+}
+.stat-row .el-col {
   margin-bottom: 16px;
-  min-height: 48px;
 }
-.stats-cards-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(148px, 1fr));
+.stat-card {
+  background: #131c2f;
+  border-radius: 8px;
+  padding: 16px;
+  display: flex;
+  align-items: center;
   gap: 14px;
+  border-top: 3px solid;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
+  border: 1px solid #2a3446;
 }
-.stat-tile {
+.stat-icon {
+  width: 46px;
+  height: 46px;
   border-radius: 10px;
-  border: 1px solid var(--el-border-color-lighter);
-  transition: transform 0.15s ease, box-shadow 0.15s ease;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
 }
-.stat-tile:hover {
-  transform: translateY(-2px);
-}
-.stat-tile :deep(.el-card__body) {
-  padding: 16px 18px;
-}
-.stat-tile__label {
-  font-size: 13px;
-  color: #909399;
-  margin-bottom: 8px;
-  letter-spacing: 0.02em;
-}
-.stat-tile__value {
+.stat-value {
   font-size: 22px;
   font-weight: 700;
-  line-height: 1.2;
-  font-variant-numeric: tabular-nums;
+  color: #ecf2ff;
 }
-.stat-tile--count .stat-tile__value {
-  color: #409eff;
-}
-.stat-tile--amount .stat-tile__value {
-  color: #303133;
-}
-.stat-tile--fee .stat-tile__value {
-  color: #f56c6c;
-}
-.stat-tile--net {
-  background: linear-gradient(145deg, #529b2e 0%, #3d7a24 100%);
-  border-color: rgba(82, 155, 46, 0.45);
-}
-.stat-tile--net .stat-tile__label {
-  color: rgba(255, 255, 255, 0.88);
-}
-.stat-tile--net .stat-tile__value {
-  color: #ffffff;
+.stat-label {
+  font-size: 12px;
+  color: #9ba8bf;
+  margin-top: 2px;
 }
 .search-row {
   justify-content: space-between;

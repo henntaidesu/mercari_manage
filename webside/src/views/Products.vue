@@ -1,5 +1,22 @@
 ﻿<template>
   <div>
+    <!-- 库存统计卡片（全库汇总，与控制台「库存管理」区块一致） -->
+    <el-card class="section-card inventory-stats-wrap" shadow="never">
+      <el-row :gutter="16" class="stat-row inventory-stat-row">
+        <el-col :xs="12" :sm="12" :md="8" :lg="4" v-for="card in inventoryStatCards" :key="card.label">
+          <div class="inv-stat-card" :style="{ borderTopColor: card.color }">
+            <div class="inv-stat-icon" :style="{ background: card.color + '20', color: card.color }">
+              <el-icon size="22"><component :is="card.icon" /></el-icon>
+            </div>
+            <div class="inv-stat-info">
+              <div class="inv-stat-value">{{ inventorySummary[card.key] ?? '-' }}</div>
+              <div class="inv-stat-label">{{ card.label }}</div>
+            </div>
+          </div>
+        </el-col>
+      </el-row>
+    </el-card>
+
     <el-card shadow="never" class="search-card">
       <el-row :gutter="0" align="middle" class="search-row">
         <el-col :xs="24" :md="16" class="search-left-group">
@@ -461,10 +478,18 @@
 <script setup>
 import { ref, computed, onMounted, onBeforeUnmount, nextTick } from 'vue'
 import { ElMessage } from 'element-plus'
-import { inventoryApi, categoryApi, warehouseApi, scanApi, ocrApi } from '@/api/index.js'
+import { inventoryApi, categoryApi, warehouseApi, scanApi, ocrApi, transactionApi } from '@/api/index.js'
 
 const list = ref([])
 const loading = ref(false)
+
+const inventorySummary = ref({})
+const inventoryStatCards = [
+  { key: 'total_inventory', label: '库存条目', icon: 'Goods', color: '#409EFF' },
+  { key: 'total_quantity', label: '总库存量', icon: 'Box', color: '#E6A23C' },
+  { key: 'today_in', label: '今日入库', icon: 'Top', color: '#67C23A' },
+  { key: 'today_out', label: '今日出库', icon: 'Bottom', color: '#F56C6C' },
+]
 const categories = ref([])
 const warehouses = ref([])
 const keyword = ref('')
@@ -864,6 +889,21 @@ async function load() {
   currentPage.value = 1
 }
 
+/** 与控制台相同：全库条目/总数量 + 接口返回的今日入出库 */
+async function loadInventoryStats() {
+  const [inventoryItems, tx] = await Promise.all([
+    inventoryApi.list(),
+    transactionApi.list({ page_size: 10 }),
+  ])
+  const totalQuantity = inventoryItems.reduce((sum, p) => sum + (p.quantity || 0), 0)
+  inventorySummary.value = {
+    total_inventory: inventoryItems.length,
+    total_quantity: totalQuantity,
+    today_in: tx.today_in ?? '-',
+    today_out: tx.today_out ?? '-',
+  }
+}
+
 const pagedList = computed(() => {
   const start = (currentPage.value - 1) * pageSize
   return list.value.slice(start, start + pageSize)
@@ -944,6 +984,7 @@ async function submit() {
     ElMessage.success('保存成功')
     dialogVisible.value = false
     load()
+    loadInventoryStats()
   } finally {
     submitting.value = false
   }
@@ -953,6 +994,7 @@ async function remove(id) {
   await inventoryApi.remove(id)
   ElMessage.success('删除成功')
   load()
+  loadInventoryStats()
 }
 
 async function openScanDialog() {
@@ -1135,6 +1177,7 @@ async function confirmContAction() {
     })
     ElMessage.success(`${contAction.value === 'out' ? '出库' : '入库'}成功，当前库存：${res.new_quantity} 件`)
     load()
+    loadInventoryStats()
     contScanVisible.value = false
   } catch {
     // 错误由 axios 拦截器统一提示
@@ -1317,7 +1360,7 @@ onMounted(async () => {
   const [cats, whs] = await Promise.all([categoryApi.list(), warehouseApi.list()])
   categories.value = cats
   warehouses.value = whs
-  load()
+  await Promise.all([load(), loadInventoryStats()])
 })
 
 onBeforeUnmount(() => {
@@ -1329,6 +1372,32 @@ onBeforeUnmount(() => {
 </script>
 
 <style scoped>
+.section-card { margin-bottom: 16px; border-radius: 8px; }
+.inventory-stats-wrap { margin-bottom: 16px; }
+.inventory-stat-row { margin-bottom: 0; }
+.stat-row .el-col { margin-bottom: 16px; }
+.inv-stat-card {
+  background: #131c2f;
+  border-radius: 8px;
+  padding: 16px;
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  border-top: 3px solid;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
+  border: 1px solid #2a3446;
+}
+.inv-stat-icon {
+  width: 46px;
+  height: 46px;
+  border-radius: 10px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+.inv-stat-value { font-size: 22px; font-weight: 700; color: #ecf2ff; }
+.inv-stat-label { font-size: 12px; color: #9ba8bf; margin-top: 2px; }
 .search-card { margin-bottom: 16px; border-radius: 8px; }
 .search-actions { display: flex; justify-content: flex-end; flex-wrap: wrap; gap: 8px; }
 .search-actions--ios {
