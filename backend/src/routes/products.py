@@ -6,7 +6,7 @@ from fastapi import APIRouter, HTTPException, UploadFile, File
 from pydantic import BaseModel as PydanticModel
 from typing import Optional
 from PIL import Image
-from ..database import DatabaseManager
+from ..db_manage.database import DatabaseManager
 from ..image_storage import is_base64_image, save_base64_image, delete_image_file, get_image_root
 
 router = APIRouter(prefix="/api/inventory", tags=["inventory"])

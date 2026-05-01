@@ -25,8 +25,10 @@ class DatabaseManager:
 
     def __init__(self):
         if not hasattr(self, 'initialized'):
-            # mercariDB.db 放在 backend/ 目录下
-            backend_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+            # mercariDB.db 放在 backend/ 目录下（本文件在 src/db_manage/）
+            backend_dir = os.path.dirname(
+                os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+            )
             self.db_path = os.path.join(backend_dir, 'mercariDB.db')
             self.initialized = True
             self._setup_database()

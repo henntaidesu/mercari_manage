@@ -7,8 +7,8 @@ from fastapi import APIRouter, HTTPException, Depends
 from pydantic import BaseModel as PydanticModel
 
 from ..auth import create_access_token, require_auth
-from ..database import DatabaseManager
-from ..models.user import UserModel
+from ..db_manage.database import DatabaseManager
+from ..db_manage.models.user import UserModel
 
 router = APIRouter(prefix="/api/auth", tags=["auth"])
 db = DatabaseManager()

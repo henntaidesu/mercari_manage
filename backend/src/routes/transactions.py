@@ -2,8 +2,8 @@
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel as PydanticModel
 from typing import Optional
-from ..models.transaction import TransactionModel
-from ..models.product import ProductModel
+from ..db_manage.models.transaction import TransactionModel
+from ..db_manage.models.product import ProductModel
 
 router = APIRouter(prefix="/api/transactions", tags=["transactions"])
 

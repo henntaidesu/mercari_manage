@@ -2,7 +2,7 @@
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel as PydanticModel
 from typing import Optional
-from ..models.category import CategoryModel
+from ..db_manage.models.category import CategoryModel
 
 router = APIRouter(prefix="/api/categories", tags=["categories"])
 

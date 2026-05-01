@@ -2,7 +2,7 @@
 from fastapi import APIRouter, HTTPException, UploadFile, File
 from pydantic import BaseModel as PydanticModel
 from typing import Optional
-from ..models.cost_record import CostRecordModel
+from ..db_manage.models.cost_record import CostRecordModel
 from ..image_storage import save_upload_image, delete_image_file
 
 router = APIRouter(prefix="/api/cost-records", tags=["cost-records"])

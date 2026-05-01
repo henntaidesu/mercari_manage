@@ -2,7 +2,7 @@ from fastapi import FastAPI, Depends
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from src.auth import require_auth
-from src.db_manager import init_database
+from src.db_manage.db_manager import init_database
 from src.image_storage import ensure_image_dir
 from src.routes.categories import router as categories_router
 from src.routes.warehouses import router as warehouses_router

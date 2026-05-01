@@ -2,8 +2,8 @@
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel as PydanticModel
 from typing import Optional
-from ..database import DatabaseManager
-from ..models.warehouse import WarehouseModel
+from ..db_manage.database import DatabaseManager
+from ..db_manage.models.warehouse import WarehouseModel
 
 router = APIRouter(prefix="/api/warehouses", tags=["warehouses"])
 db = DatabaseManager()

@@ -3,7 +3,7 @@ import json
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel as PydanticModel
 from typing import Optional, Dict, Any
-from ..models.meilu_account import MeiluAccountModel
+from ..db_manage.models.meilu_account import MeiluAccountModel
 
 router = APIRouter(prefix="/api/meilu-accounts", tags=["meilu-accounts"])
 
