@@ -87,3 +87,4 @@ backend/mercariDB.db*
 backend/imges/
 backend/mercariDB.db-wal
 backend/test_json/
+1.json

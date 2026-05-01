@@ -43,6 +43,7 @@ class OrderCreate(PydanticModel):
     request_class_display_name: Optional[str] = None
     shipping_fee: Optional[float] = None
     tracking_no: Optional[str] = None
+    transaction_evidence_id: Optional[int] = None
     remark: Optional[str] = None
     thumbnails: Optional[List[str]] = None
 
@@ -60,6 +61,7 @@ class OrderUpdate(PydanticModel):
     request_class_display_name: Optional[str] = None
     shipping_fee: Optional[float] = None
     tracking_no: Optional[str] = None
+    transaction_evidence_id: Optional[int] = None
     remark: Optional[str] = None
     thumbnails: Optional[List[str]] = None
 
@@ -79,6 +81,24 @@ def _normalize_order_no(order_no: str) -> str:
     if not val:
         raise HTTPException(status_code=400, detail="订单号不能为空")
     return val
+
+
+@router.get("/stats")
+def order_stats(
+    keyword: Optional[str] = None,
+    status: Optional[str] = None,
+    start_date: Optional[str] = None,
+    end_date: Optional[str] = None,
+):
+    """当前筛选条件下的全表汇总（金额、手续费、快递费、净收益及行数），不受分页影响。"""
+    if status:
+        _validate_status(status)
+    return OrderModel.aggregate_sums(
+        keyword=keyword,
+        status=status,
+        start_date=start_date,
+        end_date=end_date,
+    )
 
 
 @router.get("")
@@ -122,6 +142,7 @@ def create_order(data: OrderCreate):
         request_class_display_name=(data.request_class_display_name or "").strip() or None,
         shipping_fee=data.shipping_fee,
         tracking_no=(data.tracking_no or "").strip() or None,
+        transaction_evidence_id=data.transaction_evidence_id,
         remark=data.remark,
         thumbnails=_encode_thumbnails(data.thumbnails),
     )
@@ -163,6 +184,8 @@ def update_order(oid: int, data: OrderUpdate):
         item.shipping_fee = data.shipping_fee
     if "tracking_no" in data.model_fields_set:
         item.tracking_no = (data.tracking_no or "").strip() or None
+    if "transaction_evidence_id" in data.model_fields_set:
+        item.transaction_evidence_id = data.transaction_evidence_id
     if "remark" in data.model_fields_set:
         item.remark = (data.remark or "").strip() or None
     if "thumbnails" in data.model_fields_set:

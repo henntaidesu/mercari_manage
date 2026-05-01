@@ -25,10 +25,34 @@
         </el-col>
         <el-col :xs="24" :md="8" class="search-actions">
           <el-button type="success" :icon="RefreshRight" disabled>更新数据</el-button>
-          <el-button type="primary" @click="openCreate">新增订单</el-button>
         </el-col>
       </el-row>
     </el-card>
+
+    <div class="stats-section" v-loading="statsLoading">
+      <div class="stats-cards-grid">
+        <el-card shadow="hover" class="stat-tile stat-tile--count">
+          <div class="stat-tile__label">笔数</div>
+          <div class="stat-tile__value">{{ stats.total_count }}</div>
+        </el-card>
+        <el-card shadow="hover" class="stat-tile stat-tile--amount">
+          <div class="stat-tile__label">金额</div>
+          <div class="stat-tile__value">{{ Math.round(stats.sum_amount) }}</div>
+        </el-card>
+        <el-card shadow="hover" class="stat-tile stat-tile--fee">
+          <div class="stat-tile__label">手续费</div>
+          <div class="stat-tile__value">{{ Math.round(stats.sum_service_fee) }}</div>
+        </el-card>
+        <el-card shadow="hover" class="stat-tile stat-tile--fee">
+          <div class="stat-tile__label">快递费</div>
+          <div class="stat-tile__value">{{ Math.round(stats.sum_shipping_fee) }}</div>
+        </el-card>
+        <el-card shadow="hover" class="stat-tile stat-tile--net">
+          <div class="stat-tile__label">净收益</div>
+          <div class="stat-tile__value">{{ Math.round(stats.sum_net_income) }}</div>
+        </el-card>
+      </div>
+    </div>
 
     <el-card shadow="never" class="table-card">
       <el-table :data="list" v-loading="loading" stripe>
@@ -119,7 +143,7 @@
 
     <el-dialog
       v-model="dialogVisible"
-      :title="form.id ? '编辑订单' : '新增订单'"
+      title="编辑订单"
       width="680px"
       destroy-on-close
       class="order-edit-dialog"
@@ -198,6 +222,15 @@
         <el-form-item label="快递单号">
           <el-input v-model="form.tracking_no" clearable placeholder="tracking_no" />
         </el-form-item>
+        <el-form-item label="取引凭证 ID">
+          <el-input-number
+            v-model="form.transaction_evidence_id"
+            :precision="0"
+            :controls="false"
+            style="width: 100%"
+            placeholder="transaction_evidence.id（煤炉）"
+          />
+        </el-form-item>
         <el-form-item label="商品名称">
           <el-input v-model="form.remark" type="textarea" :rows="3" maxlength="2000" show-word-limit />
         </el-form-item>
@@ -270,7 +303,15 @@ import { RefreshRight, InfoFilled } from '@element-plus/icons-vue'
 import { orderApi, mercariApi, meiluAccountApi } from '@/api/index.js'
 
 const loading = ref(false)
+const statsLoading = ref(false)
 const submitting = ref(false)
+const stats = ref({
+  total_count: 0,
+  sum_amount: 0,
+  sum_service_fee: 0,
+  sum_shipping_fee: 0,
+  sum_net_income: 0,
+})
 const list = ref([])
 const total = ref(0)
 const page = ref(1)
@@ -355,6 +396,7 @@ async function confirmSync() {
     )
     syncDialogVisible.value = false
     load()
+    loadStats()
   } finally {
     syncLoading.value = false
   }
@@ -445,6 +487,18 @@ function numOrNull(v) {
   return Number.isNaN(n) ? null : n
 }
 
+function optionalIntFromRow(v) {
+  if (v == null || v === '') return undefined
+  const n = Number.parseInt(String(v), 10)
+  return Number.isNaN(n) ? undefined : n
+}
+
+function intOrNull(v) {
+  if (v === null || v === undefined || v === '') return null
+  const n = Number.parseInt(String(v), 10)
+  return Number.isNaN(n) ? null : n
+}
+
 function thumbnailsToFormText(row) {
   const t = row.thumbnails
   if (t == null || t === '') return ''
@@ -519,6 +573,7 @@ const createDefaultForm = () => ({
   request_class_display_name: '',
   shipping_fee: undefined,
   tracking_no: '',
+  transaction_evidence_id: undefined,
   remark: '',
   thumbnails_text: '',
 })
@@ -532,15 +587,36 @@ const rules = {
   amount: [{ required: true, message: '请输入订单金额', trigger: 'blur' }],
 }
 
-async function load() {
-  loading.value = true
-  const params = { page: page.value, page_size: pageSize.value }
+function listFilterParams() {
+  const params = {}
   if (filters.value.keyword) params.keyword = filters.value.keyword
   if (filters.value.status) params.status = filters.value.status
   if (dateRange.value?.length === 2) {
     params.start_date = dateRange.value[0]
     params.end_date = dateRange.value[1]
   }
+  return params
+}
+
+async function loadStats() {
+  statsLoading.value = true
+  try {
+    const res = await orderApi.stats(listFilterParams())
+    stats.value = {
+      total_count: res.total_count ?? 0,
+      sum_amount: res.sum_amount ?? 0,
+      sum_service_fee: res.sum_service_fee ?? 0,
+      sum_shipping_fee: res.sum_shipping_fee ?? 0,
+      sum_net_income: res.sum_net_income ?? 0,
+    }
+  } finally {
+    statsLoading.value = false
+  }
+}
+
+async function load() {
+  loading.value = true
+  const params = { page: page.value, page_size: pageSize.value, ...listFilterParams() }
   const res = await orderApi.list(params).finally(() => {
     loading.value = false
   })
@@ -551,6 +627,7 @@ async function load() {
 function onFilterChange() {
   page.value = 1
   load()
+  loadStats()
 }
 
 function resetFilters() {
@@ -558,11 +635,7 @@ function resetFilters() {
   dateRange.value = []
   page.value = 1
   load()
-}
-
-function openCreate() {
-  form.value = createDefaultForm()
-  dialogVisible.value = true
+  loadStats()
 }
 
 function openEdit(row) {
@@ -580,6 +653,7 @@ function openEdit(row) {
     request_class_display_name: row.request_class_display_name || '',
     shipping_fee: optionalNumFromRow(row.shipping_fee),
     tracking_no: row.tracking_no || '',
+    transaction_evidence_id: optionalIntFromRow(row.transaction_evidence_id),
     remark: row.remark || '',
     thumbnails_text: thumbnailsToFormText(row),
   }
@@ -588,6 +662,10 @@ function openEdit(row) {
 
 async function submit() {
   await formRef.value?.validate()
+  if (!form.value.id) {
+    ElMessage.warning('未选择订单')
+    return
+  }
   submitting.value = true
   const payload = {
     order_no: String(form.value.order_no || '').trim(),
@@ -602,19 +680,16 @@ async function submit() {
     request_class_display_name: String(form.value.request_class_display_name || '').trim() || null,
     shipping_fee: numOrNull(form.value.shipping_fee),
     tracking_no: String(form.value.tracking_no || '').trim() || null,
+    transaction_evidence_id: intOrNull(form.value.transaction_evidence_id),
     remark: String(form.value.remark || '').trim() || null,
     thumbnails: parseThumbnailsPayload(form.value.thumbnails_text),
   }
   try {
-    if (form.value.id) {
-      await orderApi.update(form.value.id, payload)
-      ElMessage.success('更新成功')
-    } else {
-      await orderApi.create(payload)
-      ElMessage.success('新增成功')
-    }
+    await orderApi.update(form.value.id, payload)
+    ElMessage.success('更新成功')
     dialogVisible.value = false
     load()
+    loadStats()
   } finally {
     submitting.value = false
   }
@@ -625,6 +700,7 @@ async function remove(id) {
   ElMessage.success('删除成功')
   if (list.value.length === 1 && page.value > 1) page.value -= 1
   load()
+  loadStats()
 }
 
 async function removeFromDialog() {
@@ -636,6 +712,7 @@ async function removeFromDialog() {
 
 onMounted(() => {
   load()
+  loadStats()
 })
 </script>
 
@@ -643,6 +720,57 @@ onMounted(() => {
 .search-card {
   margin-bottom: 16px;
   border-radius: 8px;
+}
+.stats-section {
+  margin-bottom: 16px;
+  min-height: 48px;
+}
+.stats-cards-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(148px, 1fr));
+  gap: 14px;
+}
+.stat-tile {
+  border-radius: 10px;
+  border: 1px solid var(--el-border-color-lighter);
+  transition: transform 0.15s ease, box-shadow 0.15s ease;
+}
+.stat-tile:hover {
+  transform: translateY(-2px);
+}
+.stat-tile :deep(.el-card__body) {
+  padding: 16px 18px;
+}
+.stat-tile__label {
+  font-size: 13px;
+  color: #909399;
+  margin-bottom: 8px;
+  letter-spacing: 0.02em;
+}
+.stat-tile__value {
+  font-size: 22px;
+  font-weight: 700;
+  line-height: 1.2;
+  font-variant-numeric: tabular-nums;
+}
+.stat-tile--count .stat-tile__value {
+  color: #409eff;
+}
+.stat-tile--amount .stat-tile__value {
+  color: #303133;
+}
+.stat-tile--fee .stat-tile__value {
+  color: #f56c6c;
+}
+.stat-tile--net {
+  background: linear-gradient(145deg, #529b2e 0%, #3d7a24 100%);
+  border-color: rgba(82, 155, 46, 0.45);
+}
+.stat-tile--net .stat-tile__label {
+  color: rgba(255, 255, 255, 0.88);
+}
+.stat-tile--net .stat-tile__value {
+  color: #ffffff;
 }
 .search-row {
   justify-content: space-between;

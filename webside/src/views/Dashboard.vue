@@ -1,19 +1,54 @@
 <template>
   <div class="dashboard">
-    <!-- 统计卡片 -->
-    <el-row :gutter="16" class="stat-row">
-      <el-col :xs="12" :sm="12" :md="8" :lg="4" v-for="card in statCards" :key="card.label">
-        <div class="stat-card" :style="{ borderTopColor: card.color }">
-          <div class="stat-icon" :style="{ background: card.color + '20', color: card.color }">
-            <el-icon size="22"><component :is="card.icon" /></el-icon>
-          </div>
-          <div class="stat-info">
-            <div class="stat-value">{{ summary[card.key] ?? '-' }}</div>
-            <div class="stat-label">{{ card.label }}</div>
-          </div>
+    <!-- 库存管理统计 -->
+    <el-card class="section-card inventory-stats-wrap" shadow="never">
+      <template #header>
+        <div class="card-header">
+          <el-icon color="#409EFF"><Goods /></el-icon>
+          <span>库存管理</span>
         </div>
-      </el-col>
-    </el-row>
+      </template>
+      <el-row :gutter="16" class="stat-row inventory-stat-row">
+        <el-col :xs="12" :sm="12" :md="8" :lg="4" v-for="card in statCards" :key="card.label">
+          <div class="stat-card" :style="{ borderTopColor: card.color }">
+            <div class="stat-icon" :style="{ background: card.color + '20', color: card.color }">
+              <el-icon size="22"><component :is="card.icon" /></el-icon>
+            </div>
+            <div class="stat-info">
+              <div class="stat-value">{{ summary[card.key] ?? '-' }}</div>
+              <div class="stat-label">{{ card.label }}</div>
+            </div>
+          </div>
+        </el-col>
+      </el-row>
+    </el-card>
+
+    <!-- 订单汇总：近 30 天（按 order_date，与 /orders/stats 相同接口） -->
+    <el-card class="section-card order-stats-wrap" shadow="never" v-loading="orderStatsLoading">
+      <template #header>
+        <div class="card-header">
+          <el-icon color="#67C23A"><Tickets /></el-icon>
+          <span>订单统计（近30天）</span>
+        </div>
+      </template>
+      <el-row :gutter="16" class="stat-row order-stat-row">
+        <el-col :xs="12" :sm="12" :md="8" :lg="4" v-for="card in orderStatCards" :key="card.label">
+          <div
+            class="stat-card order-stat-card"
+            :class="card.cardClass"
+            :style="{ borderTopColor: card.color }"
+          >
+            <div class="stat-icon" :style="{ background: card.color + '20', color: card.color }">
+              <el-icon size="22"><component :is="card.icon" /></el-icon>
+            </div>
+            <div class="stat-info">
+              <div class="stat-value" :class="card.valueClass">{{ card.display }}</div>
+              <div class="stat-label">{{ card.label }}</div>
+            </div>
+          </div>
+        </el-col>
+      </el-row>
+    </el-card>
 
     <!-- 最近交易 -->
     <el-card class="section-card" shadow="never">
@@ -42,11 +77,19 @@
 </template>
 
 <script setup>
-import { ref, onMounted } from 'vue'
-import { inventoryApi, transactionApi } from '@/api/index.js'
+import { ref, computed, onMounted } from 'vue'
+import { inventoryApi, transactionApi, orderApi } from '@/api/index.js'
 
 const summary = ref({})
 const recentTx = ref([])
+const orderStatsLoading = ref(false)
+const orderStats = ref({
+  total_count: 0,
+  sum_amount: 0,
+  sum_service_fee: 0,
+  sum_shipping_fee: 0,
+  sum_net_income: 0,
+})
 
 const statCards = [
   { key: 'total_inventory', label: '库存条目', icon: 'Goods', color: '#409EFF' },
@@ -55,11 +98,94 @@ const statCards = [
   { key: 'today_out', label: '今日出库', icon: 'Bottom', color: '#F56C6C' }
 ]
 
+/** 本地日历日 YYYY-MM-DD */
+function formatLocalYmd(d) {
+  const pad = (n) => String(n).padStart(2, '0')
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`
+}
+
+/**
+ * 滚动自然日区间（含首尾共 dayCount 天），用于与订单列表相同的 start_date / end_date 筛选。
+ */
+function rollingLocalDayRange(dayCount) {
+  const end = new Date()
+  const start = new Date(end)
+  start.setDate(start.getDate() - (dayCount - 1))
+  return {
+    start_date: formatLocalYmd(start),
+    end_date: formatLocalYmd(end),
+  }
+}
+
+const orderStatCards = computed(() => {
+  const o = orderStats.value
+  return [
+    {
+      label: '订单笔数',
+      display: o.total_count ?? 0,
+      icon: 'Document',
+      color: '#409EFF',
+      cardClass: '',
+      valueClass: '',
+    },
+    {
+      label: '金额合计',
+      display: Math.round(Number(o.sum_amount || 0)),
+      icon: 'Money',
+      color: '#E6A23C',
+      cardClass: '',
+      valueClass: '',
+    },
+    {
+      label: '手续费合计',
+      display: Math.round(Number(o.sum_service_fee || 0)),
+      icon: 'Histogram',
+      color: '#F56C6C',
+      cardClass: '',
+      valueClass: '',
+    },
+    {
+      label: '快递费合计',
+      display: Math.round(Number(o.sum_shipping_fee || 0)),
+      icon: 'Box',
+      color: '#F56C6C',
+      cardClass: '',
+      valueClass: '',
+    },
+    {
+      label: '净收益合计',
+      display: Math.round(Number(o.sum_net_income || 0)),
+      icon: 'TrendCharts',
+      color: '#67C23A',
+      cardClass: '',
+      valueClass: '',
+    },
+  ]
+})
+
+async function loadOrderStats() {
+  orderStatsLoading.value = true
+  try {
+    const range = rollingLocalDayRange(30)
+    const res = await orderApi.stats(range)
+    orderStats.value = {
+      total_count: res.total_count ?? 0,
+      sum_amount: res.sum_amount ?? 0,
+      sum_service_fee: res.sum_service_fee ?? 0,
+      sum_shipping_fee: res.sum_shipping_fee ?? 0,
+      sum_net_income: res.sum_net_income ?? 0,
+    }
+  } finally {
+    orderStatsLoading.value = false
+  }
+}
+
 async function load() {
   const [inventoryItems, tx] = await Promise.all([
     inventoryApi.list(),
-    transactionApi.list({ page_size: 10 })
+    transactionApi.list({ page_size: 10 }),
   ])
+  await loadOrderStats()
   const totalQuantity = inventoryItems.reduce((sum, p) => sum + (p.quantity || 0), 0)
   summary.value = {
     total_inventory: inventoryItems.length,
@@ -74,7 +200,7 @@ onMounted(load)
 </script>
 
 <style scoped>
-.dashboard { max-width: 1400px; }
+.dashboard { max-width: none; width: auto; }
 .stat-row { margin-bottom: 20px; }
 .stat-row .el-col { margin-bottom: 16px; }
 .stat-card {
@@ -100,5 +226,8 @@ onMounted(load)
 .stat-value { font-size: 22px; font-weight: 700; color: #ecf2ff; }
 .stat-label { font-size: 12px; color: #9ba8bf; margin-top: 2px; }
 .section-card { margin-bottom: 20px; border-radius: 8px; }
+.inventory-stats-wrap,
+.order-stats-wrap { margin-bottom: 20px; }
+.inventory-stat-row { margin-bottom: 0; }
 .card-header { display: flex; align-items: center; gap: 8px; font-weight: 600; }
 </style>

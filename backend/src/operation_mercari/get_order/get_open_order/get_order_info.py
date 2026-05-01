@@ -1,8 +1,10 @@
 # -*- coding: utf-8 -*-
 """
 Mercari 单条商品/订单详情 items/get，回填 orders 扩展字段：
-  service_fee、net_income、carrier_display_name、request_class_display_name、
-  shipping_fee（shipping_class.fee）、tracking_no（transaction_evidence 等）。
+  service_fee、carrier_display_name、request_class_display_name、
+  shipping_fee（shipping_class.fee）、tracking_no、transaction_evidence_id（transaction_evidence.id）。
+  net_income：仅当 shipping_class.fee（快递费）存在且 >0 时计算为
+  售价 price − 销售手续费 sales_fee.fee − 快递费；快递费为 0 或缺失时不写入净收益（置 None）。
 在 list 同步每条写入后调用 apply_item_info_to_order。
 """
 
@@ -106,10 +108,6 @@ def extract_order_info_fields(response: Dict[str, Any]) -> Dict[str, Any]:
         except (TypeError, ValueError):
             fee_f = None
 
-    net_income: Optional[float] = None
-    if fee_f is not None:
-        net_income = price - fee_f
-
     sc = d.get("shipping_class") or {}
 
     carrier_raw = (sc.get("carrier_display_name") or "").strip()
@@ -126,8 +124,21 @@ def extract_order_info_fields(response: Dict[str, Any]) -> Dict[str, Any]:
         except (TypeError, ValueError):
             shipping_fee = None
 
+    # 净收益 = 金额 − 手续费 − 快递费；快递费为 0 或缺失时不计算（None）
+    net_income: Optional[float] = None
+    if shipping_fee is not None and shipping_fee > 0:
+        svc = float(fee_f) if fee_f is not None else 0.0
+        net_income = price - svc - float(shipping_fee)
+
     te = d.get("transaction_evidence") or {}
     tracking_no = _tracking_no_from_evidence(te, d)
+
+    transaction_evidence_id: Optional[int] = None
+    if isinstance(te, dict) and te.get("id") is not None:
+        try:
+            transaction_evidence_id = int(te["id"])
+        except (TypeError, ValueError):
+            transaction_evidence_id = None
 
     return {
         "service_fee": fee_f,
@@ -136,6 +147,7 @@ def extract_order_info_fields(response: Dict[str, Any]) -> Dict[str, Any]:
         "request_class_display_name": request_class_display_name,
         "shipping_fee": shipping_fee,
         "tracking_no": tracking_no,
+        "transaction_evidence_id": transaction_evidence_id,
     }
 
 
@@ -164,7 +176,7 @@ def apply_item_info_to_order(item_id: str, account_id: Optional[int] = None) -> 
     o = rows[0]
     if fields.get("service_fee") is not None:
         o.service_fee = fields["service_fee"]
-    if fields.get("net_income") is not None:
+    if "net_income" in fields:
         o.net_income = fields["net_income"]
     if fields.get("carrier_display_name"):
         o.carrier_display_name = fields["carrier_display_name"]
@@ -174,6 +186,8 @@ def apply_item_info_to_order(item_id: str, account_id: Optional[int] = None) -> 
         o.shipping_fee = fields["shipping_fee"]
     if fields.get("tracking_no"):
         o.tracking_no = fields["tracking_no"]
+    if "transaction_evidence_id" in fields:
+        o.transaction_evidence_id = fields["transaction_evidence_id"]
 
     if not o.save():
         return "save_failed"

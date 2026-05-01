@@ -92,6 +92,7 @@ export const costRecordApi = {
 // 订单管理
 export const orderApi = {
   list: (params) => http.get('/orders', { params }),
+  stats: (params) => http.get('/orders/stats', { params }),
   create: (data) => http.post('/orders', data),
   update: (id, data) => http.put(`/orders/${id}`, data),
   remove: (id) => http.delete(`/orders/${id}`)
