@@ -89,16 +89,35 @@ def order_stats(
     status: Optional[str] = None,
     start_date: Optional[str] = None,
     end_date: Optional[str] = None,
+    today_date: Optional[str] = None,
 ):
-    """当前筛选条件下的全表汇总（金额、手续费、快递费、净收益及行数），不受分页影响。"""
+    """当前筛选条件下的全表汇总（金额、手续费、快递费、净收益及行数），不受分页影响。
+
+    可选 today_date（YYYY-MM-DD，建议传浏览器本地「今天」）：在相同 keyword、status 下，
+    仅按 order_date 落在该自然日的订单再汇总一笔「今日新增」，不受 start_date/end_date 影响。
+    """
     if status:
         _validate_status(status)
-    return OrderModel.aggregate_sums(
+    out = OrderModel.aggregate_sums(
         keyword=keyword,
         status=status,
         start_date=start_date,
         end_date=end_date,
     )
+    td = (today_date or "").strip()
+    if td:
+        t = OrderModel.aggregate_sums(
+            keyword=keyword,
+            status=status,
+            start_date=td,
+            end_date=td,
+        )
+        out["today_total_count"] = t["total_count"]
+        out["today_sum_amount"] = t["sum_amount"]
+        out["today_sum_service_fee"] = t["sum_service_fee"]
+        out["today_sum_shipping_fee"] = t["sum_shipping_fee"]
+        out["today_sum_net_income"] = t["sum_net_income"]
+    return out
 
 
 @router.get("")

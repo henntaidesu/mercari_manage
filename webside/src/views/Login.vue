@@ -4,7 +4,7 @@
       <template #header>
         <div class="title-wrap">
           <el-icon size="26"><UserFilled /></el-icon>
-          <span>mercari 物品管理登录</span>
+          <span>mercari 订单管理登录</span>
         </div>
       </template>
 
@@ -83,7 +83,7 @@ const handleLogin = async () => {
   gap: 8px;
   font-size: 18px;
   font-weight: 600;
-  color: #e6edf7;
+  color: #b8c4d0;
 }
 
 .tip {

@@ -16,7 +16,7 @@ from src.routes.orders import router as orders_router
 from src.routes.meilu_accounts import router as meilu_accounts_router
 from src.operation_mercari.API import router as mercari_router
 
-app = FastAPI(title="mercari 物品管理", version="1.0.0")
+app = FastAPI(title="mercari 订单管理", version="1.0.0")
 
 app.add_middleware(
     CORSMiddleware,
@@ -50,4 +50,4 @@ def startup():
 
 @app.get("/api/health")
 def health():
-    return {"status": "ok", "message": "mercari 物品管理运行中"}
+    return {"status": "ok", "message": "mercari 订单管理运行中"}

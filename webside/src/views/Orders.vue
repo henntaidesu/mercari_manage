@@ -41,7 +41,10 @@
               <el-icon size="22"><component :is="card.icon" /></el-icon>
             </div>
             <div class="stat-info">
-              <div class="stat-value" :class="card.valueClass">{{ card.display }}</div>
+              <div class="stat-value-row">
+                <span class="stat-value" :class="card.valueClass">{{ card.display }}</span>
+                <span class="stat-today">（今日新增 {{ card.todayDisplay }}）</span>
+              </div>
               <div class="stat-label">{{ card.label }}</div>
             </div>
           </div>
@@ -306,15 +309,26 @@ const stats = ref({
   sum_service_fee: 0,
   sum_shipping_fee: 0,
   sum_net_income: 0,
+  today_total_count: 0,
+  today_sum_amount: 0,
+  today_sum_service_fee: 0,
+  today_sum_shipping_fee: 0,
+  today_sum_net_income: 0,
 })
 
-/** 与控制台「订单统计」卡片一致（布局与样式）；数值仍对应当前列表筛选条件 */
+function formatLocalYmd(d) {
+  const pad = (n) => String(n).padStart(2, '0')
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`
+}
+
+/** 与控制台「订单统计」卡片一致（布局与样式）；主数值对应当前列表筛选；今日新增为本地当日 + 相同 keyword/status */
 const orderStatCards = computed(() => {
   const o = stats.value
   return [
     {
       label: '订单笔数',
       display: o.total_count ?? 0,
+      todayDisplay: o.today_total_count ?? 0,
       icon: 'Document',
       color: '#409EFF',
       cardClass: '',
@@ -323,6 +337,7 @@ const orderStatCards = computed(() => {
     {
       label: '金额合计',
       display: Math.round(Number(o.sum_amount || 0)),
+      todayDisplay: Math.round(Number(o.today_sum_amount || 0)),
       icon: 'Money',
       color: '#E6A23C',
       cardClass: '',
@@ -331,6 +346,7 @@ const orderStatCards = computed(() => {
     {
       label: '手续费合计',
       display: Math.round(Number(o.sum_service_fee || 0)),
+      todayDisplay: Math.round(Number(o.today_sum_service_fee || 0)),
       icon: 'Histogram',
       color: '#F56C6C',
       cardClass: '',
@@ -339,6 +355,7 @@ const orderStatCards = computed(() => {
     {
       label: '快递费合计',
       display: Math.round(Number(o.sum_shipping_fee || 0)),
+      todayDisplay: Math.round(Number(o.today_sum_shipping_fee || 0)),
       icon: 'Box',
       color: '#F56C6C',
       cardClass: '',
@@ -347,6 +364,7 @@ const orderStatCards = computed(() => {
     {
       label: '净收益合计',
       display: Math.round(Number(o.sum_net_income || 0)),
+      todayDisplay: Math.round(Number(o.today_sum_net_income || 0)),
       icon: 'TrendCharts',
       color: '#67C23A',
       cardClass: '',
@@ -644,13 +662,21 @@ function listFilterParams() {
 async function loadStats() {
   statsLoading.value = true
   try {
-    const res = await orderApi.stats(listFilterParams())
+    const res = await orderApi.stats({
+      ...listFilterParams(),
+      today_date: formatLocalYmd(new Date()),
+    })
     stats.value = {
       total_count: res.total_count ?? 0,
       sum_amount: res.sum_amount ?? 0,
       sum_service_fee: res.sum_service_fee ?? 0,
       sum_shipping_fee: res.sum_shipping_fee ?? 0,
       sum_net_income: res.sum_net_income ?? 0,
+      today_total_count: res.today_total_count ?? 0,
+      today_sum_amount: res.today_sum_amount ?? 0,
+      today_sum_service_fee: res.today_sum_service_fee ?? 0,
+      today_sum_shipping_fee: res.today_sum_shipping_fee ?? 0,
+      today_sum_net_income: res.today_sum_net_income ?? 0,
     }
   } finally {
     statsLoading.value = false
@@ -800,15 +826,28 @@ onMounted(() => {
   justify-content: center;
   flex-shrink: 0;
 }
+.stat-value-row {
+  display: flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: 2px;
+  line-height: 1.25;
+}
 .stat-value {
   font-size: 22px;
   font-weight: 700;
   color: #ecf2ff;
 }
+.stat-today {
+  font-size: 13px;
+  color: #7dd87a;
+  font-weight: 500;
+  white-space: nowrap;
+}
 .stat-label {
   font-size: 12px;
   color: #9ba8bf;
-  margin-top: 2px;
+  margin-top: 4px;
 }
 .search-row {
   justify-content: space-between;
