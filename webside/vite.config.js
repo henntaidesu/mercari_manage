@@ -15,11 +15,11 @@ export default defineConfig({
     allowedHosts: ['nas.makurochan.com'],
     proxy: {
       '/api': {
-        target: 'http://localhost:8000',
+        target: 'http://localhost:9601',
         changeOrigin: true
       },
       '/imges': {
-        target: 'http://localhost:8000',
+        target: 'http://localhost:9601',
         changeOrigin: true
       }
     }

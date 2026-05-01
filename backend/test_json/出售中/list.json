@@ -1,0 +1,457 @@
+{
+    "result": "OK",
+    "meta": {
+        "has_next": false,
+        "total_item_count": 8
+    },
+    "data": [
+        {
+            "id": "m12550594804",
+            "seller": {
+                "id": 908563766,
+                "name": "dont-use-this"
+            },
+            "buyer": {
+                "id": 707149675,
+                "name": "dont-use-this"
+            },
+            "status": "trading",
+            "name": "なまみちょす様 リクエスト 2点 まとめ商品",
+            "price": 4600,
+            "thumbnails": [
+                "https://static.mercdn.net/thumb/item/jpeg/m12550594804_1.jpg?1777643193"
+            ],
+            "root_category_id": 0,
+            "num_likes": 0,
+            "num_comments": 0,
+            "created": 1777643193,
+            "updated": 1777645054,
+            "item_category": null,
+            "item_category_ntiers": {
+                "id": 1108,
+                "name": "まとめ売り",
+                "parent_category_id": 113,
+                "parent_category_name": "キッチン・日用品・その他",
+                "root_category_id": 113,
+                "root_category_name": "キッチン・日用品・その他"
+            },
+            "parent_categories_ntiers": [
+                {
+                    "id": 113,
+                    "name": "キッチン・日用品・その他"
+                }
+            ],
+            "shipping_from_area": {
+                "id": 13,
+                "name": "東京都"
+            },
+            "shipping_method_id": 14,
+            "pager_id": 5753401145,
+            "liked": false,
+            "item_pv": 0,
+            "recent_item_pv": 0,
+            "transaction_evidence": {
+                "status": "wait_shipping"
+            },
+            "is_no_price": false,
+            "impression_boost_state": {
+                "status": "inactive"
+            }
+        },
+        {
+            "id": "m53567720200",
+            "seller": {
+                "id": 908563766,
+                "name": "dont-use-this"
+            },
+            "buyer": {
+                "id": 660197557,
+                "name": "dont-use-this"
+            },
+            "status": "trading",
+            "name": "鳴潮 エイメス アクリルスタンド 深空イメージ",
+            "price": 2399,
+            "thumbnails": [
+                "https://static.mercdn.net/thumb/item/jpeg/m53567720200_1.jpg?1777624928"
+            ],
+            "root_category_id": 0,
+            "num_likes": 0,
+            "num_comments": 0,
+            "created": 1777624928,
+            "updated": 1777627014,
+            "item_category": null,
+            "item_category_ntiers": {
+                "id": 7339,
+                "name": "アクリルスタンド",
+                "parent_category_id": 745,
+                "parent_category_name": "キャラクターグッズ",
+                "root_category_id": 1328,
+                "root_category_name": "ゲーム・おもちゃ・グッズ"
+            },
+            "parent_categories_ntiers": [
+                {
+                    "id": 1328,
+                    "name": "ゲーム・おもちゃ・グッズ"
+                },
+                {
+                    "id": 745,
+                    "name": "キャラクターグッズ"
+                }
+            ],
+            "shipping_from_area": {
+                "id": 13,
+                "name": "東京都"
+            },
+            "shipping_method_id": 17,
+            "pager_id": 5753347025,
+            "liked": false,
+            "item_pv": 0,
+            "recent_item_pv": 0,
+            "transaction_evidence": {
+                "status": "wait_review"
+            },
+            "is_no_price": false,
+            "impression_boost_state": {
+                "status": "inactive"
+            }
+        },
+        {
+            "id": "m30961123076",
+            "seller": {
+                "id": 908563766,
+                "name": "dont-use-this"
+            },
+            "buyer": {
+                "id": 996449386,
+                "name": "dont-use-this"
+            },
+            "status": "trading",
+            "name": "鳴潮 エイメス アクリルスタンド 深空イメージ",
+            "price": 2399,
+            "thumbnails": [
+                "https://static.mercdn.net/thumb/item/jpeg/m30961123076_1.jpg?1777469318"
+            ],
+            "root_category_id": 0,
+            "num_likes": 0,
+            "num_comments": 0,
+            "created": 1777469318,
+            "updated": 1777623689,
+            "item_category": null,
+            "item_category_ntiers": {
+                "id": 7339,
+                "name": "アクリルスタンド",
+                "parent_category_id": 745,
+                "parent_category_name": "キャラクターグッズ",
+                "root_category_id": 1328,
+                "root_category_name": "ゲーム・おもちゃ・グッズ"
+            },
+            "parent_categories_ntiers": [
+                {
+                    "id": 1328,
+                    "name": "ゲーム・おもちゃ・グッズ"
+                },
+                {
+                    "id": 745,
+                    "name": "キャラクターグッズ"
+                }
+            ],
+            "shipping_from_area": {
+                "id": 13,
+                "name": "東京都"
+            },
+            "shipping_method_id": 17,
+            "pager_id": 5753337050,
+            "liked": false,
+            "item_pv": 0,
+            "recent_item_pv": 0,
+            "transaction_evidence": {
+                "status": "wait_payment"
+            },
+            "is_no_price": false,
+            "impression_boost_state": {
+                "status": "inactive"
+            }
+        },
+        {
+            "id": "m91528452089",
+            "seller": {
+                "id": 908563766,
+                "name": "dont-use-this"
+            },
+            "buyer": {
+                "id": 116179863,
+                "name": "dont-use-this"
+            },
+            "status": "trading",
+            "name": "【特典付き/即購入OK】ねんどろいど　レイ　恋と深空",
+            "price": 7899,
+            "thumbnails": [
+                "https://static.mercdn.net/thumb/item/jpeg/m91528452089_1.jpg?1777474521"
+            ],
+            "root_category_id": 0,
+            "num_likes": 0,
+            "num_comments": 0,
+            "created": 1777474521,
+            "updated": 1777620331,
+            "item_category": null,
+            "item_category_ntiers": {
+                "id": 10869,
+                "name": "ぬいぐるみ・マスコット",
+                "parent_category_id": 745,
+                "parent_category_name": "キャラクターグッズ",
+                "root_category_id": 1328,
+                "root_category_name": "ゲーム・おもちゃ・グッズ"
+            },
+            "parent_categories_ntiers": [
+                {
+                    "id": 1328,
+                    "name": "ゲーム・おもちゃ・グッズ"
+                },
+                {
+                    "id": 745,
+                    "name": "キャラクターグッズ"
+                }
+            ],
+            "shipping_from_area": {
+                "id": 13,
+                "name": "東京都"
+            },
+            "shipping_method_id": 17,
+            "pager_id": 5753326976,
+            "liked": false,
+            "item_pv": 0,
+            "recent_item_pv": 0,
+            "transaction_evidence": {
+                "status": "wait_review"
+            },
+            "is_no_price": false,
+            "impression_boost_state": {
+                "status": "inactive"
+            }
+        },
+        {
+            "id": "m44224701585",
+            "seller": {
+                "id": 908563766,
+                "name": "dont-use-this"
+            },
+            "buyer": {
+                "id": 344677060,
+                "name": "dont-use-this"
+            },
+            "status": "trading",
+            "name": "nekosan様 リクエスト 3点 まとめ商品",
+            "price": 6420,
+            "thumbnails": [
+                "https://static.mercdn.net/thumb/item/jpeg/m44224701585_1.jpg?1777568539"
+            ],
+            "root_category_id": 0,
+            "num_likes": 0,
+            "num_comments": 0,
+            "created": 1777568539,
+            "updated": 1777618875,
+            "item_category": null,
+            "item_category_ntiers": {
+                "id": 1108,
+                "name": "まとめ売り",
+                "parent_category_id": 113,
+                "parent_category_name": "キッチン・日用品・その他",
+                "root_category_id": 113,
+                "root_category_name": "キッチン・日用品・その他"
+            },
+            "parent_categories_ntiers": [
+                {
+                    "id": 113,
+                    "name": "キッチン・日用品・その他"
+                }
+            ],
+            "shipping_from_area": {
+                "id": 13,
+                "name": "東京都"
+            },
+            "shipping_method_id": 14,
+            "pager_id": 5753322608,
+            "liked": false,
+            "item_pv": 0,
+            "recent_item_pv": 0,
+            "transaction_evidence": {
+                "status": "wait_review"
+            },
+            "is_no_price": false,
+            "impression_boost_state": {
+                "status": "inactive"
+            }
+        },
+        {
+            "id": "m80996203149",
+            "seller": {
+                "id": 908563766,
+                "name": "dont-use-this"
+            },
+            "buyer": {
+                "id": 688208025,
+                "name": "dont-use-this"
+            },
+            "status": "trading",
+            "name": "鳴潮 リューク・ヘルセン アクリルスタンド 深空イメージ",
+            "price": 2222,
+            "thumbnails": [
+                "https://static.mercdn.net/thumb/item/jpeg/m80996203149_1.jpg?1777389361"
+            ],
+            "root_category_id": 0,
+            "num_likes": 0,
+            "num_comments": 0,
+            "created": 1777389361,
+            "updated": 1777618054,
+            "item_category": null,
+            "item_category_ntiers": {
+                "id": 7339,
+                "name": "アクリルスタンド",
+                "parent_category_id": 745,
+                "parent_category_name": "キャラクターグッズ",
+                "root_category_id": 1328,
+                "root_category_name": "ゲーム・おもちゃ・グッズ"
+            },
+            "parent_categories_ntiers": [
+                {
+                    "id": 1328,
+                    "name": "ゲーム・おもちゃ・グッズ"
+                },
+                {
+                    "id": 745,
+                    "name": "キャラクターグッズ"
+                }
+            ],
+            "shipping_from_area": {
+                "id": 13,
+                "name": "東京都"
+            },
+            "shipping_method_id": 17,
+            "pager_id": 5753320145,
+            "liked": false,
+            "item_pv": 0,
+            "recent_item_pv": 0,
+            "transaction_evidence": {
+                "status": "wait_review"
+            },
+            "is_no_price": false,
+            "impression_boost_state": {
+                "status": "inactive"
+            }
+        },
+        {
+            "id": "m54223346844",
+            "seller": {
+                "id": 908563766,
+                "name": "dont-use-this"
+            },
+            "buyer": {
+                "id": 963374766,
+                "name": "dont-use-this"
+            },
+            "status": "trading",
+            "name": "鳴潮 女漂泊者 アクリルスタンド 深空イメージ",
+            "price": 2099,
+            "thumbnails": [
+                "https://static.mercdn.net/thumb/item/jpeg/m54223346844_1.jpg?1777389279"
+            ],
+            "root_category_id": 0,
+            "num_likes": 0,
+            "num_comments": 0,
+            "created": 1777389279,
+            "updated": 1777616880,
+            "item_category": null,
+            "item_category_ntiers": {
+                "id": 7339,
+                "name": "アクリルスタンド",
+                "parent_category_id": 745,
+                "parent_category_name": "キャラクターグッズ",
+                "root_category_id": 1328,
+                "root_category_name": "ゲーム・おもちゃ・グッズ"
+            },
+            "parent_categories_ntiers": [
+                {
+                    "id": 1328,
+                    "name": "ゲーム・おもちゃ・グッズ"
+                },
+                {
+                    "id": 745,
+                    "name": "キャラクターグッズ"
+                }
+            ],
+            "shipping_from_area": {
+                "id": 13,
+                "name": "東京都"
+            },
+            "shipping_method_id": 17,
+            "pager_id": 5753316623,
+            "liked": false,
+            "item_pv": 0,
+            "recent_item_pv": 0,
+            "transaction_evidence": {
+                "status": "wait_review"
+            },
+            "is_no_price": false,
+            "impression_boost_state": {
+                "status": "inactive"
+            }
+        },
+        {
+            "id": "m88468212936",
+            "seller": {
+                "id": 908563766,
+                "name": "dont-use-this"
+            },
+            "buyer": {
+                "id": 484692194,
+                "name": "dont-use-this"
+            },
+            "status": "trading",
+            "name": "鳴潮 エイメス 缶バッジ テーマアイコンシリーズ",
+            "price": 1599,
+            "thumbnails": [
+                "https://static.mercdn.net/thumb/item/jpeg/m88468212936_1.jpg?1777473267"
+            ],
+            "root_category_id": 0,
+            "num_likes": 0,
+            "num_comments": 0,
+            "created": 1777473267,
+            "updated": 1777616661,
+            "item_category": null,
+            "item_category_ntiers": {
+                "id": 975,
+                "name": "ピンズ・ピンバッジ・缶バッジ",
+                "parent_category_id": 745,
+                "parent_category_name": "キャラクターグッズ",
+                "root_category_id": 1328,
+                "root_category_name": "ゲーム・おもちゃ・グッズ"
+            },
+            "parent_categories_ntiers": [
+                {
+                    "id": 1328,
+                    "name": "ゲーム・おもちゃ・グッズ"
+                },
+                {
+                    "id": 745,
+                    "name": "キャラクターグッズ"
+                }
+            ],
+            "shipping_from_area": {
+                "id": 13,
+                "name": "東京都"
+            },
+            "shipping_method_id": 17,
+            "pager_id": 5753315966,
+            "liked": false,
+            "item_pv": 0,
+            "recent_item_pv": 0,
+            "transaction_evidence": {
+                "status": "wait_review"
+            },
+            "is_no_price": false,
+            "impression_boost_state": {
+                "status": "inactive"
+            }
+        }
+    ]
+}

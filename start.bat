@@ -13,7 +13,7 @@ echo [1/2] 激活 conda 环境 mercari 并启动后端...
 call conda activate mercari
 
 cd /d %BACKEND%
-start /b python -m uvicorn main:app --host 0.0.0.0 --port 8000
+start /b python -m uvicorn main:app --host 0.0.0.0 --port 9601
 
 timeout /t 2 /nobreak >nul
 
@@ -23,8 +23,8 @@ cd /d %WEBSIDE%
 echo.
 echo ========================================
 echo   前端地址: http://localhost:9600
-echo   后端API:  http://localhost:8000
-echo   API文档:  http://localhost:8000/docs
+echo   后端API:  http://localhost:9601
+echo   API文档:  http://localhost:9601/docs
 echo   按 Ctrl+C 停止所有服务
 echo ========================================
 echo.

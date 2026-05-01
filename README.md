@@ -59,7 +59,7 @@ mercari/
 ```powershell
 cd backend
 pip install -r requirements.txt
-python -m uvicorn main:app --reload --host 0.0.0.0 --port 8000
+python -m uvicorn main:app --reload --host 0.0.0.0 --port 9601
 ```
 
 **前端：**
@@ -72,8 +72,8 @@ npm run dev
 ## 访问地址
 
 - 前端界面：http://localhost:9600
-- 后端 API：http://localhost:8000
-- API 文档：http://localhost:8000/docs（Swagger UI）
+- 后端 API：http://localhost:9601
+- API 文档：http://localhost:9601/docs（Swagger UI）
 
 ## 移动端访问
 
