@@ -35,6 +35,11 @@ class MeiluAccountModel(BaseModel):
                 'not_null': True,
                 'default': None,
             },
+            'seller_id': {
+                'type': 'TEXT',
+                'not_null': False,
+                'default': None,
+            },
             'login_password': {
                 'type': 'TEXT',
                 'not_null': False,
@@ -107,6 +112,7 @@ class MeiluAccountModel(BaseModel):
         return [
             {'name': 'idx_meilu_accounts_name', 'columns': ['account_name']},
             {'name': 'idx_meilu_accounts_login', 'columns': ['login_id']},
+            {'name': 'idx_meilu_accounts_seller_id', 'columns': ['seller_id']},
             {'name': 'idx_meilu_accounts_status', 'columns': ['status']},
         ]
 
@@ -131,13 +137,13 @@ class MeiluAccountModel(BaseModel):
 
         total = db.execute_query(f"SELECT COUNT(*) {base_sql}", tuple(params))[0][0]
         select_sql = f"""
-            SELECT m.id, m.account_name, m.login_id, m.login_password, m.status, m.remark, m.[value], m.is_open, m.fetch_interval
+            SELECT m.id, m.account_name, m.login_id, m.seller_id, m.login_password, m.status, m.remark, m.[value], m.is_open, m.fetch_interval
             {base_sql}
             ORDER BY m.id DESC
             LIMIT ? OFFSET ?
         """
         rows = db.execute_query(select_sql, tuple(params + [page_size, (page - 1) * page_size]))
-        keys = ['id', 'account_name', 'login_id', 'login_password', 'status', 'remark', 'value', 'is_open', 'fetch_interval']
+        keys = ['id', 'account_name', 'login_id', 'seller_id', 'login_password', 'status', 'remark', 'value', 'is_open', 'fetch_interval']
         items = []
         for row in rows:
             d = dict(zip(keys, row))

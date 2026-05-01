@@ -97,6 +97,11 @@ export const orderApi = {
   remove: (id) => http.delete(`/orders/${id}`)
 }
 
+// Mercari 操作
+export const mercariApi = {
+  syncOrders: (data) => http.post('/mercari/sync-orders', data)
+}
+
 // 煤炉账号
 export const meiluAccountApi = {
   list: (params) => http.get('/meilu-accounts', { params }),

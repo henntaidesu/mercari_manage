@@ -17,6 +17,7 @@
               </el-tag>
             </div>
             <div class="card-item"><span>平台 / 版本：</span>{{ row.value?.x_platform || '-' }} / {{ row.value?.x_app_version || '-' }}</div>
+            <div class="card-item"><span>卖家ID：</span>{{ row.seller_id || '-' }}</div>
             <div class="card-item">
               <span>自动数据获取：</span>
               <template v-if="row.is_open === 1">开启 · {{ fetchIntervalLabel(row.fetch_interval) }}</template>
@@ -24,6 +25,12 @@
             </div>
             <div class="card-item"><span>备注：</span>{{ row.remark || '-' }}</div>
             <div class="card-actions">
+              <el-button
+                size="small"
+                type="success"
+                :loading="syncingIds.has(row.id)"
+                @click="fetchHistory(row)"
+              >获取历史数据</el-button>
               <el-button size="small" @click="openEdit(row)">编辑</el-button>
               <el-popconfirm title="确认删除该账号？" @confirm="remove(row.id)">
                 <template #reference>
@@ -76,6 +83,9 @@
         <el-divider content-position="left">基础信息</el-divider>
         <el-form-item label="账号名称" prop="account_name">
           <el-input v-model="form.account_name" maxlength="60" clearable />
+        </el-form-item>
+        <el-form-item label="卖家ID" prop="seller_id">
+          <el-input v-model="form.seller_id" maxlength="30" clearable placeholder="请输入 Mercari 卖家ID（纯数字）" />
         </el-form-item>
         <el-form-item label="账号状态" prop="status">
           <el-select v-model="form.status" style="width: 100%">
@@ -145,7 +155,7 @@
 import { ref, onMounted, watch, nextTick } from 'vue'
 import { Plus } from '@element-plus/icons-vue'
 import { ElMessage } from 'element-plus'
-import { meiluAccountApi } from '@/api/index.js'
+import { meiluAccountApi, mercariApi } from '@/api/index.js'
 
 /** 小写 HTTP 头名 -> 表单字段名 */
 const HEADER_TO_FORM = {
@@ -264,6 +274,7 @@ function onAutoFetchToggle() {
 const createDefaultForm = () => ({
   id: null,
   account_name: '',
+  seller_id: '',
   status: 'active',
   remark: '',
   is_open: 0,
@@ -286,6 +297,18 @@ const form = ref(createDefaultForm())
 const reqBlur = { required: true, message: '不能为空', trigger: 'blur' }
 const rules = {
   account_name: [{ required: true, message: '请输入账号名称', trigger: 'blur' }],
+  seller_id: [
+    { required: true, message: '请输入卖家ID', trigger: 'blur' },
+    {
+      validator(_rule, val, cb) {
+        const text = String(val || '').trim()
+        if (!text) return cb(new Error('请输入卖家ID'))
+        if (!/^\d+$/.test(text)) return cb(new Error('卖家ID必须为纯数字'))
+        cb()
+      },
+      trigger: 'blur',
+    },
+  ],
   status: [{ required: true, message: '请选择账号状态', trigger: 'change' }],
   is_open: [{ required: true, message: '请选择', trigger: 'change' }],
   fetch_interval: [
@@ -359,6 +382,7 @@ function openEdit(row) {
     ...createDefaultForm(),
     id: row.id,
     account_name: row.account_name || '',
+    seller_id: row.seller_id != null ? String(row.seller_id) : '',
     status: row.status || 'active',
     remark: row.remark || '',
   }
@@ -377,6 +401,7 @@ function buildPayload() {
   return {
     account_name: name,
     login_id: name,
+    seller_id: String(form.value.seller_id || '').trim() || null,
     status: form.value.status,
     remark: form.value.remark || null,
     value: buildValueFromForm(form.value),
@@ -409,6 +434,25 @@ async function remove(id) {
   ElMessage.success('删除成功')
   if (list.value.length === 1 && page.value > 1) page.value -= 1
   load()
+}
+
+// 正在同步的账号 ID 集合（用于按钮 loading 状态）
+const syncingIds = ref(new Set())
+
+async function fetchHistory(row) {
+  if (syncingIds.value.has(row.id)) return
+  syncingIds.value = new Set([...syncingIds.value, row.id])
+  try {
+    const res = await mercariApi.syncOrders({ account_id: row.id })
+    const d = res.data || {}
+    ElMessage.success(
+      `「${row.account_name}」同步完成：新增 ${d.inserted ?? 0} 条，更新 ${d.updated ?? 0} 条，共 ${d.total_item_count ?? d.total ?? 0} 条`
+    )
+  } finally {
+    const next = new Set(syncingIds.value)
+    next.delete(row.id)
+    syncingIds.value = next
+  }
 }
 
 onMounted(() => {

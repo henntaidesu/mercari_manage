@@ -1,7 +1,8 @@
 # -*- coding: utf-8 -*-
+import json
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel as PydanticModel
-from typing import Optional
+from typing import List, Optional
 from ..db_manage.models.order import OrderModel
 
 router = APIRouter(prefix="/api/orders", tags=["orders"])
@@ -9,22 +10,33 @@ router = APIRouter(prefix="/api/orders", tags=["orders"])
 ALLOWED_STATUS = {"to_pack", "to_ship", "sent", "signed", "confirmed"}
 
 
+def _encode_thumbnails(urls: Optional[List[str]]) -> Optional[str]:
+    if not urls:
+        return None
+    out = [str(u).strip() for u in urls if u is not None and str(u).strip()]
+    return json.dumps(out, ensure_ascii=False) if out else None
+
+
 class OrderCreate(PydanticModel):
     order_no: str
     order_date: str
+    order_updated_at: Optional[str] = None
     customer_name: Optional[str] = None
     status: str = "to_pack"
     amount: float
     remark: Optional[str] = None
+    thumbnails: Optional[List[str]] = None
 
 
 class OrderUpdate(PydanticModel):
     order_no: Optional[str] = None
     order_date: Optional[str] = None
+    order_updated_at: Optional[str] = None
     customer_name: Optional[str] = None
     status: Optional[str] = None
     amount: Optional[float] = None
     remark: Optional[str] = None
+    thumbnails: Optional[List[str]] = None
 
 
 def _validate_status(status: str):
@@ -66,13 +78,16 @@ def create_order(data: OrderCreate):
     _validate_status(data.status)
     if data.amount <= 0:
         raise HTTPException(status_code=400, detail="金额必须大于0")
+    ou = (data.order_updated_at or "").strip() or None
     item = OrderModel(
         order_no=order_no,
         order_date=data.order_date,
+        order_updated_at=ou,
         customer_name=(data.customer_name or "").strip() or None,
         status=data.status,
         amount=data.amount,
         remark=data.remark,
+        thumbnails=_encode_thumbnails(data.thumbnails),
     )
     if not item.save():
         raise HTTPException(status_code=400, detail="保存失败，订单号可能重复")
@@ -89,6 +104,8 @@ def update_order(oid: int, data: OrderUpdate):
         item.order_no = _normalize_order_no(data.order_no)
     if data.order_date is not None:
         item.order_date = data.order_date
+    if "order_updated_at" in data.model_fields_set:
+        item.order_updated_at = (data.order_updated_at or "").strip() or None
     if data.customer_name is not None:
         item.customer_name = data.customer_name.strip() or None
     if data.status is not None:
@@ -100,6 +117,8 @@ def update_order(oid: int, data: OrderUpdate):
         item.amount = data.amount
     if data.remark is not None:
         item.remark = data.remark
+    if "thumbnails" in data.model_fields_set:
+        item.thumbnails = _encode_thumbnails(data.thumbnails)
 
     if not item.save():
         raise HTTPException(status_code=400, detail="更新失败，订单号可能重复")

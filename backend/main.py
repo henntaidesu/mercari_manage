@@ -14,6 +14,7 @@ from src.routes.ocr import router as ocr_router
 from src.routes.cost_records import router as cost_records_router
 from src.routes.orders import router as orders_router
 from src.routes.meilu_accounts import router as meilu_accounts_router
+from src.operation_mercari.API import router as mercari_router
 
 app = FastAPI(title="mercari 物品管理", version="1.0.0")
 
@@ -38,6 +39,7 @@ app.include_router(ocr_router, dependencies=auth_required)
 app.include_router(cost_records_router, dependencies=auth_required)
 app.include_router(orders_router, dependencies=auth_required)
 app.include_router(meilu_accounts_router, dependencies=auth_required)
+app.include_router(mercari_router, dependencies=auth_required)
 app.include_router(auth_router)
 
 

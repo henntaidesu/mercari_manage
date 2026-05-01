@@ -29,6 +29,7 @@ class MeiluAccountCreate(PydanticModel):
     account_name: str
     value: Dict[str, Any]
     login_id: Optional[str] = None
+    seller_id: Optional[str] = None
     status: str = "active"
     remark: Optional[str] = None
     is_open: int = 0
@@ -38,6 +39,7 @@ class MeiluAccountCreate(PydanticModel):
 class MeiluAccountUpdate(PydanticModel):
     account_name: Optional[str] = None
     login_id: Optional[str] = None
+    seller_id: Optional[str] = None
     value: Optional[Dict[str, Any]] = None
     status: Optional[str] = None
     remark: Optional[str] = None
@@ -54,6 +56,15 @@ def _norm_required_text(value: str, field_name: str) -> str:
     text = (value or "").strip()
     if not text:
         raise HTTPException(status_code=400, detail=f"{field_name}不能为空")
+    return text
+
+
+def _norm_seller_id(value: Optional[str]) -> Optional[str]:
+    text = (value or "").strip()
+    if not text:
+        return None
+    if not text.isdigit():
+        raise HTTPException(status_code=400, detail="卖家ID必须为数字")
     return text
 
 
@@ -127,6 +138,7 @@ def create_meilu_account(data: MeiluAccountCreate):
     item = MeiluAccountModel(
         account_name=name,
         login_id=lid,
+        seller_id=_norm_seller_id(data.seller_id),
         login_password=None,
         value=json.dumps(headers, ensure_ascii=False),
         status=data.status,
@@ -149,6 +161,8 @@ def update_meilu_account(aid: int, data: MeiluAccountUpdate):
         item.account_name = _norm_required_text(data.account_name, "账号名称")
     if data.login_id is not None:
         item.login_id = (data.login_id or "").strip() or item.account_name
+    if data.seller_id is not None:
+        item.seller_id = _norm_seller_id(data.seller_id)
     if data.status is not None:
         _validate_status(data.status)
         item.status = data.status
