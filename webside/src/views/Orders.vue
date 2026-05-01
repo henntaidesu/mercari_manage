@@ -32,7 +32,7 @@
 
     <el-card shadow="never" class="table-card">
       <el-table :data="list" v-loading="loading" stripe>
-        <el-table-column label="图片" width="76" align="center">
+        <el-table-column label="图片" width="76" align="center" header-align="center">
           <template #default="{ row }">
             <el-image
               v-if="firstThumbUrl(row)"
@@ -49,37 +49,56 @@
             <span v-else class="thumb-fallback">-</span>
           </template>
         </el-table-column>
-        <el-table-column label="订单号" prop="order_no" min-width="150" />
-        <el-table-column label="创建时间" width="176" show-overflow-tooltip>
+        <el-table-column label="订单号" prop="order_no" width="150" align="center" header-align="center" />
+        <el-table-column label="商品名称" prop="remark" min-width="180" show-overflow-tooltip align="left" header-align="center" />
+        <el-table-column label="创建时间" width="176" show-overflow-tooltip align="center" header-align="center">
           <template #default="{ row }">{{ displayUtcAsLocal(row.order_date) }}</template>
         </el-table-column>
-        <el-table-column label="最后更新" width="176" show-overflow-tooltip>
+        <el-table-column label="最后更新" width="176" show-overflow-tooltip align="center" header-align="center">
           <template #default="{ row }">{{ displayUtcAsLocal(row.order_updated_at) }}</template>
         </el-table-column>
-        <el-table-column label="买家ID" prop="customer_name" width="120">
+        <el-table-column label="买家ID" prop="customer_name" width="120" align="center" header-align="center">
           <template #default="{ row }">{{ row.customer_name || '-' }}</template>
         </el-table-column>
-        <el-table-column label="状态" width="110" align="center">
+        <el-table-column label="状态" width="110" align="center" header-align="center">
           <template #default="{ row }">
             <el-tag :type="statusMap[row.status]?.tag || 'info'" size="small" effect="light">
               {{ statusMap[row.status]?.label || row.status }}
             </el-tag>
           </template>
         </el-table-column>
-        <el-table-column label="金额" width="120" align="right">
+        <el-table-column label="金额" width="120" align="center" header-align="center">
           <template #default="{ row }">
-            <span class="amount">¥{{ Number(row.amount || 0).toFixed(2) }}</span>
+            <span class="amount">{{ Math.round(Number(row.amount || 0)) }}</span>
           </template>
         </el-table-column>
-        <el-table-column label="备注" prop="remark" min-width="180" show-overflow-tooltip />
-        <el-table-column label="操作" width="150" fixed="right">
+        <el-table-column label="手续费" width="112" align="center" header-align="center">
+          <template #default="{ row }">
+            <span v-if="orderMoneyField(row.service_fee) != null" class="col-fee">
+              {{ orderMoneyField(row.service_fee) }}
+            </span>
+            <span v-else class="cell-dash">-</span>
+          </template>
+        </el-table-column>
+        <el-table-column label="快递费" width="112" align="center" header-align="center">
+          <template #default="{ row }">
+            <span v-if="orderMoneyField(row.shipping_fee) != null" class="col-fee">
+              {{ orderMoneyField(row.shipping_fee) }}
+            </span>
+            <span v-else class="cell-dash">-</span>
+          </template>
+        </el-table-column>
+        <el-table-column label="净收益" width="112" align="center" header-align="center">
+          <template #default="{ row }">
+            <span v-if="orderMoneyField(row.net_income) != null" class="col-net">
+              {{ orderMoneyField(row.net_income) }}
+            </span>
+            <span v-else class="cell-dash">-</span>
+          </template>
+        </el-table-column>
+        <el-table-column label="操作" width="88" fixed="right" align="center" header-align="center">
           <template #default="{ row }">
             <el-button size="small" @click="openEdit(row)">编辑</el-button>
-            <el-popconfirm title="确认删除该订单？" @confirm="remove(row.id)">
-              <template #reference>
-                <el-button size="small" type="danger">删除</el-button>
-              </template>
-            </el-popconfirm>
           </template>
         </el-table-column>
       </el-table>
@@ -98,8 +117,17 @@
       </div>
     </el-card>
 
-    <el-dialog v-model="dialogVisible" :title="form.id ? '编辑订单' : '新增订单'" width="520px" destroy-on-close>
-      <el-form :model="form" :rules="rules" ref="formRef" label-width="86px">
+    <el-dialog
+      v-model="dialogVisible"
+      :title="form.id ? '编辑订单' : '新增订单'"
+      width="680px"
+      destroy-on-close
+      class="order-edit-dialog"
+    >
+      <el-form :model="form" :rules="rules" ref="formRef" label-width="132px" class="order-edit-form">
+        <el-form-item v-if="form.id != null" label="数据库 ID">
+          <el-input :model-value="String(form.id)" disabled />
+        </el-form-item>
         <el-form-item label="订单号" prop="order_no">
           <el-input v-model="form.order_no" placeholder="请输入订单号" maxlength="60" clearable />
         </el-form-item>
@@ -127,20 +155,78 @@
           <el-input v-model="form.customer_name" placeholder="Mercari 买家用户 ID（数字）" maxlength="30" clearable />
         </el-form-item>
         <el-form-item label="订单状态" prop="status">
-          <el-select v-model="form.status" style="width: 100%">
-            <el-option v-for="item in statusOptions" :key="item.value" :label="item.label" :value="item.value" />
+          <el-select v-model="form.status" filterable style="width: 100%">
+            <el-option v-for="item in formStatusOptions" :key="item.value" :label="item.label" :value="item.value" />
           </el-select>
         </el-form-item>
         <el-form-item label="订单金额" prop="amount">
           <el-input-number v-model="form.amount" :min="0.01" :precision="2" :controls="false" style="width: 100%" />
         </el-form-item>
-        <el-form-item label="备注">
-          <el-input v-model="form.remark" type="textarea" :rows="3" maxlength="200" show-word-limit />
+        <el-form-item label="手续费">
+          <el-input-number
+            v-model="form.service_fee"
+            :precision="2"
+            :controls="false"
+            style="width: 100%"
+            placeholder="可选"
+          />
+        </el-form-item>
+        <el-form-item label="净收益">
+          <el-input-number
+            v-model="form.net_income"
+            :precision="2"
+            :controls="false"
+            style="width: 100%"
+            placeholder="可选"
+          />
+        </el-form-item>
+        <el-form-item label="快递公司">
+          <el-input v-model="form.carrier_display_name" clearable placeholder="carrier_display_name" />
+        </el-form-item>
+        <el-form-item label="寄件方式名">
+          <el-input v-model="form.request_class_display_name" clearable placeholder="request_class_display_name" />
+        </el-form-item>
+        <el-form-item label="快递费">
+          <el-input-number
+            v-model="form.shipping_fee"
+            :precision="2"
+            :controls="false"
+            style="width: 100%"
+            placeholder="可选"
+          />
+        </el-form-item>
+        <el-form-item label="快递单号">
+          <el-input v-model="form.tracking_no" clearable placeholder="tracking_no" />
+        </el-form-item>
+        <el-form-item label="商品名称">
+          <el-input v-model="form.remark" type="textarea" :rows="3" maxlength="2000" show-word-limit />
+        </el-form-item>
+        <el-form-item label="缩略图 JSON">
+          <el-input
+            v-model="form.thumbnails_text"
+            type="textarea"
+            :rows="4"
+            placeholder='JSON 数组，如 ["https://..."]；也可每行一个 URL'
+          />
+          <div class="form-hint">对应库字段 thumbnails；留空表示不设置（更新时传空可清空）</div>
         </el-form-item>
       </el-form>
       <template #footer>
-        <el-button @click="dialogVisible = false">取消</el-button>
-        <el-button type="primary" :loading="submitting" @click="submit">保存</el-button>
+        <div class="order-dialog-footer">
+          <el-popconfirm
+            v-if="form.id"
+            title="确认删除该订单？"
+            @confirm="removeFromDialog"
+          >
+            <template #reference>
+              <el-button type="danger">删除</el-button>
+            </template>
+          </el-popconfirm>
+          <div class="order-dialog-footer-right">
+            <el-button @click="dialogVisible = false">取消</el-button>
+            <el-button type="primary" :loading="submitting" @click="submit">保存</el-button>
+          </div>
+        </div>
       </template>
     </el-dialog>
 
@@ -178,7 +264,7 @@
 </template>
 
 <script setup>
-import { ref, onMounted } from 'vue'
+import { ref, computed, onMounted } from 'vue'
 import { ElMessage } from 'element-plus'
 import { RefreshRight, InfoFilled } from '@element-plus/icons-vue'
 import { orderApi, mercariApi, meiluAccountApi } from '@/api/index.js'
@@ -209,6 +295,7 @@ const statusMap = {
   sent:          { label: '已发送', tag: 'primary' },
   signed:        { label: '已签收', tag: 'success' },
   confirmed:     { label: '已确认', tag: 'danger' },
+  pending:       { label: '待处理', tag: 'info' },
   trading:       { label: '交易中', tag: 'warning' },
   wait_payment:  { label: '待支付', tag: 'warning' },
   wait_shipping: { label: '待发货', tag: 'warning' },
@@ -218,6 +305,22 @@ const statusMap = {
   cancelled:     { label: '已取消', tag: 'info' },
   cancel_request:{ label: '申请取消', tag: 'danger' },
 }
+
+/** 表单内状态：手工状态优先，其余与列表 statusMap 一致（含煤炉同步状态） */
+const formStatusOptions = computed(() => {
+  const seen = new Set()
+  const out = []
+  for (const o of statusOptions) {
+    seen.add(o.value)
+    out.push(o)
+  }
+  for (const [value, meta] of Object.entries(statusMap)) {
+    if (seen.has(value)) continue
+    seen.add(value)
+    out.push({ label: meta.label, value })
+  }
+  return out
+})
 
 // ---- 同步订单弹窗 ----
 const syncDialogVisible = ref(false)
@@ -330,6 +433,59 @@ function localFormStringToUtcDb(v) {
   return `${local.getUTCFullYear()}-${pad2(local.getUTCMonth() + 1)}-${pad2(local.getUTCDate())} ${pad2(local.getUTCHours())}:${pad2(local.getUTCMinutes())}:${pad2(local.getUTCSeconds())}`
 }
 
+function optionalNumFromRow(v) {
+  if (v == null || v === '') return undefined
+  const n = Number(v)
+  return Number.isNaN(n) ? undefined : n
+}
+
+function numOrNull(v) {
+  if (v === null || v === undefined || v === '') return null
+  const n = Number(v)
+  return Number.isNaN(n) ? null : n
+}
+
+function thumbnailsToFormText(row) {
+  const t = row.thumbnails
+  if (t == null || t === '') return ''
+  if (Array.isArray(t)) return JSON.stringify(t, null, 2)
+  if (typeof t === 'string') {
+    try {
+      const o = JSON.parse(t)
+      if (Array.isArray(o)) return JSON.stringify(o, null, 2)
+    } catch {
+      /* 原样展示 */
+    }
+    return t
+  }
+  return String(t)
+}
+
+/** 解析为 API 所需的 string[]；空串返回 null 表示清空或未传 */
+function parseThumbnailsPayload(text) {
+  const raw = String(text ?? '').trim()
+  if (!raw) return null
+  try {
+    const p = JSON.parse(raw)
+    if (Array.isArray(p)) {
+      const urls = p.map((s) => String(s).trim()).filter(Boolean)
+      return urls.length ? urls : null
+    }
+  } catch {
+    /* 按行/逗号拆分 */
+  }
+  const urls = raw.split(/[\n,]+/).map((s) => s.trim()).filter(Boolean)
+  return urls.length ? urls : null
+}
+
+/** 手续费 / 快递费 / 净收益列：null 表示无数据，单元格显示「-」；展示为整数（四舍五入） */
+function orderMoneyField(v) {
+  if (v == null || v === '') return null
+  const n = Number(v)
+  if (Number.isNaN(n)) return null
+  return String(Math.round(n))
+}
+
 /** thumbnails 为 JSON 字符串或数组时取首张图 URL */
 function firstThumbUrl(row) {
   const raw = row.thumbnails
@@ -357,7 +513,14 @@ const createDefaultForm = () => ({
   customer_name: '',
   status: 'to_pack',
   amount: null,
+  service_fee: undefined,
+  net_income: undefined,
+  carrier_display_name: '',
+  request_class_display_name: '',
+  shipping_fee: undefined,
+  tracking_no: '',
   remark: '',
+  thumbnails_text: '',
 })
 
 const form = ref(createDefaultForm())
@@ -411,7 +574,14 @@ function openEdit(row) {
     customer_name: row.customer_name || '',
     status: row.status || 'to_pack',
     amount: Number(row.amount || 0),
+    service_fee: optionalNumFromRow(row.service_fee),
+    net_income: optionalNumFromRow(row.net_income),
+    carrier_display_name: row.carrier_display_name || '',
+    request_class_display_name: row.request_class_display_name || '',
+    shipping_fee: optionalNumFromRow(row.shipping_fee),
+    tracking_no: row.tracking_no || '',
     remark: row.remark || '',
+    thumbnails_text: thumbnailsToFormText(row),
   }
   dialogVisible.value = true
 }
@@ -426,7 +596,14 @@ async function submit() {
     customer_name: String(form.value.customer_name || '').trim() || null,
     status: form.value.status,
     amount: Number(form.value.amount || 0),
-    remark: form.value.remark || null,
+    service_fee: numOrNull(form.value.service_fee),
+    net_income: numOrNull(form.value.net_income),
+    carrier_display_name: String(form.value.carrier_display_name || '').trim() || null,
+    request_class_display_name: String(form.value.request_class_display_name || '').trim() || null,
+    shipping_fee: numOrNull(form.value.shipping_fee),
+    tracking_no: String(form.value.tracking_no || '').trim() || null,
+    remark: String(form.value.remark || '').trim() || null,
+    thumbnails: parseThumbnailsPayload(form.value.thumbnails_text),
   }
   try {
     if (form.value.id) {
@@ -448,6 +625,13 @@ async function remove(id) {
   ElMessage.success('删除成功')
   if (list.value.length === 1 && page.value > 1) page.value -= 1
   load()
+}
+
+async function removeFromDialog() {
+  const id = form.value.id
+  if (!id) return
+  await remove(id)
+  dialogVisible.value = false
 }
 
 onMounted(() => {
@@ -482,8 +666,19 @@ onMounted(() => {
   justify-content: flex-end;
 }
 .amount {
+  color: #ffffff;
+  font-weight: 600;
+}
+.col-fee {
   color: #f56c6c;
   font-weight: 600;
+}
+.col-net {
+  color: #ffffff;
+  font-weight: 500;
+}
+.cell-dash {
+  color: #c0c4cc;
 }
 .order-thumb {
   width: 48px;
@@ -517,5 +712,23 @@ onMounted(() => {
   color: #909399;
   margin-top: 4px;
   line-height: 1.4;
+}
+.order-edit-dialog :deep(.el-dialog__body) {
+  max-height: 72vh;
+  overflow-y: auto;
+  padding-top: 8px;
+}
+.order-dialog-footer {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+  width: 100%;
+}
+.order-dialog-footer-right {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-left: auto;
 }
 </style>

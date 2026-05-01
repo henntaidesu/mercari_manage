@@ -13,7 +13,7 @@
 
 from typing import Any, Dict, List, Optional
 
-from ....mercari_req_scheduling import send_request
+from ....mercari_req_scheduling import DPOP_FOR_ITEMS_LIST, send_request
 from ..get_order_info import apply_item_info_to_order
 from ..get_order_list import _item_to_order_data, _upsert_order
 
@@ -41,7 +41,9 @@ def fetch_and_sync_history_orders(
     """
     url = f"{_API_URL}?{_API_PARAMS}&seller_id={seller_id}"
 
-    response = send_request("GET", url, account_id=account_id)
+    response = send_request(
+        "GET", url, account_id=account_id, dpop_for=DPOP_FOR_ITEMS_LIST
+    )
 
     if response.get("result") != "OK":
         raise RuntimeError(f"历史订单 API 返回异常: {response}")

@@ -5,24 +5,38 @@ Mercari 统一请求调度模块
 职责：
 1. 直接从数据库读取煤炉账号请求头信息（避免通过 HTTP 接口访问引发鉴权问题）
 2. 将数据库中存储的字段名映射为标准 HTTP 请求头
-3. 提供 send_request(method, url, json_body) 统一接口，支持 GET / POST
+3. 提供 send_request(...) 统一接口，支持 GET / POST；DPoP 按 dpop_for 选用 dpop_list 或 dpop_info
 4. 每次发起 Mercari 请求前随机休眠 1.0～3.0 秒，降低请求频率
+
+SSL：默认校验证书。若出现 CERTIFICATE_VERIFY_FAILED / self-signed certificate in chain（常见于公司代理、
+Charles 等 MITM），可设置环境变量 MERCARI_REQUESTS_VERIFY：
+  - 0 / false / no / off — 关闭校验（仅建议本机调试）
+  - 绝对路径 — 指向合并后的 CA 证书文件（.pem），供 requests 校验代理根证书
+未设置时与 requests 默认行为一致（verify=True）。
 """
 
+import os
 import random
 import time
 
 import requests
-from typing import Any, Dict, Optional
+import urllib3
+from typing import Any, Dict, Literal, Optional, Union
 
 from ..db_manage.models.meilu_account import MeiluAccountModel
 
-# 数据库字段名 -> 标准 HTTP 请求头名 映射
+# items/get_items 等列表接口：HTTP DPoP 用账号里的 dpop_list（或旧键 dpop）
+DPOP_FOR_ITEMS_LIST: Literal["list"] = "list"
+# items/get 详情接口：优先 dpop_info，空则与账号保存逻辑一致回退 dpop_list / dpop
+DPOP_FOR_ITEM_INFO: Literal["info"] = "info"
+
+DpopFor = Literal["list", "info"]
+
+# 数据库字段名 -> 标准 HTTP 请求头名 映射（DPoP 由 _dpop_header_value + dpop_for 单独注入）
 _HEADER_FIELD_MAP: Dict[str, str] = {
     "accept":          "Accept",
     "x_app_type":      "X-App-Type",
     "authorization":   "Authorization",
-    "dpop":            "DPoP",
     "priority":        "Priority",
     "accept_language": "Accept-Language",
     "accept_encoding": "Accept-Encoding",
@@ -31,6 +45,19 @@ _HEADER_FIELD_MAP: Dict[str, str] = {
     "x_platform":      "X-Platform",
     "x_mcc":           "X-Mcc",
 }
+
+
+def _requests_verify() -> Union[bool, str]:
+    """供 requests 的 verify 参数：True / False / CA 文件路径。见模块文档 MERCARI_REQUESTS_VERIFY。"""
+    raw = (os.environ.get("MERCARI_REQUESTS_VERIFY") or "").strip()
+    if not raw:
+        return True
+    low = raw.lower()
+    if low in ("0", "false", "no", "off"):
+        return False
+    if os.path.isfile(raw):
+        return raw
+    return True
 
 
 def _fetch_active_account(account_id: Optional[int] = None) -> Dict[str, Any]:
@@ -68,11 +95,26 @@ def _fetch_active_account(account_id: Optional[int] = None) -> Dict[str, Any]:
     return d
 
 
-def build_headers(account_id: Optional[int] = None) -> Dict[str, str]:
+def _dpop_header_value(value: Dict[str, Any], dpop_for: DpopFor) -> str:
+    """从账号 value 中解析发往 HTTP 头 DPoP 的 JWT 字符串。"""
+    if dpop_for == "info":
+        v = (value.get("dpop_info") or "").strip()
+        if v:
+            return v
+        return (value.get("dpop_list") or value.get("dpop") or "").strip()
+    return (value.get("dpop_list") or value.get("dpop") or "").strip()
+
+
+def build_headers(
+    account_id: Optional[int] = None,
+    dpop_for: DpopFor = "list",
+) -> Dict[str, str]:
     """
     根据账号信息构建标准 HTTP 请求头字典。
 
     :param account_id: 指定账号 ID；为 None 时自动选取 active 账号。
+    :param dpop_for:   \"list\" 对应 get_items 等列表接口（dpop_list）；
+                       \"info\" 对应 items/get 详情（dpop_info，空则回退 dpop_list / dpop）。
     :return: 可直接传给 requests 的请求头字典。
     """
     account = _fetch_active_account(account_id)
@@ -83,6 +125,10 @@ def build_headers(account_id: Optional[int] = None) -> Dict[str, str]:
         val = (value.get(field_key) or "").strip()
         if val:
             headers[header_name] = val
+
+    dpop_jwt = _dpop_header_value(value, dpop_for)
+    if dpop_jwt:
+        headers["DPoP"] = dpop_jwt
 
     if not headers.get("Authorization"):
         raise RuntimeError(f"账号 '{account.get('account_name')}' 缺少 Authorization 字段，请完善请求头配置")
@@ -97,6 +143,7 @@ def send_request(
     account_id: Optional[int] = None,
     extra_headers: Optional[Dict[str, str]] = None,
     timeout: int = 30,
+    dpop_for: DpopFor = "list",
 ) -> Dict[str, Any]:
     """
     统一网络请求入口。
@@ -107,22 +154,35 @@ def send_request(
     :param account_id:    指定使用的账号 ID；为 None 时自动选取 active 账号。
     :param extra_headers: 额外请求头，会覆盖账号默认头中的同名字段。
     :param timeout:       请求超时秒数，默认 30 秒。
+    :param dpop_for:      与 build_headers 相同：list=get_items 用 dpop_list；info=items/get 用 dpop_info。
     :return:              响应 JSON 反序列化后的字典。
     注意: 发请求前会随机 sleep [1.0, 3.0] 秒。
     :raises ValueError:   method 不为 GET / POST 时抛出。
     :raises RuntimeError: 请求失败或响应非 JSON 时抛出。
     """
-    headers = build_headers(account_id)
+    headers = build_headers(account_id, dpop_for=dpop_for)
     if extra_headers:
         headers.update(extra_headers)
 
     method_upper = method.upper()
+    verify = _requests_verify()
+    if verify is False:
+        urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
+
     time.sleep(random.uniform(1.0, 3.0))
     try:
         if method_upper == "GET":
-            response = requests.get(url, headers=headers, timeout=timeout)
+            response = requests.get(
+                url, headers=headers, timeout=timeout, verify=verify
+            )
         elif method_upper == "POST":
-            response = requests.post(url, headers=headers, json=json_body, timeout=timeout)
+            response = requests.post(
+                url,
+                headers=headers,
+                json=json_body,
+                timeout=timeout,
+                verify=verify,
+            )
         else:
             raise ValueError(f"不支持的请求类型: {method}，仅支持 GET / POST")
 

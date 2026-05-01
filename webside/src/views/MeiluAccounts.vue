@@ -118,8 +118,11 @@
         <el-form-item label="Authorization" prop="authorization">
           <el-input v-model="form.authorization" type="textarea" :rows="2" clearable placeholder="含 Bearer 的完整值" />
         </el-form-item>
-        <el-form-item label="DPoP" prop="dpop">
-          <el-input v-model="form.dpop" type="textarea" :rows="3" clearable />
+        <el-form-item label="DPoP_List" prop="dpop_list">
+          <el-input v-model="form.dpop_list" type="textarea" :rows="3" clearable placeholder="对应 HTTP 头 DPoP 的 JWT 等内容" />
+        </el-form-item>
+        <el-form-item label="DPoP_Info" prop="dpop_info">
+          <el-input v-model="form.dpop_info" type="textarea" :rows="2" clearable placeholder="DPoP 附属信息（仅存账号配置，不发往 DPoP 头）" />
         </el-form-item>
         <el-form-item label="Priority" prop="priority">
           <el-input v-model="form.priority" clearable />
@@ -162,7 +165,11 @@ const HEADER_TO_FORM = {
   accept: 'accept',
   'x-app-type': 'x_app_type',
   authorization: 'authorization',
-  dpop: 'dpop',
+  dpop: 'dpop_list',
+  'dpop-list': 'dpop_list',
+  dpop_list: 'dpop_list',
+  dpop_info: 'dpop_info',
+  'dpop-info': 'dpop_info',
   priority: 'priority',
   'accept-language': 'accept_language',
   'accept-encoding': 'accept_encoding',
@@ -176,7 +183,8 @@ const HEADER_LABELS = {
   accept: 'Accept',
   x_app_type: 'X-App-Type',
   authorization: 'Authorization',
-  dpop: 'DPoP',
+  dpop_list: 'DPoP_List',
+  dpop_info: 'DPoP_Info',
   priority: 'Priority',
   accept_language: 'Accept-Language',
   accept_encoding: 'Accept-Encoding',
@@ -211,16 +219,48 @@ function normalizeHeaderLine(line) {
   return { name, value }
 }
 
+/** 从 RAW 中取 HTTP/2 风格 :path:（Charles / Proxyman 等导出） */
+function extractPathFromRaw(raw) {
+  const lines = String(raw || '').split(/\r?\n/)
+  for (const line of lines) {
+    const s = String(line || '').trim()
+    const m = s.match(/^:path:\s*(.+)$/i)
+    if (m) return m[1].trim()
+  }
+  return ''
+}
+
+/**
+ * 按 :path: 决定 dpop 写入表单哪一项：
+ * - /items/get_items → dpop_list（与 list 请求一致，发往 DPoP 头）
+ * - /items/get（且不含 get_items）→ dpop_info
+ */
+function dpopTargetFormKeyFromPath(pathStr) {
+  const p = String(pathStr || '').trim()
+  if (!p) return null
+  if (p.includes('/items/get_items')) return 'dpop_list'
+  if (p.includes('/items/get')) return 'dpop_info'
+  return null
+}
+
 /**
  * 解析 RAW 文本，返回 { formKey: value }（仅包含能识别的头）
  */
 function parseRawHeaders(raw) {
+  const pathVal = extractPathFromRaw(raw)
+  const dpopTarget = dpopTargetFormKeyFromPath(pathVal)
+
   const text = String(raw || '')
   const lines = text.split(/\r?\n/)
   const out = {}
   for (const line of lines) {
     const parsed = normalizeHeaderLine(line)
     if (!parsed) continue
+    if (parsed.name === 'dpop') {
+      const key = dpopTarget || 'dpop_list'
+      out[key] = parsed.value
+      continue
+    }
     const key = HEADER_TO_FORM[parsed.name]
     if (key) out[key] = parsed.value
   }
@@ -282,7 +322,8 @@ const createDefaultForm = () => ({
   accept: '',
   x_app_type: '',
   authorization: '',
-  dpop: '',
+  dpop_list: '',
+  dpop_info: '',
   priority: '',
   accept_language: '',
   accept_encoding: '',
@@ -328,7 +369,8 @@ const rules = {
   accept: [reqBlur],
   x_app_type: [reqBlur],
   authorization: [reqBlur],
-  dpop: [reqBlur],
+  dpop_list: [reqBlur],
+  dpop_info: [reqBlur],
   priority: [reqBlur],
   accept_language: [reqBlur],
   accept_encoding: [reqBlur],
@@ -388,6 +430,12 @@ function openEdit(row) {
   }
   for (const k of HEADER_KEYS) {
     next[k] = v[k] != null ? String(v[k]) : ''
+  }
+  if (!String(next.dpop_list || '').trim() && v.dpop != null && String(v.dpop).trim()) {
+    next.dpop_list = String(v.dpop)
+  }
+  if (!String(next.dpop_info || '').trim() && String(next.dpop_list || '').trim()) {
+    next.dpop_info = next.dpop_list
   }
   next.is_open = row.is_open === 1 || row.is_open === true ? 1 : 0
   next.fetch_interval = row.fetch_interval != null && row.is_open === 1 ? String(row.fetch_interval) : ''

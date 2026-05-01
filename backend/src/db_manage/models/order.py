@@ -75,9 +75,21 @@ class OrderModel(BaseModel):
                 'not_null': False,
                 'default': None,
             },
-            # 快递类型
-            'shipping_type': {
+            # 快递公司（items/get shipping_class.carrier_display_name）
+            'carrier_display_name': {
                 'type': 'TEXT',
+                'not_null': False,
+                'default': None,
+            },
+            # 寄件方式展示名（items/get shipping_class.request_class_display_name）
+            'request_class_display_name': {
+                'type': 'TEXT',
+                'not_null': False,
+                'default': None,
+            },
+            # 快递费（items/get shipping_class.fee）
+            'shipping_fee': {
+                'type': 'REAL',
                 'not_null': False,
                 'default': None,
             },
@@ -141,7 +153,9 @@ class OrderModel(BaseModel):
 
         total = db.execute_query(f"SELECT COUNT(*) {base_sql}", tuple(params))[0][0]
         select_sql = f"""
-            SELECT o.id, o.order_no, o.order_date, o.order_updated_at, o.customer_name, o.status, o.amount, o.service_fee, o.net_income, o.shipping_type, o.tracking_no, o.remark, o.thumbnails
+            SELECT o.id, o.order_no, o.order_date, o.order_updated_at, o.customer_name, o.status, o.amount,
+                   o.service_fee, o.net_income, o.carrier_display_name, o.request_class_display_name,
+                   o.shipping_fee, o.tracking_no, o.remark, o.thumbnails
             {base_sql}
             ORDER BY o.order_date DESC, o.id DESC
             LIMIT ? OFFSET ?
@@ -149,8 +163,8 @@ class OrderModel(BaseModel):
         rows = db.execute_query(select_sql, tuple(params + [page_size, (page - 1) * page_size]))
         keys = [
             'id', 'order_no', 'order_date', 'order_updated_at', 'customer_name', 'status', 'amount',
-            'service_fee', 'net_income', 'shipping_type', 'tracking_no',
-            'remark', 'thumbnails',
+            'service_fee', 'net_income', 'carrier_display_name', 'request_class_display_name',
+            'shipping_fee', 'tracking_no', 'remark', 'thumbnails',
         ]
         return {
             'total': total,

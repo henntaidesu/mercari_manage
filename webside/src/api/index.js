@@ -99,7 +99,9 @@ export const orderApi = {
 
 // Mercari 操作
 export const mercariApi = {
-  syncOrders: (data) => http.post('/mercari/sync-orders', data)
+  /** 同步订单：默认不设置超时（一直等到服务端返回）。axiosConfig 可覆盖，例如 { timeout: 60000 } */
+  syncOrders: (data, axiosConfig = {}) =>
+    http.post('/mercari/sync-orders', data, { timeout: 0, ...axiosConfig }),
 }
 
 // 煤炉账号

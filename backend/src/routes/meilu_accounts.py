@@ -14,7 +14,8 @@ _HEADER_FIELD_LABELS = [
     ("accept", "Accept"),
     ("x_app_type", "X-App-Type"),
     ("authorization", "Authorization"),
-    ("dpop", "DPoP"),
+    ("dpop_list", "DPoP_List"),
+    ("dpop_info", "DPoP_Info"),
     ("priority", "Priority"),
     ("accept_language", "Accept-Language"),
     ("accept_encoding", "Accept-Encoding"),
@@ -92,6 +93,12 @@ def _norm_auto_fetch(is_open: int, fetch_interval: Optional[str]) -> tuple:
 def _norm_headers_dict(d: Optional[dict]) -> dict:
     if not d or not isinstance(d, dict):
         raise HTTPException(status_code=400, detail="请求头 value 必须为 JSON 对象")
+    # 旧版仅存 dpop：视为 dpop_list；仅有一条 DPoP 时 dpop_info 可暂与 list 相同
+    d = dict(d)
+    if not (str(d.get("dpop_list") or "").strip()) and (str(d.get("dpop") or "").strip()):
+        d["dpop_list"] = str(d["dpop"]).strip()
+    if not (str(d.get("dpop_info") or "").strip()) and (str(d.get("dpop_list") or "").strip()):
+        d["dpop_info"] = str(d["dpop_list"]).strip()
     out = {}
     for key, label in _HEADER_FIELD_LABELS:
         raw = d.get(key)

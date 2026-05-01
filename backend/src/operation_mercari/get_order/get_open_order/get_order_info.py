@@ -1,16 +1,16 @@
 # -*- coding: utf-8 -*-
 """
 Mercari 单条商品/订单详情 items/get，回填 orders 扩展字段：
-  service_fee（手续费）、net_income（收益）、shipping_type（快递类型）、tracking_no（快递单号）。
-
+  service_fee、net_income、carrier_display_name、request_class_display_name、
+  shipping_fee（shipping_class.fee）、tracking_no（transaction_evidence 等）。
 在 list 同步每条写入后调用 apply_item_info_to_order。
 """
 
 import json
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, Optional
 from urllib.parse import quote
 
-from ...mercari_req_scheduling import send_request
+from ...mercari_req_scheduling import DPOP_FOR_ITEM_INFO, send_request
 from ....db_manage.models.order import OrderModel
 
 _ITEM_GET_PATH = "https://api.mercari.jp/items/get"
@@ -52,10 +52,39 @@ def _mercari_error_hint(resp: Any) -> str:
         return str(resp)[:220]
 
 
+def _tracking_no_from_evidence(te: Any, d: Dict[str, Any]) -> Optional[str]:
+    """从 transaction_evidence / data 根节点解析快递单号。"""
+    if isinstance(te, dict):
+        for key in (
+            "tracking_number",
+            "tracking_no",
+            "carrier_tracking_number",
+            "tracking_id",
+        ):
+            v = te.get(key)
+            if v is not None and str(v).strip():
+                return str(v).strip()
+        for list_key in ("tracking_numbers", "tracking_number_list"):
+            nums = te.get(list_key)
+            if isinstance(nums, list) and nums:
+                first = nums[0]
+                if isinstance(first, dict):
+                    t = first.get("number") or first.get("tracking_number")
+                else:
+                    t = first
+                if t is not None and str(t).strip():
+                    return str(t).strip()
+    for key in ("tracking_number", "tracking_no"):
+        v = d.get(key)
+        if v is not None and str(v).strip():
+            return str(v).strip()
+    return None
+
+
 def fetch_item_info(item_id: str, account_id: Optional[int] = None) -> Dict[str, Any]:
     """GET items/get，返回完整 JSON（含 result / data）。"""
     url = build_item_info_url(item_id)
-    return send_request("GET", url, account_id=account_id)
+    return send_request("GET", url, account_id=account_id, dpop_for=DPOP_FOR_ITEM_INFO)
 
 
 def extract_order_info_fields(response: Dict[str, Any]) -> Dict[str, Any]:
@@ -81,32 +110,31 @@ def extract_order_info_fields(response: Dict[str, Any]) -> Dict[str, Any]:
     if fee_f is not None:
         net_income = price - fee_f
 
-    sm = d.get("shipping_method") or {}
     sc = d.get("shipping_class") or {}
-    parts: List[str] = []
-    n1 = (sm.get("name") or "").strip()
-    n2 = (sc.get("name") or "").strip()
-    if n1:
-        parts.append(n1)
-    if n2 and n2 != n1:
-        parts.append(n2)
-    shipping_type = " / ".join(parts) if parts else None
+
+    carrier_raw = (sc.get("carrier_display_name") or "").strip()
+    carrier_display_name: Optional[str] = carrier_raw or None
+
+    rcdn_raw = (sc.get("request_class_display_name") or "").strip()
+    request_class_display_name: Optional[str] = rcdn_raw or None
+
+    shipping_fee: Optional[float] = None
+    fee_ship = sc.get("fee")
+    if fee_ship is not None:
+        try:
+            shipping_fee = float(fee_ship)
+        except (TypeError, ValueError):
+            shipping_fee = None
 
     te = d.get("transaction_evidence") or {}
-    tracking_raw = (
-        te.get("tracking_number")
-        or te.get("tracking_no")
-        or d.get("tracking_number")
-        or d.get("tracking_no")
-    )
-    tracking_no: Optional[str] = None
-    if tracking_raw is not None and str(tracking_raw).strip():
-        tracking_no = str(tracking_raw).strip()
+    tracking_no = _tracking_no_from_evidence(te, d)
 
     return {
         "service_fee": fee_f,
         "net_income": net_income,
-        "shipping_type": shipping_type,
+        "carrier_display_name": carrier_display_name,
+        "request_class_display_name": request_class_display_name,
+        "shipping_fee": shipping_fee,
         "tracking_no": tracking_no,
     }
 
@@ -138,8 +166,12 @@ def apply_item_info_to_order(item_id: str, account_id: Optional[int] = None) -> 
         o.service_fee = fields["service_fee"]
     if fields.get("net_income") is not None:
         o.net_income = fields["net_income"]
-    if fields.get("shipping_type"):
-        o.shipping_type = fields["shipping_type"]
+    if fields.get("carrier_display_name"):
+        o.carrier_display_name = fields["carrier_display_name"]
+    if fields.get("request_class_display_name"):
+        o.request_class_display_name = fields["request_class_display_name"]
+    if fields.get("shipping_fee") is not None:
+        o.shipping_fee = fields["shipping_fee"]
     if fields.get("tracking_no"):
         o.tracking_no = fields["tracking_no"]
 

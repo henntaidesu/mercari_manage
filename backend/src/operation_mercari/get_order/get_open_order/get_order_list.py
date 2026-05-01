@@ -23,7 +23,7 @@ import datetime
 import json
 from typing import Any, Dict, List, Optional
 
-from ...mercari_req_scheduling import send_request
+from ...mercari_req_scheduling import DPOP_FOR_ITEMS_LIST, send_request
 from ....db_manage.models.order import OrderModel
 from .get_order_info import apply_item_info_to_order
 
@@ -124,7 +124,9 @@ def fetch_and_sync_open_orders(
     """
     url = f"{_API_URL}?{_API_PARAMS}&seller_id={seller_id}"
 
-    response = send_request("GET", url, account_id=account_id)
+    response = send_request(
+        "GET", url, account_id=account_id, dpop_for=DPOP_FOR_ITEMS_LIST
+    )
 
     if response.get("result") != "OK":
         raise RuntimeError(f"API 返回异常: {response}")

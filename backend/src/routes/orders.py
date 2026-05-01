@@ -8,6 +8,19 @@ from ..db_manage.models.order import OrderModel
 router = APIRouter(prefix="/api/orders", tags=["orders"])
 
 ALLOWED_STATUS = {"to_pack", "to_ship", "sent", "signed", "confirmed"}
+# 与煤炉同步后的状态，编辑保存时允许保留
+MERCARI_STATUSES = {
+    "trading",
+    "wait_payment",
+    "wait_shipping",
+    "wait_review",
+    "done",
+    "sold_out",
+    "cancelled",
+    "cancel_request",
+    "pending",
+}
+ALL_ORDER_STATUSES = ALLOWED_STATUS | MERCARI_STATUSES
 
 
 def _encode_thumbnails(urls: Optional[List[str]]) -> Optional[str]:
@@ -24,6 +37,12 @@ class OrderCreate(PydanticModel):
     customer_name: Optional[str] = None
     status: str = "to_pack"
     amount: float
+    service_fee: Optional[float] = None
+    net_income: Optional[float] = None
+    carrier_display_name: Optional[str] = None
+    request_class_display_name: Optional[str] = None
+    shipping_fee: Optional[float] = None
+    tracking_no: Optional[str] = None
     remark: Optional[str] = None
     thumbnails: Optional[List[str]] = None
 
@@ -35,12 +54,23 @@ class OrderUpdate(PydanticModel):
     customer_name: Optional[str] = None
     status: Optional[str] = None
     amount: Optional[float] = None
+    service_fee: Optional[float] = None
+    net_income: Optional[float] = None
+    carrier_display_name: Optional[str] = None
+    request_class_display_name: Optional[str] = None
+    shipping_fee: Optional[float] = None
+    tracking_no: Optional[str] = None
     remark: Optional[str] = None
     thumbnails: Optional[List[str]] = None
 
 
 def _validate_status(status: str):
     if status not in ALLOWED_STATUS:
+        raise HTTPException(status_code=400, detail="订单状态错误")
+
+
+def _validate_status_update(status: str):
+    if status not in ALL_ORDER_STATUSES:
         raise HTTPException(status_code=400, detail="订单状态错误")
 
 
@@ -86,6 +116,12 @@ def create_order(data: OrderCreate):
         customer_name=(data.customer_name or "").strip() or None,
         status=data.status,
         amount=data.amount,
+        service_fee=data.service_fee,
+        net_income=data.net_income,
+        carrier_display_name=(data.carrier_display_name or "").strip() or None,
+        request_class_display_name=(data.request_class_display_name or "").strip() or None,
+        shipping_fee=data.shipping_fee,
+        tracking_no=(data.tracking_no or "").strip() or None,
         remark=data.remark,
         thumbnails=_encode_thumbnails(data.thumbnails),
     )
@@ -109,14 +145,26 @@ def update_order(oid: int, data: OrderUpdate):
     if data.customer_name is not None:
         item.customer_name = data.customer_name.strip() or None
     if data.status is not None:
-        _validate_status(data.status)
+        _validate_status_update(data.status)
         item.status = data.status
     if data.amount is not None:
         if data.amount <= 0:
             raise HTTPException(status_code=400, detail="金额必须大于0")
         item.amount = data.amount
-    if data.remark is not None:
-        item.remark = data.remark
+    if "service_fee" in data.model_fields_set:
+        item.service_fee = data.service_fee
+    if "net_income" in data.model_fields_set:
+        item.net_income = data.net_income
+    if "carrier_display_name" in data.model_fields_set:
+        item.carrier_display_name = (data.carrier_display_name or "").strip() or None
+    if "request_class_display_name" in data.model_fields_set:
+        item.request_class_display_name = (data.request_class_display_name or "").strip() or None
+    if "shipping_fee" in data.model_fields_set:
+        item.shipping_fee = data.shipping_fee
+    if "tracking_no" in data.model_fields_set:
+        item.tracking_no = (data.tracking_no or "").strip() or None
+    if "remark" in data.model_fields_set:
+        item.remark = (data.remark or "").strip() or None
     if "thumbnails" in data.model_fields_set:
         item.thumbnails = _encode_thumbnails(data.thumbnails)
 
