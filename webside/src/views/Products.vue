@@ -4,29 +4,34 @@
       <el-row :gutter="0" align="middle" class="search-row">
         <el-col :xs="24" :md="16" class="search-left-group">
           <el-input v-model="keyword" class="search-input-control" placeholder="搜索商品名称 / 条形码" clearable @change="load" prefix-icon="Search" />
-          <el-select v-model="filterCat" class="search-select-control" placeholder="所有分类" clearable @change="load">
-            <el-option v-for="c in categories" :key="c.id" :label="c.name" :value="c.id" />
-          </el-select>
-          <el-select v-model="filterWarehouse" class="search-select-control" placeholder="所有仓库" clearable @change="load">
-            <el-option v-for="w in warehouses" :key="w.id" :label="w.name" :value="w.id" />
-          </el-select>
+          <div class="search-filters-row">
+            <el-select v-model="filterCat" class="search-select-control" placeholder="所有分类" clearable @change="load">
+              <el-option v-for="c in categories" :key="c.id" :label="c.name" :value="c.id" />
+            </el-select>
+            <el-select v-model="filterWarehouse" class="search-select-control" placeholder="所有仓库" clearable @change="load">
+              <el-option v-for="w in warehouses" :key="w.id" :label="w.name" :value="w.id" />
+            </el-select>
+          </div>
         </el-col>
-        <el-col :xs="24" :md="8" class="search-actions">
-          <el-button type="success" @click="openContScan('in')">
-            条码入库
-          </el-button>
-          <el-button type="danger" @click="openContScan('out')">
-            条码出库
-          </el-button>
-          <el-button type="primary" @click="openLookupScan">
-            条码寻找
-          </el-button>
-          <el-button type="info" @click="openImageFind">
-            拍照寻找
-          </el-button>
-          <el-button type="warning" @click="openNoBarcodeEntry">
-            无码录入
-          </el-button>
+        <el-col :xs="24" :md="8" class="search-actions" :class="{ 'search-actions--ios': isIOS }">
+          <template v-if="isIOS">
+            <div class="search-actions-ios-row">
+              <el-button type="success" @click="openContScan('in')">条码入库</el-button>
+              <el-button type="danger" @click="openContScan('out')">条码出库</el-button>
+              <el-button type="primary" @click="openLookupScan">条码寻找</el-button>
+            </div>
+            <div class="search-actions-ios-row">
+              <el-button type="info" @click="openImageFind">拍照寻找</el-button>
+              <el-button type="warning" @click="openNoBarcodeEntry">无码录入</el-button>
+            </div>
+          </template>
+          <template v-else>
+            <el-button type="success" @click="openContScan('in')">条码入库</el-button>
+            <el-button type="danger" @click="openContScan('out')">条码出库</el-button>
+            <el-button type="primary" @click="openLookupScan">条码寻找</el-button>
+            <el-button type="info" @click="openImageFind">拍照寻找</el-button>
+            <el-button type="warning" @click="openNoBarcodeEntry">无码录入</el-button>
+          </template>
         </el-col>
       </el-row>
     </el-card>
@@ -296,8 +301,8 @@
         <el-button type="primary" @click="triggerContCapture">拍照识别</el-button>
       </div>
 
-      <!-- 找到商品 -->
-      <div v-if="contState === 'found'" class="cont-result">
+      <!-- 找到商品（须同时有 contProduct，避免二次入库时 contState 仍为 found 但 product 已清空导致渲染报错、弹窗空白） -->
+      <div v-if="contState === 'found' && contProduct" class="cont-result">
         <div class="barcode-tag">
           <el-icon><Tickets /></el-icon>
           <span>{{ contBarcode }}</span>
@@ -389,8 +394,17 @@
       @change="handleImageFindCapture"
     />
 
+    <!-- 双 input 轮换：iOS 上同一 file 连续拍照/选图时 change 可能不触发，换节点可稳定再次唤起 -->
     <input
-      ref="contCameraRef"
+      ref="contCameraRefA"
+      type="file"
+      accept="image/*"
+      capture="environment"
+      style="display:none"
+      @change="handleContCapture"
+    />
+    <input
+      ref="contCameraRefB"
       type="file"
       accept="image/*"
       capture="environment"
@@ -501,8 +515,11 @@ const contWarehouseId = ref(null)
 const contScanning = ref(false)
 const contConfirming = ref(false)
 const contVideoRef = ref()
-const contCameraRef = ref()
+const contCameraRefA = ref()
+const contCameraRefB = ref()
 const contScanMode = ref('stream') // 'stream' | 'fallback'
+/** 下次拍照识别点击的 input（与另一路交替，缓解 iOS 重复选择同一 input 不触发 change） */
+let contCaptureUseA = true
 let contStream = null
 let contTimer = null
 
@@ -1029,6 +1046,8 @@ async function openContScan(action = 'in') {
   // fallback 模式（iOS / 非安全上下文）直接唤起系统相机，不显示扫码弹窗
   if (!canStream || isIOS.value) {
     contScanMode.value = 'fallback'
+    // 必须先离开 found，否则再次打开时会在 nextTick 内以 found + null product 渲染导致异常
+    contState.value = 'ios-fallback'
     contScanVisible.value = false
     triggerContCapture()
     return
@@ -1143,8 +1162,11 @@ function stopContScan() {
 }
 
 function triggerContCapture() {
-  contCameraRef.value.value = ''
-  contCameraRef.value.click()
+  contCaptureUseA = !contCaptureUseA
+  const el = contCaptureUseA ? contCameraRefA.value : contCameraRefB.value
+  if (!el) return
+  el.value = ''
+  el.click()
 }
 
 async function handleContCapture(e) {
@@ -1308,7 +1330,24 @@ onBeforeUnmount(() => {
 
 <style scoped>
 .search-card { margin-bottom: 16px; border-radius: 8px; }
-.search-actions { display: flex; justify-content: flex-end; }
+.search-actions { display: flex; justify-content: flex-end; flex-wrap: wrap; gap: 8px; }
+.search-actions--ios {
+  flex-direction: column;
+  align-items: stretch;
+  gap: 10px;
+}
+.search-actions-ios-row {
+  display: flex;
+  flex-wrap: nowrap;
+  gap: 8px;
+  width: 100%;
+  justify-content: stretch;
+}
+.search-actions-ios-row :deep(.el-button) {
+  flex: 1;
+  min-width: 0;
+  margin: 0;
+}
 .search-row {
   justify-content: space-between;
 }
@@ -1318,8 +1357,19 @@ onBeforeUnmount(() => {
   justify-content: flex-start;
   gap: 20px;
 }
+.search-filters-row {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  gap: 20px;
+  flex-shrink: 0;
+}
 .search-input-control,
 .search-select-control {
+  width: 180px;
+  max-width: 180px;
+}
+.search-filters-row .search-select-control {
   width: 180px;
   max-width: 180px;
 }
@@ -1445,16 +1495,37 @@ onBeforeUnmount(() => {
     gap: 8px;
     width: 100%;
   }
-  .search-input-control,
-  .search-select-control {
+  .search-input-control {
     width: 100%;
+    max-width: none;
+  }
+  .search-filters-row {
+    display: flex;
+    flex-direction: row;
+    flex-wrap: nowrap;
+    gap: 8px;
+    width: 100%;
+  }
+  .search-filters-row .search-select-control {
+    flex: 1;
+    width: 0;
+    min-width: 0;
     max-width: none;
   }
   .search-actions {
     justify-content: stretch;
   }
-  .search-actions :deep(.el-button) {
+  /* 非 iOS 小屏：保持纵向满宽按钮，与原先一致 */
+  .search-actions:not(.search-actions--ios) {
+    flex-direction: column;
+    align-items: stretch;
+  }
+  .search-actions:not(.search-actions--ios) :deep(.el-button) {
     width: 100%;
+    margin-left: 0;
+  }
+  .search-actions--ios {
+    margin-top: 4px;
   }
   .table-scroll {
     -webkit-overflow-scrolling: touch;
