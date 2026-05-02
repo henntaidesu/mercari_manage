@@ -5,14 +5,15 @@ Mercari 单笔订单详情回填：仅调用 transaction_evidences/get（按 ite
 实际请求形如::
   GET https://api.mercari.jp/transaction_evidences/get?_datetime_format=U&item_id=<m...>
 
-HTTP 头 DPoP：账号 JSON 的 ``dpop_info`` 须针对上述 URL（与方法 GET）生成绑定；调度层使用 ``DPOP_FOR_ITEM_INFO``。
+HTTP 头 DPoP：账号 JSON 的 ``dpop_info`` 须针对上述 URL（与方法 GET）生成绑定；调度层使用 ``DPOP_FOR_ITEM_INFO``；``dpop_info`` 为空时请求层直接抛错，不回退 ``dpop_list``。
 
 本模块不调用 items/get（例如含 id=、include_auction= 等参数的商品详情接口）。
 
 若传入 expected_seller_id，校验 data.seller_id 一致。
 remark <- item_name；description <- description；order_updated_at/purchase_time <- Unix 秒（原始时间戳）；
 承运：shipping_class_carrier_display_name；运费：seller_shipping_fee / buyer_shipping_fee；
-手续费：售价 price 的 10%（自行计算）；净收益：运费合计 > 0 时为 price − 手续费 − 运费。
+金额口径均为日元（整数，无小数）；手续费：售价日元 ×10% 四舍五入到整数；
+净收益：运费合计 > 0 时为 售价日元 − 手续费日元 − 运费日元（均为整数运算）。
 """
 
 import json
@@ -99,8 +100,7 @@ def fetch_item_info(item_id: str, account_id: Optional[int] = None) -> Dict[str,
     """
     GET transaction_evidences/get（非 items/get），返回完整 JSON（含 result / data）。
 
-    DPoP：使用 ``dpop_info``（``dpop_for=DPOP_FOR_ITEM_INFO``），须与完整请求 URL 一致。
-    若 ``dpop_info`` 为空则回退 ``dpop_list`` / ``dpop``（见 mercari_req_scheduling）。
+    DPoP：仅 ``dpop_info``（``dpop_for=DPOP_FOR_ITEM_INFO``），须与完整请求 URL 一致；缺失时 ``build_headers`` 抛 ``RuntimeError``。
     """
     url = build_transaction_evidence_url(item_id)
     return send_request(
@@ -121,9 +121,11 @@ def extract_order_info_fields(response: Dict[str, Any]) -> Dict[str, Any]:
     if not isinstance(d, dict):
         return {}
 
-    price = float(d.get("price") or 0)
-    # 手续费：按售价（金额）10% 计算，不用接口 payment_fee
-    fee_f: Optional[float] = round(price * 0.1, 2) if price > 0 else None
+    raw_price = float(d.get("price") or 0)
+    # 煤炉售价为日元整数；接口偶为浮点，统一 round 后存库
+    price_yen = int(round(raw_price)) if raw_price else 0
+    # 手续费：售价日元 ×10%，四舍五入到日元整数；不用接口 payment_fee
+    fee_yen: Optional[int] = int(round(price_yen * 0.1)) if price_yen > 0 else None
 
     carrier_raw = (d.get("shipping_class_carrier_display_name") or "").strip()
     carrier_display_name: Optional[str] = carrier_raw or None
@@ -131,13 +133,13 @@ def extract_order_info_fields(response: Dict[str, Any]) -> Dict[str, Any]:
     ss = _float_str_or_num(d.get("seller_shipping_fee"))
     bs = _float_str_or_num(d.get("buyer_shipping_fee"))
     ship_parts = [x for x in (ss, bs) if x is not None]
-    shipping_fee: Optional[float] = None
+    shipping_fee: Optional[int] = None
     if ship_parts:
-        shipping_fee = sum(ship_parts)
+        shipping_fee = int(round(sum(ship_parts)))
 
-    net_income: Optional[float] = None
-    if shipping_fee is not None and shipping_fee > 0 and fee_f is not None:
-        net_income = round(price - float(fee_f) - float(shipping_fee), 2)
+    net_income: Optional[int] = None
+    if shipping_fee is not None and shipping_fee > 0 and fee_yen is not None:
+        net_income = price_yen - fee_yen - shipping_fee
 
     te = d.get("transaction_evidence") if isinstance(d.get("transaction_evidence"), dict) else {}
     tracking_no = _tracking_no_from_evidence(te, d)
@@ -172,7 +174,7 @@ def extract_order_info_fields(response: Dict[str, Any]) -> Dict[str, Any]:
     )
 
     return {
-        "service_fee": fee_f,
+        "service_fee": fee_yen,
         "net_income": net_income,
         "carrier_display_name": carrier_display_name,
         "request_class_display_name": None,
@@ -182,7 +184,7 @@ def extract_order_info_fields(response: Dict[str, Any]) -> Dict[str, Any]:
         "status": status_val,
         "order_updated_at": order_updated_at_u,
         "purchase_time": purchase_time_u,
-        "amount": price,
+        "amount": price_yen,
         "remark": remark_val if remark_val else None,
         "description": description_val if description_val else None,
         "customer_name": customer_name_val,
@@ -246,7 +248,7 @@ def apply_item_info_to_order(
     if fields.get("purchase_time") is not None:
         o.purchase_time = int(fields["purchase_time"])
     if fields.get("amount") is not None:
-        o.amount = float(fields["amount"])
+        o.amount = int(fields["amount"])
     if fields.get("remark") is not None:
         o.remark = fields["remark"]
     if fields.get("description") is not None:

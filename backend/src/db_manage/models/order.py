@@ -3,6 +3,7 @@
 订单表模型。
 
 SQLite：`order_date`、`order_updated_at`、`purchase_time` 均为 INTEGER，存 Mercari 原始 Unix 秒；
+`amount`、`service_fee`、`net_income`、`shipping_fee` 为 INTEGER，存日元整数；
 展示与时区换算由前端完成。
 """
 
@@ -73,19 +74,17 @@ class OrderModel(BaseModel):
                 'default': "'pending'",
             },
             'amount': {
-                'type': 'REAL',
+                'type': 'INTEGER',
                 'not_null': True,
                 'default': 0,
             },
-            # 手续费（由 get_order_info 等后续填充）
             'service_fee': {
-                'type': 'REAL',
+                'type': 'INTEGER',
                 'not_null': False,
                 'default': None,
             },
-            # 收益（到手等，由 info 接口计算或回填）
             'net_income': {
-                'type': 'REAL',
+                'type': 'INTEGER',
                 'not_null': False,
                 'default': None,
             },
@@ -101,9 +100,8 @@ class OrderModel(BaseModel):
                 'not_null': False,
                 'default': None,
             },
-            # 快递费（items/get shipping_class.fee）
             'shipping_fee': {
-                'type': 'REAL',
+                'type': 'INTEGER',
                 'not_null': False,
                 'default': None,
             },
@@ -211,10 +209,10 @@ class OrderModel(BaseModel):
         row = db.execute_query(sql, tuple(params))[0]
         return {
             "total_count": int(row[0]),
-            "sum_amount": float(row[1]),
-            "sum_service_fee": float(row[2]),
-            "sum_shipping_fee": float(row[3]),
-            "sum_net_income": float(row[4]),
+            "sum_amount": int(row[1]),
+            "sum_service_fee": int(row[2]),
+            "sum_shipping_fee": int(row[3]),
+            "sum_net_income": int(row[4]),
         }
 
     # items/get 批量刷新时排除：已完成(done)、取消、历史売切（煤炉侧终态）

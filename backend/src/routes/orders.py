@@ -41,12 +41,12 @@ class OrderCreate(PydanticModel):
     customer_name: Optional[str] = None
     data_user: Optional[str] = None
     status: str = "pending"
-    amount: float
-    service_fee: Optional[float] = None
-    net_income: Optional[float] = None
+    amount: int
+    service_fee: Optional[int] = None
+    net_income: Optional[int] = None
     carrier_display_name: Optional[str] = None
     request_class_display_name: Optional[str] = None
-    shipping_fee: Optional[float] = None
+    shipping_fee: Optional[int] = None
     tracking_no: Optional[str] = None
     transaction_evidence_id: Optional[int] = None
     remark: Optional[str] = None
@@ -69,12 +69,12 @@ class OrderUpdate(PydanticModel):
     customer_name: Optional[str] = None
     data_user: Optional[str] = None
     status: Optional[str] = None
-    amount: Optional[float] = None
-    service_fee: Optional[float] = None
-    net_income: Optional[float] = None
+    amount: Optional[int] = None
+    service_fee: Optional[int] = None
+    net_income: Optional[int] = None
     carrier_display_name: Optional[str] = None
     request_class_display_name: Optional[str] = None
-    shipping_fee: Optional[float] = None
+    shipping_fee: Optional[int] = None
     tracking_no: Optional[str] = None
     transaction_evidence_id: Optional[int] = None
     remark: Optional[str] = None
@@ -216,7 +216,7 @@ def create_order(data: OrderCreate):
         customer_name=(data.customer_name or "").strip() or None,
         data_user=(data.data_user or "").strip() or None,
         status=data.status,
-        amount=data.amount,
+        amount=int(data.amount),
         service_fee=data.service_fee,
         net_income=data.net_income,
         carrier_display_name=(data.carrier_display_name or "").strip() or None,
@@ -259,7 +259,7 @@ def update_order(oid: int, data: OrderUpdate):
     if data.amount is not None:
         if data.amount <= 0:
             raise HTTPException(status_code=400, detail="金额必须大于0")
-        item.amount = data.amount
+        item.amount = int(data.amount)
     if "service_fee" in data.model_fields_set:
         item.service_fee = data.service_fee
     if "net_income" in data.model_fields_set:

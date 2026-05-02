@@ -137,16 +137,26 @@
     <el-dialog
       v-model="dialogVisible"
       title="编辑订单"
-      width="680px"
+      width="720px"
       destroy-on-close
       class="order-edit-dialog"
     >
-      <el-form :model="form" :rules="rules" ref="formRef" label-width="132px" class="order-edit-form">
+      <el-form :model="form" :rules="rules" ref="formRef" label-width="140px" class="order-edit-form">
         <el-form-item v-if="form.id != null" label="数据库 ID">
           <el-input :model-value="String(form.id)" disabled />
         </el-form-item>
         <el-form-item label="订单号" prop="order_no">
           <el-input v-model="form.order_no" placeholder="请输入订单号" maxlength="60" clearable />
+        </el-form-item>
+        <el-form-item label="订单时间" prop="order_date">
+          <el-date-picker
+            v-model="form.order_date"
+            type="datetime"
+            value-format="YYYY-MM-DD HH:mm:ss"
+            style="width: 100%"
+            placeholder="order_date（库内 Unix 秒，存库基准）"
+            clearable
+          />
         </el-form-item>
         <el-form-item label="最后更新">
           <el-date-picker
@@ -168,33 +178,36 @@
             clearable
           />
         </el-form-item>
+        <el-form-item label="卖家ID">
+          <el-input v-model="form.data_user" placeholder="data_user（Mercari seller.id）" maxlength="64" clearable />
+        </el-form-item>
         <el-form-item label="买家ID">
-          <el-input v-model="form.customer_name" placeholder="Mercari 买家用户 ID（数字）" maxlength="30" clearable />
+          <el-input v-model="form.customer_name" placeholder="customer_name（Mercari 买家用户 ID）" maxlength="30" clearable />
         </el-form-item>
         <el-form-item label="订单状态" prop="status">
           <el-select v-model="form.status" filterable style="width: 100%">
             <el-option v-for="item in formOrderStatusOptions" :key="item.value" :label="item.label" :value="item.value" />
           </el-select>
         </el-form-item>
-        <el-form-item label="订单金额" prop="amount">
-          <el-input-number v-model="form.amount" :min="0.01" :precision="2" :controls="false" style="width: 100%" />
+        <el-form-item label="订单金额（日元）" prop="amount">
+          <el-input-number v-model="form.amount" :min="1" :precision="0" :controls="false" style="width: 100%" />
         </el-form-item>
-        <el-form-item label="手续费">
+        <el-form-item label="手续费（日元）">
           <el-input-number
             v-model="form.service_fee"
-            :precision="2"
+            :precision="0"
             :controls="false"
             style="width: 100%"
-            placeholder="可选"
+            placeholder="可选，整数"
           />
         </el-form-item>
-        <el-form-item label="净收益">
+        <el-form-item label="净收益（日元）">
           <el-input-number
             v-model="form.net_income"
-            :precision="2"
+            :precision="0"
             :controls="false"
             style="width: 100%"
-            placeholder="可选"
+            placeholder="可选，整数"
           />
         </el-form-item>
         <el-form-item label="快递公司">
@@ -203,13 +216,13 @@
         <el-form-item label="寄件方式名">
           <el-input v-model="form.request_class_display_name" clearable placeholder="request_class_display_name" />
         </el-form-item>
-        <el-form-item label="快递费">
+        <el-form-item label="快递费（日元）">
           <el-input-number
             v-model="form.shipping_fee"
-            :precision="2"
+            :precision="0"
             :controls="false"
             style="width: 100%"
-            placeholder="可选"
+            placeholder="可选，整数"
           />
         </el-form-item>
         <el-form-item label="快递单号">
@@ -225,7 +238,17 @@
           />
         </el-form-item>
         <el-form-item label="商品名称">
-          <el-input v-model="form.remark" type="textarea" :rows="2" maxlength="2000" show-word-limit />
+          <el-input v-model="form.remark" type="textarea" :rows="2" maxlength="2000" show-word-limit placeholder="remark" />
+        </el-form-item>
+        <el-form-item label="商品说明">
+          <el-input
+            v-model="form.description"
+            type="textarea"
+            :rows="3"
+            maxlength="4000"
+            show-word-limit
+            placeholder="description（transaction_evidences/get）"
+          />
         </el-form-item>
         <el-form-item label="缩略图 JSON">
           <el-input
@@ -695,6 +718,7 @@ const createDefaultForm = () => ({
   order_date: formatLocalDatetime(),
   order_updated_at: '',
   purchase_time: '',
+  data_user: '',
   customer_name: '',
   status: 'pending',
   amount: null,
@@ -714,6 +738,7 @@ const form = ref(createDefaultForm())
 
 const rules = {
   order_no: [{ required: true, message: '请输入订单号', trigger: 'blur' }],
+  order_date: [{ required: true, message: '请选择订单时间', trigger: 'change' }],
   status: [{ required: true, message: '请选择订单状态', trigger: 'change' }],
   amount: [{ required: true, message: '请输入订单金额', trigger: 'blur' }],
 }
@@ -793,6 +818,7 @@ function openEdit(row) {
     order_date: tsOrLegacyToLocalForm(row.order_date),
     order_updated_at: tsOrLegacyToLocalForm(row.order_updated_at),
     purchase_time: tsOrLegacyToLocalForm(row.purchase_time),
+    data_user: row.data_user != null && row.data_user !== '' ? String(row.data_user) : '',
     customer_name: row.customer_name || '',
     status: row.status || 'pending',
     amount: Number(row.amount || 0),
@@ -842,7 +868,7 @@ async function submit() {
   }
   const orderDateSec = localFormStringToUnixSec(form.value.order_date)
   if (orderDateSec == null) {
-    ElMessage.warning('订单时间无效，请重新打开编辑或同步数据')
+    ElMessage.warning('订单时间（order_date）无效，请检查「订单时间」')
     return
   }
   submitting.value = true
@@ -851,6 +877,7 @@ async function submit() {
     order_date: orderDateSec,
     order_updated_at: localFormStringToUnixSec(form.value.order_updated_at),
     purchase_time: localFormStringToUnixSec(form.value.purchase_time),
+    data_user: String(form.value.data_user || '').trim() || null,
     customer_name: String(form.value.customer_name || '').trim() || null,
     status: form.value.status,
     amount: Number(form.value.amount || 0),

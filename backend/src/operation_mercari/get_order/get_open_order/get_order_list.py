@@ -15,7 +15,7 @@
   customer_name    <- str(item["buyer"]["id"])      （仅存买家用户 ID）
   data_user        <- str(seller_id)                （卖家用户 ID，与请求参数 seller_id 一致）
   status           <- item["transaction_evidence"]["status"]（如 wait_shipping）
-  amount           <- item["price"]
+  amount           <- item["price"]（日元整数）
   remark           <- item["name"]                  (商品名称)
   thumbnails       <- item["thumbnails"]            (URL 列表 JSON 存库)
 """
@@ -77,7 +77,7 @@ def _item_to_order_data(
         "customer_name":    buyer_id_str or None,
         "data_user":        data_user,
         "status":           te.get("status") or item.get("status", "trading"),
-        "amount":           float(item.get("price") or 0),
+        "amount":           int(round(float(item.get("price") or 0))),
         "remark":           item.get("name", ""),
         "thumbnails":       _norm_thumbnails_json(item.get("thumbnails")),
     }
