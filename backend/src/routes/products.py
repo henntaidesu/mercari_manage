@@ -1,6 +1,7 @@
 # -*- coding: utf-8 -*-
 import io
 import os
+import time
 import base64
 from fastapi import APIRouter, HTTPException, UploadFile, File
 from pydantic import BaseModel as PydanticModel
@@ -224,10 +225,17 @@ def stock_in_product(pid: int, data: StockInRequest):
         db.execute_insert(
             """
             INSERT INTO [transactions] (
-                type, product_id, warehouse_id, quantity, remark
-            ) VALUES (?, ?, ?, ?, ?)
+                type, product_id, warehouse_id, quantity, remark, created_at
+            ) VALUES (?, ?, ?, ?, ?, ?)
             """,
-            ("in", pid, data.warehouse_id, data.quantity, data.remark or "扫码快速入库"),
+            (
+                "in",
+                pid,
+                data.warehouse_id,
+                data.quantity,
+                data.remark or "扫码快速入库",
+                int(time.time()),
+            ),
         )
     new_qty = db.execute_query("SELECT quantity FROM [inventory] WHERE id = ?", (pid,))
     return {"success": True, "new_quantity": (new_qty[0][0] if new_qty else 0), "product_id": pid}
@@ -254,10 +262,17 @@ def stock_out_product(pid: int, data: StockInRequest):
         db.execute_insert(
             """
             INSERT INTO [transactions] (
-                type, product_id, warehouse_id, quantity, remark
-            ) VALUES (?, ?, ?, ?, ?)
+                type, product_id, warehouse_id, quantity, remark, created_at
+            ) VALUES (?, ?, ?, ?, ?, ?)
             """,
-            ("out", pid, data.warehouse_id, data.quantity, data.remark or "扫码快速出库"),
+            (
+                "out",
+                pid,
+                data.warehouse_id,
+                data.quantity,
+                data.remark or "扫码快速出库",
+                int(time.time()),
+            ),
         )
     new_qty = db.execute_query("SELECT quantity FROM [inventory] WHERE id = ?", (pid,))
     return {"success": True, "new_quantity": (new_qty[0][0] if new_qty else 0), "product_id": pid}

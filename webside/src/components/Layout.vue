@@ -87,9 +87,9 @@ const userName = computed(() => {
 const menuItems = [
   { path: '/dashboard', title: '控制台', icon: 'Odometer' },
   { path: '/inventory', title: '库存管理', icon: 'Goods' },
+  { path: '/orders', title: '订单管理', icon: 'Tickets' },
   { path: '/transactions', title: '库存记录', icon: 'List' },
   { path: '/cost-records', title: '成本记录', icon: 'Money' },
-  { path: '/orders', title: '订单管理', icon: 'Tickets' },
   { path: '/meilu-accounts', title: '煤炉账号', icon: 'User' },
   { path: '/warehouses', title: '仓库管理', icon: 'OfficeBuilding' },
   { path: '/categories', title: '游戏分类', icon: 'Collection' },

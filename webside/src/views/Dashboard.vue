@@ -23,7 +23,7 @@
       </el-row>
     </el-card>
 
-    <!-- 订单汇总：近 30 天（按 order_date，与 /orders/stats 相同接口） -->
+    <!-- 订单汇总：近 30 天本地自然日（Unix 秒区间），与订单页 /orders/stats 口径一致（COALESCE 购入/下单时间） -->
     <el-card class="section-card order-stats-wrap" shadow="never" v-loading="orderStatsLoading">
       <template #header>
         <div class="card-header">
@@ -62,7 +62,9 @@
         </div>
       </template>
       <el-table :data="recentTx" size="small" stripe>
-        <el-table-column label="时间" prop="created_at" width="160" />
+        <el-table-column label="时间" width="160">
+          <template #default="{ row }">{{ formatUnixSecLocal(row.created_at) }}</template>
+        </el-table-column>
         <el-table-column label="类型" width="80" align="center">
           <template #default="{ row }">
             <el-tag :type="row.type === 'in' ? 'success' : row.type === 'out' ? 'danger' : 'warning'" size="small">
@@ -82,6 +84,8 @@
 <script setup>
 import { ref, computed, onMounted } from 'vue'
 import { inventoryApi, transactionApi, orderApi } from '@/api/index.js'
+import { rollingLocalDayRangeTs, localTodayRangeTs } from '@/utils/orderStatsTime.js'
+import { formatUnixSecLocal } from '@/utils/timeDisplay.js'
 
 const summary = ref({})
 const recentTx = ref([])
@@ -105,25 +109,6 @@ const statCards = [
   { key: 'today_in', label: '今日入库', icon: 'Top', color: '#67C23A' },
   { key: 'today_out', label: '今日出库', icon: 'Bottom', color: '#F56C6C' }
 ]
-
-/** 本地日历日 YYYY-MM-DD */
-function formatLocalYmd(d) {
-  const pad = (n) => String(n).padStart(2, '0')
-  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`
-}
-
-/**
- * 滚动自然日区间（含首尾共 dayCount 天），用于与订单列表相同的 start_date / end_date 筛选。
- */
-function rollingLocalDayRange(dayCount) {
-  const end = new Date()
-  const start = new Date(end)
-  start.setDate(start.getDate() - (dayCount - 1))
-  return {
-    start_date: formatLocalYmd(start),
-    end_date: formatLocalYmd(end),
-  }
-}
 
 const orderStatCards = computed(() => {
   const o = orderStats.value
@@ -179,10 +164,11 @@ const orderStatCards = computed(() => {
 async function loadOrderStats() {
   orderStatsLoading.value = true
   try {
-    const range = rollingLocalDayRange(30)
+    const range = rollingLocalDayRangeTs(30)
+    const today = localTodayRangeTs()
     const res = await orderApi.stats({
       ...range,
-      today_date: formatLocalYmd(new Date()),
+      ...today,
     })
     orderStats.value = {
       total_count: res.total_count ?? 0,

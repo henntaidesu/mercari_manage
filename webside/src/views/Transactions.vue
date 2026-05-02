@@ -20,7 +20,9 @@
 
     <el-card shadow="never" class="table-card">
       <el-table :data="list" v-loading="loading" stripe>
-        <el-table-column label="时间" prop="created_at" width="160" />
+        <el-table-column label="时间" width="160">
+          <template #default="{ row }">{{ formatUnixSecLocal(row.created_at) }}</template>
+        </el-table-column>
         <el-table-column label="类型" width="80" align="center">
           <template #default="{ row }">
             <el-tag :type="typeConfig[row.type]?.tag" size="small" effect="light">
@@ -66,6 +68,7 @@
 <script setup>
 import { ref, onMounted } from 'vue'
 import { transactionApi, warehouseApi } from '@/api/index.js'
+import { formatUnixSecLocal } from '@/utils/timeDisplay.js'
 
 const list = ref([])
 const loading = ref(false)

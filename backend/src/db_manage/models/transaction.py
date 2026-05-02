@@ -1,10 +1,21 @@
 # -*- coding: utf-8 -*-
 """
-出入库记录表模型
+出入库记录表模型。
+
+created_at：INTEGER，Unix 秒；存量库由 scripts/migrate_transactions_created_at.py 自 DATETIME 转换。
 """
 
-from typing import Dict, Any, List, Optional
+import time
+from datetime import datetime, timedelta
+from typing import Dict, Any, List, Optional, Tuple
 from ..base_model import BaseModel
+
+
+def _local_today_unix_bounds() -> Tuple[int, int]:
+    """本地日历日 [0:00, 次日 0:00) 的 Unix 秒，与 INTEGER created_at 比较。"""
+    start = datetime.now().replace(hour=0, minute=0, second=0, microsecond=0)
+    end = start + timedelta(days=1)
+    return int(start.timestamp()), int(end.timestamp())
 
 
 class TransactionModel(BaseModel):
@@ -58,12 +69,20 @@ class TransactionModel(BaseModel):
                 'not_null': False,
                 'default': "'管理员'",
             },
+            # Unix 秒；插入时若未赋值由 save() 填当前秒（避免在模型 default 里写 SQL 污染 Python 字段）
             'created_at': {
-                'type': 'DATETIME',
-                'not_null': False,
-                'default': 'CURRENT_TIMESTAMP',
+                'type': 'INTEGER',
+                'not_null': True,
+                'default': None,
             },
         }
+
+    def save(self) -> bool:
+        if self._is_new_record():
+            ca = self._data.get("created_at")
+            if ca is None:
+                self._data["created_at"] = int(time.time())
+        return super().save()
 
     @classmethod
     def get_indexes(cls) -> List[Dict[str, Any]]:
@@ -102,7 +121,26 @@ class TransactionModel(BaseModel):
             base_sql += " AND (t.warehouse_id = ? OR t.target_warehouse_id = ?)"
             params += [warehouse_id, warehouse_id]
 
-        total = db.execute_query(f"SELECT COUNT(*) {base_sql}", tuple(params))[0][0]
+        filter_params = list(params)
+
+        total = db.execute_query(f"SELECT COUNT(*) {base_sql}", tuple(filter_params))[0][0]
+
+        t_start, t_end = _local_today_unix_bounds()
+        time_clause = " AND t.created_at >= ? AND t.created_at < ?"
+        today_params = tuple(filter_params + [t_start, t_end])
+
+        today_in = int(
+            db.execute_query(
+                f"SELECT COALESCE(SUM(t.quantity), 0) {base_sql}{time_clause} AND t.type = 'in'",
+                today_params,
+            )[0][0]
+        )
+        today_out = int(
+            db.execute_query(
+                f"SELECT COALESCE(SUM(t.quantity), 0) {base_sql}{time_clause} AND t.type = 'out'",
+                today_params,
+            )[0][0]
+        )
 
         select_sql = f"""
             SELECT t.id, t.type, t.product_id, p.name as product_name,
@@ -113,8 +151,8 @@ class TransactionModel(BaseModel):
             ORDER BY t.created_at DESC
             LIMIT ? OFFSET ?
         """
-        params += [page_size, (page - 1) * page_size]
-        rows = db.execute_query(select_sql, tuple(params))
+        list_params = tuple(filter_params + [page_size, (page - 1) * page_size])
+        rows = db.execute_query(select_sql, list_params)
 
         keys = ['id', 'type', 'product_id', 'product_name',
                 'warehouse_id', 'warehouse_name',
@@ -124,5 +162,7 @@ class TransactionModel(BaseModel):
             'total': total,
             'page': page,
             'page_size': page_size,
+            'today_in': today_in,
+            'today_out': today_out,
             'items': [dict(zip(keys, row)) for row in rows],
         }

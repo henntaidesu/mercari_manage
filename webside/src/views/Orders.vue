@@ -44,7 +44,7 @@
             <div class="stat-info">
               <div class="stat-value-row">
                 <span class="stat-value" :class="card.valueClass">{{ card.display }}</span>
-                <span class="stat-today">（今日购入 {{ card.todayDisplay }}）</span>
+                <span class="stat-today">（今日新增 {{ card.todayDisplay }}）</span>
               </div>
               <div class="stat-label">{{ card.label }}</div>
             </div>
@@ -293,6 +293,11 @@ import { ref, computed, onMounted } from 'vue'
 import { ElMessage } from 'element-plus'
 import { RefreshRight, Refresh } from '@element-plus/icons-vue'
 import { orderApi, mercariApi, meiluAccountApi } from '@/api/index.js'
+import {
+  localYmdToDayStartTs,
+  localYmdToDayEndTs,
+  localTodayRangeTs,
+} from '@/utils/orderStatsTime.js'
 
 const loading = ref(false)
 const statsLoading = ref(false)
@@ -312,7 +317,7 @@ const stats = ref({
   today_sum_net_income: 0,
 })
 
-/** 与控制台「订单统计」卡片一致；主数值对应当前列表筛选；今日购入按购入时间（purchase_time）落在本地当日 + 相同 keyword/status */
+/** 与控制台「订单统计」卡片一致；主数值对应当前列表筛选；今日新增按购入时间落在本地当日 + 相同 keyword/status */
 const orderStatCards = computed(() => {
   const o = stats.value
   return [
@@ -533,21 +538,6 @@ function formatLocalWallToStr(dt) {
   return `${dt.getFullYear()}-${pad2(dt.getMonth() + 1)}-${pad2(dt.getDate())} ${pad2(dt.getHours())}:${pad2(dt.getMinutes())}:${pad2(dt.getSeconds())}`
 }
 
-/** 本地日历日 YYYY-MM-DD -> 当日起止 Unix 秒（与后端 COALESCE(purchase_time, order_date) 筛选一致） */
-function localYmdToDayStartTs(ymd) {
-  const m = String(ymd).match(/^(\d{4})-(\d{2})-(\d{2})$/)
-  if (!m) return null
-  const d = new Date(+m[1], +m[2] - 1, +m[3], 0, 0, 0, 0)
-  return Math.floor(d.getTime() / 1000)
-}
-
-function localYmdToDayEndTs(ymd) {
-  const m = String(ymd).match(/^(\d{4})-(\d{2})-(\d{2})$/)
-  if (!m) return null
-  const d = new Date(+m[1], +m[2] - 1, +m[3], 23, 59, 59, 999)
-  return Math.floor(d.getTime() / 1000)
-}
-
 /**
  * 存库值：优先 Unix 秒/毫秒时间戳；否则按旧版 UTC 字符串解析（兼容旧数据）
  */
@@ -741,13 +731,11 @@ function listFilterParams() {
 async function loadStats() {
   statsLoading.value = true
   try {
-    const now = new Date()
-    const todayStart = Math.floor(new Date(now.getFullYear(), now.getMonth(), now.getDate(), 0, 0, 0, 0).getTime() / 1000)
-    const todayEnd = Math.floor(new Date(now.getFullYear(), now.getMonth(), now.getDate(), 23, 59, 59, 999).getTime() / 1000)
+    const { today_start_ts, today_end_ts } = localTodayRangeTs()
     const res = await orderApi.stats({
       ...listFilterParams(),
-      today_start_ts: todayStart,
-      today_end_ts: todayEnd,
+      today_start_ts,
+      today_end_ts,
     })
     stats.value = {
       total_count: res.total_count ?? 0,
