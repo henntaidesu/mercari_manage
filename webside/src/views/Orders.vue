@@ -30,7 +30,8 @@
       </el-row>
     </el-card>
 
-    <el-card class="section-card order-stats-wrap" shadow="never" v-loading="statsLoading">
+    <!-- 数据分析统计卡片：手机端不展示（与库存管理一致） -->
+    <el-card v-if="!isMobile" class="section-card order-stats-wrap" shadow="never" v-loading="statsLoading">
       <el-row :gutter="16" class="stat-row order-stat-row">
         <el-col :xs="12" :sm="12" :md="8" :lg="4" v-for="card in orderStatCards" :key="card.label">
           <div
@@ -289,7 +290,7 @@
 </template>
 
 <script setup>
-import { ref, computed, onMounted } from 'vue'
+import { ref, computed, onMounted, watch, onBeforeUnmount } from 'vue'
 import { ElMessage } from 'element-plus'
 import { RefreshRight, Refresh } from '@element-plus/icons-vue'
 import { orderApi, mercariApi, meiluAccountApi } from '@/api/index.js'
@@ -301,6 +302,8 @@ import {
 
 const loading = ref(false)
 const statsLoading = ref(false)
+/** 与 Layout / 库存页一致：(max-width: 768px) */
+const isMobile = ref(false)
 const submitting = ref(false)
 /** 正在 Mercari 拉取详情的行 id */
 const refreshingId = ref(null)
@@ -728,7 +731,12 @@ function listFilterParams() {
   return params
 }
 
+function updateViewportState() {
+  isMobile.value = window.matchMedia('(max-width: 768px)').matches
+}
+
 async function loadStats() {
+  if (isMobile.value) return
   statsLoading.value = true
   try {
     const { today_start_ts, today_end_ts } = localTodayRangeTs()
@@ -883,9 +891,19 @@ async function removeFromDialog() {
   dialogVisible.value = false
 }
 
+watch(isMobile, (mobile) => {
+  if (!mobile) loadStats()
+})
+
 onMounted(() => {
+  updateViewportState()
+  window.addEventListener('resize', updateViewportState)
   load()
   loadStats()
+})
+
+onBeforeUnmount(() => {
+  window.removeEventListener('resize', updateViewportState)
 })
 </script>
 

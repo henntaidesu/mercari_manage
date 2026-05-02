@@ -1,7 +1,7 @@
 ﻿<template>
   <div>
-    <!-- 库存统计卡片（全库汇总，与控制台「库存管理」区块一致） -->
-    <el-card class="section-card inventory-stats-wrap" shadow="never">
+    <!-- 库存统计卡片（全库汇总）；手机端不展示 -->
+    <el-card v-if="!isMobile" class="section-card inventory-stats-wrap" shadow="never">
       <el-row :gutter="16" class="stat-row inventory-stat-row">
         <el-col :xs="12" :sm="12" :md="8" :lg="4" v-for="card in inventoryStatCards" :key="card.label">
           <div class="inv-stat-card" :style="{ borderTopColor: card.color }">
@@ -35,6 +35,7 @@
             <div class="search-actions-ios-row">
               <el-button type="success" @click="openContScan('in')">条码入库</el-button>
               <el-button type="danger" @click="openContScan('out')">条码出库</el-button>
+              <el-button type="danger" plain @click="openManualOutDialog">手动出库</el-button>
               <el-button type="primary" @click="openLookupScan">条码寻找</el-button>
             </div>
             <div class="search-actions-ios-row">
@@ -45,6 +46,7 @@
           <template v-else>
             <el-button type="success" @click="openContScan('in')">条码入库</el-button>
             <el-button type="danger" @click="openContScan('out')">条码出库</el-button>
+            <el-button type="danger" plain @click="openManualOutDialog">手动出库</el-button>
             <el-button type="primary" @click="openLookupScan">条码寻找</el-button>
             <el-button type="info" @click="openImageFind">拍照寻找</el-button>
             <el-button type="warning" @click="openNoBarcodeEntry">无码录入</el-button>
@@ -55,38 +57,56 @@
 
     <el-card shadow="never" class="table-card">
       <div class="table-scroll">
-      <el-table :data="pagedList" v-loading="loading" stripe :size="isMobile ? 'small' : 'default'">
-        <el-table-column label="正面图" width="80" align="center">
+      <el-table
+        :data="pagedList"
+        v-loading="loading"
+        stripe
+        :size="isMobile ? 'small' : 'default'"
+        @sort-change="onInventorySortChange"
+      >
+        <el-table-column label="正面图" width="76" align="center" header-align="center">
           <template #default="{ row }">
             <el-image
               v-if="row.image_front || row.image"
+              class="order-thumb"
               :src="row.image_front || row.image"
               :preview-src-list="[row.image_front || row.image]"
               :hide-on-click-modal="true"
               :preview-teleported="true"
               :z-index="4000"
-              style="width:40px;height:40px;border-radius:4px;object-fit:cover"
               fit="cover"
-            />
-            <el-icon v-else size="30" color="#ddd"><Picture /></el-icon>
+              referrerpolicy="no-referrer"
+              lazy
+            >
+              <template #error>
+                <span class="thumb-fallback">-</span>
+              </template>
+            </el-image>
+            <span v-else class="thumb-fallback">-</span>
           </template>
         </el-table-column>
-        <el-table-column label="背面图" width="80" align="center">
+        <el-table-column label="背面图" width="76" align="center" header-align="center">
           <template #default="{ row }">
             <el-image
               v-if="row.image_back"
+              class="order-thumb"
               :src="row.image_back"
               :preview-src-list="[row.image_back]"
               :hide-on-click-modal="true"
               :preview-teleported="true"
               :z-index="4000"
-              style="width:40px;height:40px;border-radius:4px;object-fit:cover"
               fit="cover"
-            />
-            <el-icon v-else size="30" color="#ddd"><Picture /></el-icon>
+              referrerpolicy="no-referrer"
+              lazy
+            >
+              <template #error>
+                <span class="thumb-fallback">-</span>
+              </template>
+            </el-image>
+            <span v-else class="thumb-fallback">-</span>
           </template>
         </el-table-column>
-        <el-table-column label="条形码" prop="barcode" min-width="150" />
+        <el-table-column label="条形码" prop="barcode" min-width="150" sortable="custom" />
         <el-table-column label="商品名称" min-width="130">
           <template #default="{ row }">
             <el-input
@@ -120,14 +140,14 @@
         <el-table-column label="所属仓库" width="120">
           <template #default="{ row }">{{ row.warehouse_name || '-' }}</template>
         </el-table-column>
-        <el-table-column label="单价" prop="price" width="90" align="right">
+        <el-table-column label="单价" prop="price" width="100" align="right" sortable="custom">
           <template #default="{ row }">
             <div class="cell-right">¥{{ Number(row.price || 0).toFixed(2) }}</div>
           </template>
         </el-table-column>
-        <el-table-column label="数量" prop="quantity" width="90" align="center">
+        <el-table-column label="数量" prop="quantity" width="100" align="center" sortable="custom">
           <template #default="{ row }">
-            <el-tag :type="(row.quantity || 0) > 0 ? 'success' : 'info'" size="small">
+            <el-tag :type="quantityTagType(row.quantity)" size="small">
               {{ row.quantity || 0 }}
             </el-tag>
           </template>
@@ -372,6 +392,28 @@
       </template>
     </el-dialog>
 
+    <!-- 手动输入条形码出库 -->
+    <el-dialog
+      v-model="manualOutVisible"
+      title="手动出库"
+      :width="isMobile ? '94vw' : '420px'"
+      destroy-on-close
+      @closed="onManualOutClosed"
+    >
+      <p class="manual-out-hint">输入商品条形码，确认后出库 1 件（与扫码出库相同）。</p>
+      <el-input
+        v-model="manualOutBarcode"
+        placeholder="请输入条形码"
+        clearable
+        size="large"
+        @keyup.enter="submitManualOut"
+      />
+      <template #footer>
+        <el-button @click="manualOutVisible = false">取消</el-button>
+        <el-button type="danger" :loading="manualOutSubmitting" @click="submitManualOut">确认出库</el-button>
+      </template>
+    </el-dialog>
+
     <!-- ===== 条形码寻找对话框 ===== -->
     <el-dialog
       v-model="lookupScanVisible"
@@ -476,12 +518,15 @@
 </template>
 
 <script setup>
-import { ref, computed, onMounted, onBeforeUnmount, nextTick } from 'vue'
+import { ref, computed, watch, onMounted, onBeforeUnmount, nextTick } from 'vue'
 import { ElMessage } from 'element-plus'
 import { inventoryApi, categoryApi, warehouseApi, scanApi, ocrApi, transactionApi } from '@/api/index.js'
 
 const list = ref([])
 const loading = ref(false)
+/** 表头排序：custom 模式，在 sortedList 中处理 */
+const inventorySortProp = ref('')
+const inventorySortOrder = ref('') // 'ascending' | 'descending' | ''
 
 const inventorySummary = ref({})
 const inventoryStatCards = [
@@ -531,6 +576,10 @@ let mediaStream = null
 let scanTimer = null
 
 // ---- 连续扫码状态 ----
+const manualOutVisible = ref(false)
+const manualOutBarcode = ref('')
+const manualOutSubmitting = ref(false)
+
 const contScanVisible = ref(false)
 const contState = ref('scanning')   // 'scanning' | 'found' | 'notfound' | 'ios-fallback'
 const contBarcode = ref('')
@@ -886,11 +935,14 @@ async function load() {
   if (filterCat.value) params.category_id = filterCat.value
   if (filterWarehouse.value) params.warehouse_id = filterWarehouse.value
   list.value = await inventoryApi.list(params).finally(() => (loading.value = false))
+  inventorySortProp.value = ''
+  inventorySortOrder.value = ''
   currentPage.value = 1
 }
 
-/** 与控制台相同：全库条目/总数量 + 接口返回的今日入出库 */
+/** 与控制台相同：全库条目/总数量 + 接口返回的今日入出库（手机端不展示统计，一般不请求） */
 async function loadInventoryStats() {
+  if (isMobile.value) return
   const [inventoryItems, tx] = await Promise.all([
     inventoryApi.list(),
     transactionApi.list({ page_size: 10 }),
@@ -904,9 +956,54 @@ async function loadInventoryStats() {
   }
 }
 
+const sortedInventoryList = computed(() => {
+  const arr = [...list.value]
+  const prop = inventorySortProp.value
+  const order = inventorySortOrder.value
+  if (!prop || !order) return arr
+  const mult = order === 'ascending' ? 1 : -1
+  arr.sort((a, b) => {
+    if (prop === 'price') {
+      const va = Number(a.price) || 0
+      const vb = Number(b.price) || 0
+      if (va < vb) return -1 * mult
+      if (va > vb) return 1 * mult
+      return 0
+    }
+    if (prop === 'quantity') {
+      const va = Number(a.quantity) || 0
+      const vb = Number(b.quantity) || 0
+      if (va < vb) return -1 * mult
+      if (va > vb) return 1 * mult
+      return 0
+    }
+    if (prop === 'barcode') {
+      const va = String(a.barcode || '')
+      const vb = String(b.barcode || '')
+      return va.localeCompare(vb, 'zh-CN') * mult
+    }
+    return 0
+  })
+  return arr
+})
+
+function onInventorySortChange({ prop, order }) {
+  inventorySortProp.value = order ? prop : ''
+  inventorySortOrder.value = order || ''
+  currentPage.value = 1
+}
+
+/** 数量：0 红色；1～3 黄色；大于 3 绿色 */
+function quantityTagType(q) {
+  const n = Number(q) || 0
+  if (n === 0) return 'danger'
+  if (n <= 3) return 'warning'
+  return 'success'
+}
+
 const pagedList = computed(() => {
   const start = (currentPage.value - 1) * pageSize
-  return list.value.slice(start, start + pageSize)
+  return sortedInventoryList.value.slice(start, start + pageSize)
 })
 
 function openDialog(row = null) {
@@ -1077,6 +1174,54 @@ async function handleCameraCapture(e) {
 }
 
 // ============ 连续扫码函数 ============
+
+function openManualOutDialog() {
+  manualOutBarcode.value = ''
+  manualOutVisible.value = true
+}
+
+function onManualOutClosed() {
+  manualOutBarcode.value = ''
+}
+
+async function submitManualOut() {
+  const bc = String(manualOutBarcode.value || '').trim()
+  if (!bc) {
+    ElMessage.warning('请输入条形码')
+    return
+  }
+  if (manualOutSubmitting.value) return
+  manualOutSubmitting.value = true
+  try {
+    const res = await inventoryApi.findByBarcode(bc)
+    if (!res?.found || !res.product) {
+      ElMessage.warning('未找到该条形码对应的商品')
+      return
+    }
+    const p = res.product
+    if (!p.warehouse_id) {
+      ElMessage.warning('该商品未设置所属仓库，请先编辑商品后再操作')
+      return
+    }
+    if (Number(p.quantity || 0) < 1) {
+      ElMessage.warning('当前库存为 0，无法出库')
+      return
+    }
+    const outRes = await inventoryApi.stockOut(p.id, {
+      warehouse_id: p.warehouse_id,
+      quantity: 1,
+      remark: '手动输入出库',
+    })
+    ElMessage.success(`出库成功，当前库存：${outRes.new_quantity} 件`)
+    manualOutVisible.value = false
+    load()
+    loadInventoryStats()
+  } catch {
+    // 错误由 axios 拦截器统一提示
+  } finally {
+    manualOutSubmitting.value = false
+  }
+}
 
 async function openContScan(action = 'in') {
   stopContScan()
@@ -1348,6 +1493,10 @@ async function handleImageFindCapture(e) {
   }
 }
 
+watch(isMobile, (mobile) => {
+  if (!mobile) loadInventoryStats()
+})
+
 // ============ 生命周期 ============
 
 onBeforeUnmount(stopScan)
@@ -1399,6 +1548,12 @@ onBeforeUnmount(() => {
 .inv-stat-value { font-size: 22px; font-weight: 700; color: #ecf2ff; }
 .inv-stat-label { font-size: 12px; color: #9ba8bf; margin-top: 2px; }
 .search-card { margin-bottom: 16px; border-radius: 8px; }
+.manual-out-hint {
+  margin: 0 0 12px;
+  font-size: 13px;
+  color: #8b9ab5;
+  line-height: 1.5;
+}
 .search-actions { display: flex; justify-content: flex-end; flex-wrap: wrap; gap: 8px; }
 .search-actions--ios {
   flex-direction: column;
@@ -1452,6 +1607,17 @@ onBeforeUnmount(() => {
   flex: 1;
 }
 .table-card { border-radius: 8px; }
+/* 与订单页 #/orders 列表缩略图一致 */
+.order-thumb {
+  width: 48px;
+  height: 48px;
+  border-radius: 4px;
+  display: block;
+}
+.thumb-fallback {
+  color: #909399;
+  font-size: 12px;
+}
 .table-scroll { width: 100%; overflow-x: auto; }
 .table-pagination {
   display: flex;

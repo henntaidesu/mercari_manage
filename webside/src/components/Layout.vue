@@ -1,80 +1,129 @@
 <template>
-  <el-container class="layout-container">
-    <!-- 移动端遮罩 -->
-    <div v-if="isMobile && sidebarOpen" class="mobile-mask" @click="sidebarOpen = false" />
-
-    <!-- 侧边栏 -->
-    <el-aside
-      :width="sidebarOpen ? '220px' : (isMobile ? '0px' : '64px')"
-      class="sidebar"
-      :class="{ 'sidebar-mobile': isMobile, 'sidebar-open': sidebarOpen }"
-    >
-      <div class="logo-area">
-        <img
-          class="logo-image"
-          src="/static/mercari.png"
-          alt="mercari 订单管理"
-        />
-        <span v-if="sidebarOpen" class="logo-text">mercari 订单管理</span>
-      </div>
-      <el-menu
-        :default-active="$route.path"
-        :collapse="!sidebarOpen && !isMobile"
-        router
-        background-color="#001529"
-        text-color="#a6adb4"
-        active-text-color="#ffffff"
-        @select="isMobile && (sidebarOpen = false)"
+  <el-container class="layout-container" direction="horizontal" :class="{ 'layout--mobile': isMobile }">
+    <!-- 手机：遮罩 / 菜单按钮挂到 body，避免父级 transform 导致 fixed 失效、被内容盖住 -->
+    <Teleport to="body">
+      <div
+        v-if="isMobile && mobileDrawerOpen"
+        class="layout-mobile-mask"
+        @click="mobileDrawerOpen = false"
+      />
+    </Teleport>
+    <Teleport to="body">
+      <button
+        v-if="isMobile && !mobileDrawerOpen"
+        type="button"
+        class="layout-mobile-fab"
+        aria-label="打开菜单"
+        aria-expanded="false"
+        @click="mobileDrawerOpen = true"
       >
-        <el-menu-item v-for="item in menuItems" :key="item.path" :index="item.path">
-          <el-icon><component :is="item.icon" /></el-icon>
-          <template #title>{{ item.title }}</template>
-        </el-menu-item>
-      </el-menu>
-    </el-aside>
+        <el-icon :size="22"><Menu /></el-icon>
+      </button>
+    </Teleport>
 
-    <!-- 主体区域 -->
-    <el-container direction="vertical" class="main-wrapper">
-      <!-- 顶部导航 -->
-      <el-header class="header">
-        <div class="header-left">
-          <el-button text @click="sidebarOpen = !sidebarOpen" class="toggle-btn">
-            <el-icon size="20"><Expand v-if="!sidebarOpen" /><Fold v-else /></el-icon>
+    <!-- 手机端挂到 body：避免任意祖先 transform 导致侧栏 fixed 错位，保证从左缘滑入 -->
+    <Teleport to="body" :disabled="!isMobile">
+      <el-aside
+        width="220px"
+        class="sidebar"
+        :class="{
+          'sidebar--mobile': isMobile,
+          'sidebar--drawer-open': isMobile && mobileDrawerOpen,
+        }"
+      >
+      <div class="sidebar-inner">
+        <div class="logo-area">
+          <img
+            class="logo-image"
+            src="/static/mercari.png"
+            alt="mercari 订单管理"
+          />
+          <span class="logo-text">mercari 订单管理</span>
+          <el-button
+            v-if="isMobile"
+            text
+            class="sidebar-close-btn"
+            @click="mobileDrawerOpen = false"
+          >
+            <el-icon :size="18"><Close /></el-icon>
           </el-button>
-          <el-breadcrumb separator="/">
-            <el-breadcrumb-item>{{ currentTitle }}</el-breadcrumb-item>
-          </el-breadcrumb>
         </div>
-        <div class="header-right">
-          <el-tag size="small" effect="plain">{{ userName }}</el-tag>
-          <el-tag type="success" size="small" effect="light">
-            <el-icon><CircleCheck /></el-icon> 系统正常
-          </el-tag>
-          <el-button text type="danger" @click="handleLogout">退出</el-button>
+        <div class="sidebar-menu-wrap">
+          <el-menu
+            :default-active="$route.path"
+            :collapse="false"
+            router
+            background-color="#001529"
+            text-color="#a6adb4"
+            active-text-color="#ffffff"
+            @select="onMenuSelect"
+          >
+            <el-menu-item v-for="item in menuItems" :key="item.path" :index="item.path">
+              <el-icon><component :is="item.icon" /></el-icon>
+              <template #title>{{ item.title }}</template>
+            </el-menu-item>
+          </el-menu>
         </div>
-      </el-header>
+        <div class="sidebar-footer">
+          <div class="sidebar-footer-row">
+            <div class="sidebar-footer-user" :title="userName">{{ userName }}</div>
+            <el-button class="sidebar-logout-btn" type="danger" plain size="small" @click="handleLogout">
+              退出
+            </el-button>
+          </div>
+        </div>
+      </div>
+    </el-aside>
+    </Teleport>
 
-      <!-- 内容区域 -->
-      <el-main class="main-content">
-        <router-view v-slot="{ Component }">
-          <transition name="fade" mode="out-in">
-            <component :is="Component" />
-          </transition>
-        </router-view>
-      </el-main>
-    </el-container>
+    <el-main class="main-content">
+      <router-view v-slot="{ Component }">
+        <transition name="fade" mode="out-in">
+          <component :is="Component" />
+        </transition>
+      </router-view>
+    </el-main>
   </el-container>
 </template>
 
 <script setup>
-import { ref, computed, onMounted, onUnmounted } from 'vue'
-import { useRoute, useRouter } from 'vue-router'
+import { computed, ref, onMounted, onUnmounted } from 'vue'
+import { useRouter } from 'vue-router'
 import { ElMessageBox } from 'element-plus'
+import { Menu, Close } from '@element-plus/icons-vue'
 
-const route = useRoute()
 const router = useRouter()
-const sidebarOpen = ref(true)
 const isMobile = ref(false)
+/** 仅手机端：抽屉侧栏是否打开；电脑端忽略 */
+const mobileDrawerOpen = ref(false)
+
+/** 与库存页等一致：(max-width: 768px)，避免 768px 宽度下 Layout/页面判断不一致 */
+let mqMobile = null
+
+function syncMobileFromMedia() {
+  if (typeof window === 'undefined' || !mqMobile) return
+  const next = mqMobile.matches
+  isMobile.value = next
+  if (!next) {
+    mobileDrawerOpen.value = false
+  }
+}
+
+function onMenuSelect() {
+  if (isMobile.value) {
+    mobileDrawerOpen.value = false
+  }
+}
+
+onMounted(() => {
+  mqMobile = window.matchMedia('(max-width: 768px)')
+  syncMobileFromMedia()
+  mqMobile.addEventListener('change', syncMobileFromMedia)
+})
+onUnmounted(() => {
+  mqMobile?.removeEventListener('change', syncMobileFromMedia)
+})
+
 const userName = computed(() => {
   try {
     const u = JSON.parse(localStorage.getItem('auth_user') || '{}')
@@ -93,31 +142,14 @@ const menuItems = [
   { path: '/meilu-accounts', title: '煤炉账号', icon: 'User' },
   { path: '/warehouses', title: '仓库管理', icon: 'OfficeBuilding' },
   { path: '/categories', title: '游戏分类', icon: 'Collection' },
-  { path: '/system', title: '系统管理', icon: 'Setting' }
+  { path: '/system', title: '系统管理', icon: 'Setting' },
 ]
-
-const currentTitle = computed(() => {
-  const item = menuItems.find((m) => route.path.startsWith(m.path))
-  return item?.title || '首页'
-})
-
-const checkMobile = () => {
-  isMobile.value = window.innerWidth < 768
-  if (isMobile.value) sidebarOpen.value = false
-  else sidebarOpen.value = true
-}
-
-onMounted(() => {
-  checkMobile()
-  window.addEventListener('resize', checkMobile)
-})
-onUnmounted(() => window.removeEventListener('resize', checkMobile))
 
 const handleLogout = async () => {
   await ElMessageBox.confirm('确认退出当前账号？', '提示', {
     type: 'warning',
     confirmButtonText: '退出',
-    cancelButtonText: '取消'
+    cancelButtonText: '取消',
   })
   localStorage.removeItem('auth_token')
   localStorage.removeItem('auth_user')
@@ -129,33 +161,79 @@ const handleLogout = async () => {
 .layout-container {
   height: 100vh;
   overflow: hidden;
-  position: relative;
-}
-
-.mobile-mask {
-  position: fixed;
-  inset: 0;
-  background: rgba(0,0,0,0.5);
-  z-index: 99;
 }
 
 .sidebar {
   background: #0f1728;
-  transition: width 0.25s ease;
   overflow: hidden;
   flex-shrink: 0;
-  z-index: 100;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
 }
 
-.sidebar-mobile {
-  position: fixed;
+/* 手机：抽屉侧栏从左侧滑入（挂到 body，相对视口固定） */
+.sidebar--mobile {
+  position: fixed !important;
   left: 0;
   top: 0;
   bottom: 0;
-  width: 0 !important;
+  width: min(220px, 85vw) !important;
+  max-width: 220px;
+  z-index: 5010;
+  transform: translate3d(-100%, 0, 0);
+  transition: transform 0.3s cubic-bezier(0.32, 0.72, 0, 1);
+  box-shadow: none;
+  will-change: transform;
 }
-.sidebar-mobile.sidebar-open {
-  width: 220px !important;
+
+.sidebar--mobile.sidebar--drawer-open {
+  transform: translate3d(0, 0, 0);
+  box-shadow: 4px 0 24px rgba(0, 0, 0, 0.45);
+}
+
+.sidebar-inner {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  min-height: 0;
+}
+
+.sidebar-menu-wrap {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  overflow-x: hidden;
+}
+
+.sidebar-footer {
+  flex-shrink: 0;
+  padding: 12px 14px 16px;
+  border-top: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.sidebar-footer-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  width: 100%;
+}
+
+.sidebar-footer-user {
+  flex: 1;
+  min-width: 0;
+  font-size: 12px;
+  color: #9ba8bf;
+  line-height: 1.35;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.sidebar-logout-btn {
+  flex-shrink: 0;
+  margin: 0 !important;
 }
 
 .logo-area {
@@ -163,7 +241,7 @@ const handleLogout = async () => {
   align-items: center;
   gap: 10px;
   padding: 16px 18px;
-  border-bottom: 1px solid rgba(255,255,255,0.08);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
   white-space: nowrap;
   overflow: hidden;
 }
@@ -176,10 +254,21 @@ const handleLogout = async () => {
 }
 
 .logo-text {
+  flex: 1;
+  min-width: 0;
   color: #b8c4d0;
   font-size: 15px;
   font-weight: 600;
   letter-spacing: 0.5px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.sidebar-close-btn {
+  flex-shrink: 0;
+  color: #a6adb4 !important;
+  padding: 4px !important;
+  margin-left: auto;
 }
 
 :deep(.el-menu) {
@@ -199,54 +288,18 @@ const handleLogout = async () => {
   width: calc(100% - 16px);
 }
 
-:deep(.el-menu--collapse .el-menu-item) {
-  margin: 2px 4px;
-  width: calc(100% - 8px);
-}
-
-.main-wrapper {
-  flex: 1;
-  overflow: hidden;
-  min-width: 0;
-}
-
-.header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: 0 20px;
-  background: #121b2e;
-  border-bottom: 1px solid #253149;
-  box-shadow: 0 1px 6px rgba(0,0,0,0.25);
-  height: 56px !important;
-  flex-shrink: 0;
-}
-
-.header-left {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-}
-
-.header-right {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-}
-
-.toggle-btn {
-  padding: 6px !important;
-}
-
 .main-content {
+  flex: 1;
   overflow-y: auto;
   background: #0b1220;
   padding: 20px;
+  min-width: 0;
 }
 
 @media (max-width: 767px) {
   .main-content {
     padding: 12px;
+    padding-top: 56px;
   }
 }
 
@@ -257,5 +310,36 @@ const handleLogout = async () => {
 .fade-enter-from,
 .fade-leave-to {
   opacity: 0;
+}
+</style>
+
+<!-- Teleport 到 body，不能用 scoped，单独挂类名 -->
+<style>
+.layout-mobile-mask {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.45);
+  z-index: 5000;
+}
+.layout-mobile-fab {
+  position: fixed;
+  left: max(12px, env(safe-area-inset-left, 0px));
+  top: max(12px, env(safe-area-inset-top, 0px));
+  z-index: 5020;
+  width: 44px;
+  height: 44px;
+  border-radius: 10px;
+  background: #121b2e;
+  border: 1px solid #253149;
+  color: #ecf2ff;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  box-shadow: 0 2px 12px rgba(0, 0, 0, 0.45);
+  padding: 0;
+}
+.layout-mobile-fab:active {
+  opacity: 0.92;
 }
 </style>
