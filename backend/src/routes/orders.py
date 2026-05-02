@@ -4,23 +4,26 @@ from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel as PydanticModel
 from typing import List, Optional
 from ..db_manage.models.order import OrderModel
+from ..operation_mercari.sync_data import resolve_account_id_by_seller_id
+from ..operation_mercari.get_order.get_open_order.get_order_info import apply_item_info_to_order
 
 router = APIRouter(prefix="/api/orders", tags=["orders"])
 
-ALLOWED_STATUS = {"to_pack", "to_ship", "sent", "signed", "confirmed"}
-# 与煤炉同步后的状态，编辑保存时允许保留
-MERCARI_STATUSES = {
-    "trading",
-    "wait_payment",
-    "wait_shipping",
-    "wait_review",
-    "done",
-    "sold_out",
-    "cancelled",
-    "cancel_request",
-    "pending",
-}
-ALL_ORDER_STATUSES = ALLOWED_STATUS | MERCARI_STATUSES
+# 订单 status 仅使用煤炉侧取值（与 items 列表 / 取引详情一致）
+ORDER_STATUSES = frozenset(
+    {
+        "pending",
+        "trading",
+        "wait_payment",
+        "wait_shipping",
+        "wait_review",
+        "done",
+        "sold_out",
+        "cancelled",
+        "cancel_request",
+    }
+)
+ALL_ORDER_STATUSES = ORDER_STATUSES
 
 
 def _encode_thumbnails(urls: Optional[List[str]]) -> Optional[str]:
@@ -34,9 +37,10 @@ class OrderCreate(PydanticModel):
     order_no: str
     order_date: str
     order_updated_at: Optional[str] = None
+    purchase_time: Optional[str] = None
     customer_name: Optional[str] = None
     data_user: Optional[str] = None
-    status: str = "to_pack"
+    status: str = "pending"
     amount: float
     service_fee: Optional[float] = None
     net_income: Optional[float] = None
@@ -46,13 +50,22 @@ class OrderCreate(PydanticModel):
     tracking_no: Optional[str] = None
     transaction_evidence_id: Optional[int] = None
     remark: Optional[str] = None
+    description: Optional[str] = None
     thumbnails: Optional[List[str]] = None
+
+
+class RefreshOrderInfoBody(PydanticModel):
+    """单行刷新：transaction_evidences/get 回填，需指定卖家 ID 以选择对应煤炉账号。"""
+
+    order_no: str
+    data_user: str
 
 
 class OrderUpdate(PydanticModel):
     order_no: Optional[str] = None
     order_date: Optional[str] = None
     order_updated_at: Optional[str] = None
+    purchase_time: Optional[str] = None
     customer_name: Optional[str] = None
     data_user: Optional[str] = None
     status: Optional[str] = None
@@ -65,15 +78,20 @@ class OrderUpdate(PydanticModel):
     tracking_no: Optional[str] = None
     transaction_evidence_id: Optional[int] = None
     remark: Optional[str] = None
+    description: Optional[str] = None
     thumbnails: Optional[List[str]] = None
 
 
-def _validate_status(status: str):
-    if status not in ALLOWED_STATUS:
+def _validate_status_query(status: Optional[str]) -> None:
+    """列表/统计筛选：仅允许煤炉订单状态。"""
+    if status is None or not str(status).strip():
+        return
+    s = str(status).strip()
+    if s not in ALL_ORDER_STATUSES:
         raise HTTPException(status_code=400, detail="订单状态错误")
 
 
-def _validate_status_update(status: str):
+def _validate_order_status(status: str):
     if status not in ALL_ORDER_STATUSES:
         raise HTTPException(status_code=400, detail="订单状态错误")
 
@@ -96,10 +114,9 @@ def order_stats(
     """当前筛选条件下的全表汇总（金额、手续费、快递费、净收益及行数），不受分页影响。
 
     可选 today_date（YYYY-MM-DD，建议传浏览器本地「今天」）：在相同 keyword、status 下，
-    仅按 order_date 落在该自然日的订单再汇总一笔「今日新增」，不受 start_date/end_date 影响。
+    按购入时间 date(COALESCE(purchase_time, order_date)) 落在该自然日的订单汇总「今日购入」，不受 start_date/end_date 影响。
     """
-    if status:
-        _validate_status(status)
+    _validate_status_query(status)
     out = OrderModel.aggregate_sums(
         keyword=keyword,
         status=status,
@@ -131,8 +148,7 @@ def list_orders(
     page: int = 1,
     page_size: int = 20,
 ):
-    if status:
-        _validate_status(status)
+    _validate_status_query(status)
     return OrderModel.find_detail_list(
         keyword=keyword,
         status=status,
@@ -143,17 +159,59 @@ def list_orders(
     )
 
 
+@router.post("/refresh-info")
+def refresh_order_info(data: RefreshOrderInfoBody):
+    """调用 Mercari transaction_evidences/get，更新状态、金额、说明、手续费、快递费、净收益、承运等字段。"""
+    order_no = (data.order_no or "").strip()
+    if not order_no:
+        raise HTTPException(status_code=400, detail="订单号不能为空")
+    du = (data.data_user or "").strip()
+    if not du:
+        raise HTTPException(status_code=400, detail="卖家ID（data_user）不能为空")
+
+    aid = resolve_account_id_by_seller_id(du)
+    if aid is None:
+        raise HTTPException(
+            status_code=400,
+            detail="未找到与该卖家ID绑定的 active 煤炉账号，请在账号管理中配置 seller_id",
+        )
+
+    err = apply_item_info_to_order(order_no, account_id=aid, expected_seller_id=du)
+    if err == "order_not_found":
+        raise HTTPException(status_code=404, detail="本地不存在该订单号")
+    if err == "seller_mismatch":
+        raise HTTPException(
+            status_code=400,
+            detail="接口返回的商品不属于该卖家，请检查订单号与卖家ID是否匹配",
+        )
+    if err and err.startswith("api:"):
+        raise HTTPException(status_code=502, detail=err[4:])
+    if err and err.startswith("request:"):
+        raise HTTPException(status_code=502, detail=err[8:])
+    if err == "save_failed":
+        raise HTTPException(status_code=500, detail="写入数据库失败")
+    if err:
+        raise HTTPException(status_code=400, detail=err)
+
+    rows = OrderModel.find_all(where="[order_no] = ?", params=(order_no,), limit=1)
+    if not rows:
+        raise HTTPException(status_code=404, detail="订单不存在")
+    return rows[0].to_dict()
+
+
 @router.post("")
 def create_order(data: OrderCreate):
     order_no = _normalize_order_no(data.order_no)
-    _validate_status(data.status)
+    _validate_order_status(data.status)
     if data.amount <= 0:
         raise HTTPException(status_code=400, detail="金额必须大于0")
     ou = (data.order_updated_at or "").strip() or None
+    pt = (data.purchase_time or "").strip() or None
     item = OrderModel(
         order_no=order_no,
         order_date=data.order_date,
         order_updated_at=ou,
+        purchase_time=pt,
         customer_name=(data.customer_name or "").strip() or None,
         data_user=(data.data_user or "").strip() or None,
         status=data.status,
@@ -166,6 +224,7 @@ def create_order(data: OrderCreate):
         tracking_no=(data.tracking_no or "").strip() or None,
         transaction_evidence_id=data.transaction_evidence_id,
         remark=data.remark,
+        description=data.description,
         thumbnails=_encode_thumbnails(data.thumbnails),
     )
     if not item.save():
@@ -185,12 +244,14 @@ def update_order(oid: int, data: OrderUpdate):
         item.order_date = data.order_date
     if "order_updated_at" in data.model_fields_set:
         item.order_updated_at = (data.order_updated_at or "").strip() or None
+    if "purchase_time" in data.model_fields_set:
+        item.purchase_time = (data.purchase_time or "").strip() or None
     if data.customer_name is not None:
         item.customer_name = data.customer_name.strip() or None
     if "data_user" in data.model_fields_set:
         item.data_user = (data.data_user or "").strip() or None
     if data.status is not None:
-        _validate_status_update(data.status)
+        _validate_order_status(data.status)
         item.status = data.status
     if data.amount is not None:
         if data.amount <= 0:
@@ -212,6 +273,8 @@ def update_order(oid: int, data: OrderUpdate):
         item.transaction_evidence_id = data.transaction_evidence_id
     if "remark" in data.model_fields_set:
         item.remark = (data.remark or "").strip() or None
+    if "description" in data.model_fields_set:
+        item.description = (data.description or "").strip() or None
     if "thumbnails" in data.model_fields_set:
         item.thumbnails = _encode_thumbnails(data.thumbnails)
 

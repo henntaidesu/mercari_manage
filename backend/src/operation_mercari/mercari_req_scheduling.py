@@ -188,13 +188,21 @@ def send_request(
 
         response.raise_for_status()
     except requests.HTTPError as exc:
+        body = exc.response.text if exc.response is not None else ""
         raise RuntimeError(
-            f"HTTP 请求失败 [{method_upper} {url}]: {exc.response.status_code} {exc.response.text[:200]}"
+            f"HTTP 请求失败 [{method_upper} {url}]: {exc.response.status_code} {body}"
         ) from exc
     except requests.RequestException as exc:
-        raise RuntimeError(f"网络请求异常 [{method_upper} {url}]: {exc}") from exc
+        # 异常信息放前，避免长 URL 占满日志；便于对接口返回 502 时看到根因（超时/SSL/代理/DNS）
+        hint = ""
+        es = f"{type(exc).__name__}: {exc}"
+        if "CERTIFICATE_VERIFY_FAILED" in es or "SSL" in es.upper():
+            hint = "（若本机走代理/抓包，可设环境变量 MERCARI_REQUESTS_VERIFY=0 或指向 CA 文件，见 mercari_req_scheduling 模块注释）"
+        elif "timed out" in es.lower() or "timeout" in es.lower():
+            hint = f"（当前 timeout={timeout}s，仍失败多为网络不可达或需代理访问 api.mercari.jp）"
+        raise RuntimeError(f"网络请求异常: {es}{hint} | {method_upper} {url}") from exc
 
     try:
         return response.json()
     except ValueError as exc:
-        raise RuntimeError(f"响应非 JSON 格式 [{method_upper} {url}]: {response.text[:200]}") from exc
+        raise RuntimeError(f"响应非 JSON 格式 [{method_upper} {url}]: {response.text}") from exc

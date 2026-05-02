@@ -95,7 +95,10 @@ export const orderApi = {
   stats: (params) => http.get('/orders/stats', { params }),
   create: (data) => http.post('/orders', data),
   update: (id, data) => http.put(`/orders/${id}`, data),
-  remove: (id) => http.delete(`/orders/${id}`)
+  remove: (id) => http.delete(`/orders/${id}`),
+  /** 单行 items/get 刷新：传 order_no + data_user（卖家ID），与煤炉账号 seller_id 对应 */
+  refreshInfo: (data, axiosConfig = {}) =>
+    http.post('/orders/refresh-info', data, { timeout: 60000, ...axiosConfig })
 }
 
 // Mercari 操作
@@ -106,6 +109,9 @@ export const mercariApi = {
   /** 订单页增量更新：仅入库列表中尚未存在的出售中单 */
   syncNewData: (data, axiosConfig = {}) =>
     http.post('/mercari/sync-new-data', data, { timeout: 0, ...axiosConfig }),
+  /** 批量 items/get：库内未完成订单 + data_user，与列表「刷新」相同逻辑 */
+  batchRefreshInfo: (data, axiosConfig = {}) =>
+    http.post('/mercari/batch-refresh-info', data, { timeout: 0, ...axiosConfig }),
 }
 
 // 煤炉账号

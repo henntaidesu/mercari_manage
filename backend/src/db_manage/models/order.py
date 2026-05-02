@@ -47,6 +47,12 @@ class OrderModel(BaseModel):
                 'not_null': False,
                 'default': None,
             },
+            # 购入时间（业务可录入，与 order_date 等同格式 UTC 存库）
+            'purchase_time': {
+                'type': 'TEXT',
+                'not_null': False,
+                'default': None,
+            },
             # 买家用户 ID（Mercari buyer.id），非昵称
             'customer_name': {
                 'type': 'TEXT',
@@ -116,6 +122,12 @@ class OrderModel(BaseModel):
                 'not_null': False,
                 'default': None,
             },
+            # transaction_evidences/get data.description（商品说明）
+            'description': {
+                'type': 'TEXT',
+                'not_null': False,
+                'default': None,
+            },
             # Mercari item.thumbnails：JSON 字符串，如 ["https://..."]
             'thumbnails': {
                 'type': 'TEXT',
@@ -149,18 +161,24 @@ class OrderModel(BaseModel):
         if keyword:
             base_sql += (
                 " AND (o.order_no LIKE ? OR o.customer_name LIKE ? "
-                "OR IFNULL(o.data_user, '') LIKE ?)"
+                "OR IFNULL(o.data_user, '') LIKE ? "
+                "OR IFNULL(o.remark, '') LIKE ? "
+                "OR IFNULL(o.description, '') LIKE ?)"
             )
             kw = f"%{keyword}%"
-            params += [kw, kw, kw]
+            params += [kw, kw, kw, kw, kw]
         if status:
             base_sql += " AND o.status = ?"
             params.append(status)
         if start_date:
-            base_sql += " AND o.order_date >= ?"
+            base_sql += (
+                " AND date(COALESCE(o.purchase_time, o.order_date)) >= date(?)"
+            )
             params.append(start_date)
         if end_date:
-            base_sql += " AND o.order_date <= ?"
+            base_sql += (
+                " AND date(COALESCE(o.purchase_time, o.order_date)) <= date(?)"
+            )
             params.append(end_date)
         return base_sql, params
 
@@ -197,6 +215,49 @@ class OrderModel(BaseModel):
             "sum_net_income": float(row[4]),
         }
 
+    # items/get 批量刷新时排除：已完成(done)、取消、历史売切（煤炉侧终态）
+    _STATUSES_SKIP_BATCH_INFO: Tuple[str, ...] = (
+        "done",
+        "cancelled",
+        "sold_out",
+    )
+
+    @classmethod
+    def find_for_batch_info_refresh(
+        cls,
+        seller_id_filter: Optional[str] = None,
+    ) -> List[Tuple[str, str]]:
+        """
+        从库中取得待用 transaction_evidences/get 刷新的 (order_no, data_user)。
+        仅含 data_user 非空且状态非「已完成」集合中的行；可选只限某一卖家（与煤炉账号 seller_id 一致）。
+        """
+        skip = cls._STATUSES_SKIP_BATCH_INFO
+        placeholders = ",".join("?" * len(skip))
+        sql = (
+            f"SELECT order_no, data_user FROM [{cls.get_table_name()}] "
+            f"WHERE IFNULL(TRIM(data_user), '') != '' "
+            f"AND status NOT IN ({placeholders}) "
+        )
+        params: List[Any] = list(skip)
+        if seller_id_filter is not None and str(seller_id_filter).strip():
+            sql += "AND TRIM(data_user) = TRIM(?) "
+            params.append(str(seller_id_filter).strip())
+        sql += (
+            "ORDER BY COALESCE(purchase_time, order_updated_at, order_date) DESC, "
+            "id DESC"
+        )
+        db = cls().db
+        rows = db.execute_query(sql, tuple(params))
+        out: List[Tuple[str, str]] = []
+        for r in rows:
+            if not r or len(r) < 2:
+                continue
+            ono, du = r[0], r[1]
+            if ono is None or str(ono).strip() == "":
+                continue
+            out.append((str(ono).strip(), str(du).strip()))
+        return out
+
     @classmethod
     def find_detail_list(
         cls,
@@ -214,20 +275,20 @@ class OrderModel(BaseModel):
 
         total = db.execute_query(f"SELECT COUNT(*) {base_sql}", tuple(params))[0][0]
         select_sql = f"""
-            SELECT o.id, o.order_no, o.order_date, o.order_updated_at, o.customer_name, o.data_user,
+            SELECT o.id, o.order_no, o.order_date, o.order_updated_at, o.purchase_time, o.customer_name, o.data_user,
                    o.status, o.amount,
                    o.service_fee, o.net_income, o.carrier_display_name, o.request_class_display_name,
-                   o.shipping_fee, o.tracking_no, o.transaction_evidence_id, o.remark, o.thumbnails
+                   o.shipping_fee, o.tracking_no, o.transaction_evidence_id, o.remark, o.description, o.thumbnails
             {base_sql}
-            ORDER BY COALESCE(o.order_updated_at, o.order_date) DESC, o.id DESC
+            ORDER BY COALESCE(o.purchase_time, o.order_updated_at, o.order_date) DESC, o.id DESC
             LIMIT ? OFFSET ?
         """
         rows = db.execute_query(select_sql, tuple(params + [page_size, (page - 1) * page_size]))
         keys = [
-            'id', 'order_no', 'order_date', 'order_updated_at', 'customer_name', 'data_user', 'status',
+            'id', 'order_no', 'order_date', 'order_updated_at', 'purchase_time', 'customer_name', 'data_user', 'status',
             'amount',
             'service_fee', 'net_income', 'carrier_display_name', 'request_class_display_name',
-            'shipping_fee', 'tracking_no', 'transaction_evidence_id', 'remark', 'thumbnails',
+            'shipping_fee', 'tracking_no', 'transaction_evidence_id', 'remark', 'description', 'thumbnails',
         ]
         return {
             'total': total,

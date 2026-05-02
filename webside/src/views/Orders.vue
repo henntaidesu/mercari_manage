@@ -5,26 +5,27 @@
         <el-col :xs="24" :md="16" class="search-left-group">
           <el-input
             v-model="filters.keyword"
-            placeholder="搜索订单号/买家ID"
+            placeholder="搜索订单号、备注等"
             clearable
             @change="onFilterChange"
           />
-          <el-select v-model="filters.status" placeholder="订单状态" clearable style="width: 100%" @change="onFilterChange">
-            <el-option v-for="item in statusOptions" :key="item.value" :label="item.label" :value="item.value" />
+          <el-select v-model="filters.status" placeholder="订单状态" clearable filterable style="width: 100%" @change="onFilterChange">
+            <el-option v-for="item in orderStatusOptions" :key="item.value" :label="item.label" :value="item.value" />
           </el-select>
           <el-date-picker
             v-model="dateRange"
             type="daterange"
             range-separator="至"
-            start-placeholder="开始日期"
-            end-placeholder="结束日期"
+            start-placeholder="购入时间起"
+            end-placeholder="购入时间止"
             value-format="YYYY-MM-DD"
             style="width: 100%"
             @change="onFilterChange"
           />
         </el-col>
         <el-col :xs="24" :md="8" class="search-actions">
-          <el-button type="success" :icon="RefreshRight" @click="openSyncDialog">更新数据</el-button>
+          <el-button type="success" :icon="RefreshRight" @click="openSyncDialog('newData')">更新列表</el-button>
+          <el-button type="primary" :icon="Refresh" @click="openSyncDialog('statusRefresh')">更新状态</el-button>
         </el-col>
       </el-row>
     </el-card>
@@ -43,7 +44,7 @@
             <div class="stat-info">
               <div class="stat-value-row">
                 <span class="stat-value" :class="card.valueClass">{{ card.display }}</span>
-                <span class="stat-today">（今日新增 {{ card.todayDisplay }}）</span>
+                <span class="stat-today">（今日购入 {{ card.todayDisplay }}）</span>
               </div>
               <div class="stat-label">{{ card.label }}</div>
             </div>
@@ -72,15 +73,12 @@
           </template>
         </el-table-column>
         <el-table-column label="订单号" prop="order_no" width="150" align="center" header-align="center" />
-        <el-table-column label="商品名称" prop="remark" min-width="180" show-overflow-tooltip align="left" header-align="center" />
-        <el-table-column label="上架时间" width="176" show-overflow-tooltip align="center" header-align="center">
-          <template #default="{ row }">{{ displayUtcAsLocal(row.order_date) }}</template>
-        </el-table-column>
+        <el-table-column label="商品名称" prop="remark" min-width="160" show-overflow-tooltip align="left" header-align="center" />
         <el-table-column label="最后更新" width="176" show-overflow-tooltip align="center" header-align="center">
           <template #default="{ row }">{{ displayUtcAsLocal(row.order_updated_at) }}</template>
         </el-table-column>
-        <el-table-column label="买家ID" prop="customer_name" width="120" align="center" header-align="center">
-          <template #default="{ row }">{{ row.customer_name || '-' }}</template>
+        <el-table-column label="购入时间" width="176" show-overflow-tooltip align="center" header-align="center">
+          <template #default="{ row }">{{ displayUtcAsLocal(row.purchase_time) }}</template>
         </el-table-column>
         <el-table-column label="状态" width="110" align="center" header-align="center">
           <template #default="{ row }">
@@ -94,20 +92,9 @@
             <span class="amount">{{ Math.round(Number(row.amount || 0)) }}</span>
           </template>
         </el-table-column>
-        <el-table-column label="手续费" width="112" align="center" header-align="center">
+        <el-table-column label="手续/快递" width="128" align="center" header-align="center">
           <template #default="{ row }">
-            <span v-if="orderMoneyField(row.service_fee) != null" class="col-fee">
-              {{ orderMoneyField(row.service_fee) }}
-            </span>
-            <span v-else class="cell-dash">-</span>
-          </template>
-        </el-table-column>
-        <el-table-column label="快递费" width="112" align="center" header-align="center">
-          <template #default="{ row }">
-            <span v-if="orderMoneyField(row.shipping_fee) != null" class="col-fee">
-              {{ orderMoneyField(row.shipping_fee) }}
-            </span>
-            <span v-else class="cell-dash">-</span>
+            <span class="col-fee-ship">{{ formatFeeShippingCell(row) }}</span>
           </template>
         </el-table-column>
         <el-table-column label="净收益" width="112" align="center" header-align="center">
@@ -118,9 +105,16 @@
             <span v-else class="cell-dash">-</span>
           </template>
         </el-table-column>
-        <el-table-column label="操作" width="88" fixed="right" align="center" header-align="center">
+        <el-table-column label="操作" width="156" fixed="right" align="center" header-align="center">
           <template #default="{ row }">
-            <el-button size="small" @click="openEdit(row)">编辑</el-button>
+            <div class="order-row-actions">
+              <el-button size="small" @click="openEdit(row)">编辑</el-button>
+              <el-button
+                size="small"
+                :loading="refreshingId === row.id"
+                @click="refreshOrder(row)"
+              >刷新</el-button>
+            </div>
           </template>
         </el-table-column>
       </el-table>
@@ -153,19 +147,19 @@
         <el-form-item label="订单号" prop="order_no">
           <el-input v-model="form.order_no" placeholder="请输入订单号" maxlength="60" clearable />
         </el-form-item>
-        <el-form-item label="上架时间" prop="order_date">
-          <el-date-picker
-            v-model="form.order_date"
-            type="datetime"
-            value-format="YYYY-MM-DD HH:mm:ss"
-            style="width: 100%"
-            placeholder="本地时间（保存时转为 UTC 与服务器一致）"
-          />
-          <div class="form-hint">列表与选择器为本地时间；接口存 UTC（格林尼治）</div>
-        </el-form-item>
         <el-form-item label="最后更新">
           <el-date-picker
             v-model="form.order_updated_at"
+            type="datetime"
+            value-format="YYYY-MM-DD HH:mm:ss"
+            style="width: 100%"
+            placeholder="可选"
+            clearable
+          />
+        </el-form-item>
+        <el-form-item label="购入时间">
+          <el-date-picker
+            v-model="form.purchase_time"
             type="datetime"
             value-format="YYYY-MM-DD HH:mm:ss"
             style="width: 100%"
@@ -178,7 +172,7 @@
         </el-form-item>
         <el-form-item label="订单状态" prop="status">
           <el-select v-model="form.status" filterable style="width: 100%">
-            <el-option v-for="item in formStatusOptions" :key="item.value" :label="item.label" :value="item.value" />
+            <el-option v-for="item in formOrderStatusOptions" :key="item.value" :label="item.label" :value="item.value" />
           </el-select>
         </el-form-item>
         <el-form-item label="订单金额" prop="amount">
@@ -230,7 +224,7 @@
           />
         </el-form-item>
         <el-form-item label="商品名称">
-          <el-input v-model="form.remark" type="textarea" :rows="3" maxlength="2000" show-word-limit />
+          <el-input v-model="form.remark" type="textarea" :rows="2" maxlength="2000" show-word-limit />
         </el-form-item>
         <el-form-item label="缩略图 JSON">
           <el-input
@@ -262,7 +256,10 @@
     </el-dialog>
 
     <!-- 同步订单弹窗 -->
-    <el-dialog v-model="syncDialogVisible" title="更新 Mercari 订单数据" width="420px" destroy-on-close>
+    <el-dialog v-model="syncDialogVisible" :title="syncDialogTitle" width="420px" destroy-on-close>
+      <p v-if="syncMode === 'statusRefresh'" class="sync-mode-hint">
+        从数据库读取未完成订单（排除已完成、已取消、已售完），按订单号逐条拉取煤炉详情更新状态与费用等；请选择账号以仅刷新该卖家下的订单，留空则处理库内全部符合条件订单。
+      </p>
       <el-form label-width="86px">
         <el-form-item label="煤炉账号">
           <el-select
@@ -283,7 +280,9 @@
       </el-form>
       <template #footer>
         <el-button @click="syncDialogVisible = false">取消</el-button>
-        <el-button type="success" :loading="syncLoading" @click="confirmSync">开始同步</el-button>
+        <el-button type="success" :loading="syncLoading" @click="confirmSyncDialog">
+          {{ syncMode === 'statusRefresh' ? '开始刷新状态' : '开始同步' }}
+        </el-button>
       </template>
     </el-dialog>
   </div>
@@ -292,12 +291,14 @@
 <script setup>
 import { ref, computed, onMounted } from 'vue'
 import { ElMessage } from 'element-plus'
-import { RefreshRight } from '@element-plus/icons-vue'
+import { RefreshRight, Refresh } from '@element-plus/icons-vue'
 import { orderApi, mercariApi, meiluAccountApi } from '@/api/index.js'
 
 const loading = ref(false)
 const statsLoading = ref(false)
 const submitting = ref(false)
+/** 正在 Mercari 拉取详情的行 id */
+const refreshingId = ref(null)
 const stats = ref({
   total_count: 0,
   sum_amount: 0,
@@ -316,7 +317,7 @@ function formatLocalYmd(d) {
   return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`
 }
 
-/** 与控制台「订单统计」卡片一致（布局与样式）；主数值对应当前列表筛选；今日新增为本地当日 + 相同 keyword/status */
+/** 与控制台「订单统计」卡片一致；主数值对应当前列表筛选；今日购入按购入时间（purchase_time）落在本地当日 + 相同 keyword/status */
 const orderStatCards = computed(() => {
   const o = stats.value
   return [
@@ -378,55 +379,66 @@ const formRef = ref()
 
 const filters = ref({ keyword: '', status: '' })
 
-const statusOptions = [
-  { label: '待包装', value: 'to_pack' },
-  { label: '待发货', value: 'to_ship' },
-  { label: '已发送', value: 'sent' },
-  { label: '已签收', value: 'signed' },
-  { label: '已确认', value: 'confirmed' },
+/** 与后端 routes.orders ORDER_STATUSES 一致（煤炉） */
+const ORDER_STATUS_KEYS = [
+  'pending',
+  'trading',
+  'wait_payment',
+  'wait_shipping',
+  'wait_review',
+  'done',
+  'sold_out',
+  'cancelled',
+  'cancel_request',
 ]
 
+/** 展示用标签：value 与数据库/API 一致 */
 const statusMap = {
-  to_pack:       { label: '待包装', tag: 'info' },
-  to_ship:       { label: '待发货', tag: 'warning' },
-  sent:          { label: '已发送', tag: 'primary' },
-  signed:        { label: '已签收', tag: 'success' },
-  confirmed:     { label: '已确认', tag: 'danger' },
-  pending:       { label: '待处理', tag: 'info' },
-  trading:       { label: '交易中', tag: 'warning' },
-  wait_payment:  { label: '待支付', tag: 'warning' },
-  wait_shipping: { label: '待发货', tag: 'warning' },
-  wait_review:   { label: '待卖家确认', tag: 'primary' },
-  done:          { label: '已完成', tag: 'success' },
-  sold_out:      { label: '已售完', tag: 'info' },
-  cancelled:     { label: '已取消', tag: 'info' },
-  cancel_request:{ label: '申请取消', tag: 'danger' },
+  pending:        { label: '待处理', tag: 'info' },
+  trading:        { label: '交易中', tag: 'warning' },
+  wait_payment:   { label: '待支付', tag: 'warning' },
+  wait_shipping:  { label: '待发货', tag: 'warning' },
+  wait_review:    { label: '待评价', tag: 'primary' },
+  done:           { label: '已完成', tag: 'success' },
+  sold_out:       { label: '已售完', tag: 'info' },
+  cancelled:      { label: '已取消', tag: 'info' },
+  cancel_request: { label: '取消申请中', tag: 'danger' },
 }
 
-/** 表单内状态：手工状态优先，其余与列表 statusMap 一致（含煤炉同步状态） */
-const formStatusOptions = computed(() => {
-  const seen = new Set()
-  const out = []
-  for (const o of statusOptions) {
-    seen.add(o.value)
-    out.push(o)
+const orderStatusOptions = computed(() =>
+  ORDER_STATUS_KEYS.filter((k) => statusMap[k]).map((value) => ({
+    value,
+    label: statusMap[value].label,
+  }))
+)
+
+/** 编辑弹窗：若库里为旧版手工状态等未在 statusMap 中的值，补一项便于查看与改选 */
+const formOrderStatusOptions = computed(() => {
+  const base = orderStatusOptions.value
+  const cur = form.value?.status
+  if (cur && !statusMap[cur]) {
+    return [...base, { value: cur, label: `（旧）${cur}` }]
   }
-  for (const [value, meta] of Object.entries(statusMap)) {
-    if (seen.has(value)) continue
-    seen.add(value)
-    out.push({ label: meta.label, value })
-  }
-  return out
+  return base
 })
 
-// ---- 同步订单弹窗 ----
+// ---- 同步订单弹窗（更新列表 / 更新状态 共用）----
 const syncDialogVisible = ref(false)
 const syncLoading = ref(false)
 const syncAccountId = ref(null)
+/** newData：增量入库出售中；statusRefresh：库内未完成订单批量 items/get */
+const syncMode = ref('newData')
 const accountOptions = ref([])
 const accountsLoading = ref(false)
 
-async function openSyncDialog() {
+const syncDialogTitle = computed(() =>
+  syncMode.value === 'statusRefresh'
+    ? '批量更新订单状态（items/get）'
+    : '更新出售中列表（增量入库）'
+)
+
+async function openSyncDialog(mode = 'newData') {
+  syncMode.value = mode
   syncAccountId.value = null
   syncDialogVisible.value = true
   accountsLoading.value = true
@@ -440,6 +452,14 @@ async function openSyncDialog() {
   }
 }
 
+async function confirmSyncDialog() {
+  if (syncMode.value === 'statusRefresh') {
+    await confirmStatusRefresh()
+  } else {
+    await confirmSync()
+  }
+}
+
 async function confirmSync() {
   syncLoading.value = true
   try {
@@ -450,6 +470,28 @@ async function confirmSync() {
     ElMessage.success(
       `更新完成：接口 ${d.api_item_count ?? 0} 条，待入库新单 ${d.pending_new ?? 0} 条，新增 ${d.inserted ?? 0} 条（回填详情 ${d.info_enriched ?? 0} 条）`
     )
+    syncDialogVisible.value = false
+    load()
+    loadStats()
+  } finally {
+    syncLoading.value = false
+  }
+}
+
+async function confirmStatusRefresh() {
+  syncLoading.value = true
+  try {
+    const payload = {}
+    if (syncAccountId.value) payload.account_id = syncAccountId.value
+    const res = await mercariApi.batchRefreshInfo(payload)
+    const d = res.data || {}
+    const failed = d.failed?.length ?? 0
+    const msg = `状态刷新完成：待处理 ${d.total ?? 0} 条，成功 ${d.ok ?? 0}，无对应煤炉账号跳过 ${d.skipped_no_account ?? 0}，失败 ${failed}`
+    if (failed > 0) {
+      ElMessage.warning(msg)
+    } else {
+      ElMessage.success(msg)
+    }
     syncDialogVisible.value = false
     load()
     loadStats()
@@ -596,6 +638,16 @@ function orderMoneyField(v) {
   return String(Math.round(n))
 }
 
+/** 「手续/快递」合并列：手续费/快递费，缺失一侧显示 - */
+function formatFeeShippingCell(row) {
+  const tax = orderMoneyField(row.service_fee)
+  const ship = orderMoneyField(row.shipping_fee)
+  const left = tax != null ? tax : '-'
+  const right = ship != null ? ship : '-'
+  if (left === '-' && right === '-') return '-'
+  return `${left}/${right}`
+}
+
 /** thumbnails 为 JSON 字符串或数组时取首张图 URL */
 function firstThumbUrl(row) {
   const raw = row.thumbnails
@@ -620,8 +672,9 @@ const createDefaultForm = () => ({
   order_no: '',
   order_date: formatLocalDatetime(),
   order_updated_at: '',
+  purchase_time: '',
   customer_name: '',
-  status: 'to_pack',
+  status: 'pending',
   amount: null,
   service_fee: undefined,
   net_income: undefined,
@@ -631,6 +684,7 @@ const createDefaultForm = () => ({
   tracking_no: '',
   transaction_evidence_id: undefined,
   remark: '',
+  description: '',
   thumbnails_text: '',
 })
 
@@ -638,7 +692,6 @@ const form = ref(createDefaultForm())
 
 const rules = {
   order_no: [{ required: true, message: '请输入订单号', trigger: 'blur' }],
-  order_date: [{ required: true, message: '请选择上架时间', trigger: 'change' }],
   status: [{ required: true, message: '请选择订单状态', trigger: 'change' }],
   amount: [{ required: true, message: '请输入订单金额', trigger: 'blur' }],
 }
@@ -708,8 +761,9 @@ function openEdit(row) {
     order_no: row.order_no || '',
     order_date: utcDbStringToLocalForm(row.order_date),
     order_updated_at: utcDbStringToLocalForm(row.order_updated_at),
+    purchase_time: utcDbStringToLocalForm(row.purchase_time),
     customer_name: row.customer_name || '',
-    status: row.status || 'to_pack',
+    status: row.status || 'pending',
     amount: Number(row.amount || 0),
     service_fee: optionalNumFromRow(row.service_fee),
     net_income: optionalNumFromRow(row.net_income),
@@ -719,9 +773,34 @@ function openEdit(row) {
     tracking_no: row.tracking_no || '',
     transaction_evidence_id: optionalIntFromRow(row.transaction_evidence_id),
     remark: row.remark || '',
+    description: row.description || '',
     thumbnails_text: thumbnailsToFormText(row),
   }
   dialogVisible.value = true
+}
+
+/** 单行拉取 transaction_evidences/get，更新状态、金额、说明、费用等 */
+async function refreshOrder(row) {
+  if (!row?.id) return
+  const orderNo = String(row.order_no || '').trim()
+  if (!orderNo) {
+    ElMessage.warning('该订单缺少订单号')
+    return
+  }
+  const dataUser = row.data_user != null && row.data_user !== '' ? String(row.data_user).trim() : ''
+  if (!dataUser) {
+    ElMessage.warning('该订单缺少卖家ID（data_user），无法选择煤炉账号，请先同步或编辑补全')
+    return
+  }
+  refreshingId.value = row.id
+  try {
+    await orderApi.refreshInfo({ order_no: orderNo, data_user: dataUser })
+    ElMessage.success('已从煤炉刷新该订单')
+    load()
+    loadStats()
+  } finally {
+    refreshingId.value = null
+  }
 }
 
 async function submit() {
@@ -735,6 +814,7 @@ async function submit() {
     order_no: String(form.value.order_no || '').trim(),
     order_date: localFormStringToUtcDb(form.value.order_date),
     order_updated_at: localFormStringToUtcDb(form.value.order_updated_at),
+    purchase_time: localFormStringToUtcDb(form.value.purchase_time),
     customer_name: String(form.value.customer_name || '').trim() || null,
     status: form.value.status,
     amount: Number(form.value.amount || 0),
@@ -746,6 +826,7 @@ async function submit() {
     tracking_no: String(form.value.tracking_no || '').trim() || null,
     transaction_evidence_id: intOrNull(form.value.transaction_evidence_id),
     remark: String(form.value.remark || '').trim() || null,
+    description: String(form.value.description || '').trim() || null,
     thumbnails: parseThumbnailsPayload(form.value.thumbnails_text),
   }
   try {
@@ -855,10 +936,23 @@ onMounted(() => {
 .search-actions {
   display: flex;
   justify-content: flex-end;
-  gap: 20px;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+.sync-mode-hint {
+  font-size: 13px;
+  color: #909399;
+  line-height: 1.55;
+  margin: 0 0 12px;
 }
 .table-card {
   border-radius: 8px;
+}
+.order-row-actions {
+  display: inline-flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  justify-content: center;
 }
 .pagination {
   margin-top: 16px;
@@ -872,6 +966,11 @@ onMounted(() => {
 .col-fee {
   color: #f56c6c;
   font-weight: 600;
+}
+.col-fee-ship {
+  color: #f56c6c;
+  font-weight: 600;
+  white-space: nowrap;
 }
 .col-net {
   color: #ffffff;

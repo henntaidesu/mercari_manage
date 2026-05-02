@@ -22,6 +22,22 @@ from ..db_manage.models.meilu_account import MeiluAccountModel
 from ..db_manage.models.order import OrderModel
 
 
+def resolve_account_id_by_seller_id(seller_id_str: Optional[str]) -> Optional[int]:
+    """
+    根据 Mercari 卖家 ID（与订单 data_user 一致）查找用于请求的煤炉账号主键。
+    仅匹配 status=active；找不到返回 None。
+    """
+    sid = (seller_id_str or "").strip()
+    if not sid:
+        return None
+    rows = MeiluAccountModel.find_all(
+        where="[seller_id] = ? AND [status] = ?",
+        params=(sid, "active"),
+        limit=1,
+    )
+    return rows[0].id if rows else None
+
+
 def _resolve_account_and_seller(account_id: Optional[int]) -> Tuple[int, int]:
     """
     解析煤炉账号与卖家 ID。
@@ -94,7 +110,7 @@ def sync_new_data(account_id: Optional[int] = None) -> Dict[str, Any]:
     """
     增量同步出售中订单：先查本地该卖家「最新一条」订单号（水印），再拉 Mercari 列表，
     只对尚未入库的 item 入库；入库顺序与接口列表顺序相反（倒序入库：较早的新单先写入）。
-    每条成功写入后调用 get_order_info.apply_item_info_to_order（items/get）解析并回填扩展字段。
+    每条成功写入后调用 get_order_info.apply_item_info_to_order（transaction_evidences/get）解析并回填扩展字段。
 
     - 仅处理当前 API 返回的这一页 trading 数据（与全量 sync_open_orders 中 open 段一致）。
     - 依赖订单表 data_user 与当前卖家 ID 一致；筛选水印时也按 data_user 限定。
@@ -155,7 +171,7 @@ def sync_new_data(account_id: Optional[int] = None) -> Dict[str, Any]:
             stats["errors"].append({"item_id": item.get("id"), "error": str(exc)})
             continue
 
-        # 与 fetch_and_sync_open_orders 一致：入库后必须 items/get（get_order_info）回填手续费、快递费、净收益等
+        # 与 fetch_and_sync_open_orders 一致：入库后必须 transaction_evidences/get（get_order_info）回填扩展字段
         if result == "skipped" or not iid:
             continue
         try:
@@ -173,4 +189,45 @@ def sync_new_data(account_id: Optional[int] = None) -> Dict[str, Any]:
         f"inserted={stats['inserted']} updated={stats['updated']} "
         f"info_ok={stats['info_enriched']}"
     )
+    return stats
+
+
+def batch_refresh_orders_info(account_id: Optional[int] = None) -> Dict[str, Any]:
+    """
+    从订单表选出未完成（非 done / confirmed / cancelled / sold_out）且 data_user 非空的行，
+    逐条调用 apply_item_info_to_order（与列表「刷新」相同）。
+
+    :param account_id: 指定煤炉账号时，仅刷新该账号 seller_id 与 orders.data_user 一致的行；
+                       不传则扫描库内所有符合条件的订单（逐条按 data_user 解析账号）。
+    """
+    seller_filter: Optional[str] = None
+    if account_id is not None:
+        acc = MeiluAccountModel.find_by_id(id=account_id)
+        if not acc:
+            raise RuntimeError(f"未找到 ID={account_id} 的煤炉账号")
+        seller_filter = (str(acc.seller_id or "")).strip()
+        if not seller_filter:
+            raise RuntimeError(f"账号「{acc.account_name}」未配置 seller_id")
+
+    pairs = OrderModel.find_for_batch_info_refresh(seller_id_filter=seller_filter)
+    stats: Dict[str, Any] = {
+        "total": len(pairs),
+        "ok": 0,
+        "skipped_no_account": 0,
+        "failed": [],
+    }
+
+    for order_no, data_user in pairs:
+        aid = resolve_account_id_by_seller_id(data_user)
+        if aid is None:
+            stats["skipped_no_account"] += 1
+            continue
+        err = apply_item_info_to_order(
+            order_no, account_id=aid, expected_seller_id=data_user
+        )
+        if err:
+            stats["failed"].append({"order_no": order_no, "error": err})
+        else:
+            stats["ok"] += 1
+
     return stats

@@ -1,13 +1,13 @@
 # -*- coding: utf-8 -*-
 """
-Mercari 单条商品/订单详情 items/get，回填 orders 扩展字段：
-  service_fee、carrier_display_name、request_class_display_name、
-  shipping_fee（shipping_class.fee）、tracking_no、transaction_evidence_id（transaction_evidence.id）。
-  net_income：仅当 shipping_class.fee（快递费）存在且 >0 时计算为
-  售价 price − 销售手续费 sales_fee.fee − 快递费；快递费为 0 或缺失时不写入净收益（置 None）。
-在 list 同步每条写入后调用 apply_item_info_to_order（含 sync_data.sync_new_data 增量入库）。
+Mercari 单笔订单详情：transaction_evidences/get（按 item_id），回填 orders 字段。
+  若传入 expected_seller_id，校验 data.seller_id 一致。
+  remark <- item_name；description <- description；purchase_time <- created（UTC 存库）；
+  承运：shipping_class_carrier_display_name；运费：seller_shipping_fee / buyer_shipping_fee；
+  手续费：售价 price 的 10%（自行计算）；净收益：运费合计 > 0 时为 price − 手续费 − 运费。
 """
 
+import datetime
 import json
 from typing import Any, Dict, Optional
 from urllib.parse import quote
@@ -15,28 +15,16 @@ from urllib.parse import quote
 from ...mercari_req_scheduling import DPOP_FOR_ITEM_INFO, send_request
 from ....db_manage.models.order import OrderModel
 
-_ITEM_GET_PATH = "https://api.mercari.jp/items/get"
-_ITEM_GET_QUERY = (
-    "include_auction=false"
-    "&include_campaign_achievement_status=false"
-    "&include_donation=true"
-    "&include_impboost=false"
-    "&include_item_attributes=false"
-    "&include_item_attributes_sections=false"
-    "&include_non_ui_item_attributes=false"
-    "&include_offer_coupon_display=false"
-    "&include_offer_like_coupon_display=false"
-    "&include_product_page_component=false"
-)
+_TRANSACTION_EVIDENCE_GET_PATH = "https://api.mercari.jp/transaction_evidences/get"
 
 
-def build_item_info_url(item_id: str) -> str:
+def build_transaction_evidence_url(item_id: str) -> str:
     qid = quote(str(item_id).strip(), safe="")
-    return f"{_ITEM_GET_PATH}?id={qid}&{_ITEM_GET_QUERY}"
+    return f"{_TRANSACTION_EVIDENCE_GET_PATH}?_datetime_format=U&item_id={qid}"
 
 
 def _mercari_response_ok(resp: Any) -> bool:
-    """判定 items/get 等业务响应是否成功（兼容无 result 字段、大小写）。"""
+    """判定业务响应是否成功（兼容无 result 字段、大小写）。"""
     if not isinstance(resp, dict):
         return False
     rc = resp.get("result")
@@ -45,17 +33,25 @@ def _mercari_response_ok(resp: Any) -> bool:
     return str(rc).strip().upper() == "OK"
 
 
+def _unix_to_utc_str(ts: Any) -> Optional[str]:
+    """Unix 秒 -> UTC 存库串 YYYY-MM-DD HH:MM:SS。"""
+    try:
+        return datetime.datetime.utcfromtimestamp(int(ts)).strftime("%Y-%m-%d %H:%M:%S")
+    except (TypeError, ValueError, OSError):
+        return None
+
+
 def _mercari_error_hint(resp: Any) -> str:
     if not isinstance(resp, dict):
-        return str(resp)[:220]
+        return str(resp)
     try:
-        return json.dumps(resp, ensure_ascii=False)[:260]
+        return json.dumps(resp, ensure_ascii=False)
     except Exception:
-        return str(resp)[:220]
+        return str(resp)
 
 
 def _tracking_no_from_evidence(te: Any, d: Dict[str, Any]) -> Optional[str]:
-    """从 transaction_evidence / data 根节点解析快递单号。"""
+    """从嵌套 transaction_evidence 或扁平 data 解析快递单号。"""
     if isinstance(te, dict):
         for key in (
             "tracking_number",
@@ -83,78 +79,113 @@ def _tracking_no_from_evidence(te: Any, d: Dict[str, Any]) -> Optional[str]:
     return None
 
 
+def _float_str_or_num(v: Any) -> Optional[float]:
+    if v is None or v == "":
+        return None
+    try:
+        return float(v)
+    except (TypeError, ValueError):
+        return None
+
+
 def fetch_item_info(item_id: str, account_id: Optional[int] = None) -> Dict[str, Any]:
-    """GET items/get，返回完整 JSON（含 result / data）。"""
-    url = build_item_info_url(item_id)
-    return send_request("GET", url, account_id=account_id, dpop_for=DPOP_FOR_ITEM_INFO)
+    """GET transaction_evidences/get，返回完整 JSON（含 result / data）。"""
+    url = build_transaction_evidence_url(item_id)
+    return send_request(
+        "GET",
+        url,
+        account_id=account_id,
+        dpop_for=DPOP_FOR_ITEM_INFO,
+        timeout=60,
+    )
 
 
 def extract_order_info_fields(response: Dict[str, Any]) -> Dict[str, Any]:
     """
-    从 items/get 响应中解析写入 orders 的扩展字段。
-    data 为接口里的 data 节点（商品详情对象）。
+    从 transaction_evidences/get 响应解析写入 orders 的字段。
+    data 为取引凭证对象（见 test_json/出售中/info.json）。
     """
     d = response.get("data")
     if not isinstance(d, dict):
         return {}
 
     price = float(d.get("price") or 0)
-    sf = d.get("sales_fee") or {}
-    fee_raw = sf.get("fee")
-    fee_f: Optional[float] = None
-    if fee_raw is not None:
-        try:
-            fee_f = float(fee_raw)
-        except (TypeError, ValueError):
-            fee_f = None
+    # 手续费：按售价（金额）10% 计算，不用接口 payment_fee
+    fee_f: Optional[float] = round(price * 0.1, 2) if price > 0 else None
 
-    sc = d.get("shipping_class") or {}
-
-    carrier_raw = (sc.get("carrier_display_name") or "").strip()
+    carrier_raw = (d.get("shipping_class_carrier_display_name") or "").strip()
     carrier_display_name: Optional[str] = carrier_raw or None
 
-    rcdn_raw = (sc.get("request_class_display_name") or "").strip()
-    request_class_display_name: Optional[str] = rcdn_raw or None
-
+    ss = _float_str_or_num(d.get("seller_shipping_fee"))
+    bs = _float_str_or_num(d.get("buyer_shipping_fee"))
+    ship_parts = [x for x in (ss, bs) if x is not None]
     shipping_fee: Optional[float] = None
-    fee_ship = sc.get("fee")
-    if fee_ship is not None:
-        try:
-            shipping_fee = float(fee_ship)
-        except (TypeError, ValueError):
-            shipping_fee = None
+    if ship_parts:
+        shipping_fee = sum(ship_parts)
 
-    # 净收益 = 金额 − 手续费 − 快递费；快递费为 0 或缺失时不计算（None）
     net_income: Optional[float] = None
-    if shipping_fee is not None and shipping_fee > 0:
-        svc = float(fee_f) if fee_f is not None else 0.0
-        net_income = price - svc - float(shipping_fee)
+    if shipping_fee is not None and shipping_fee > 0 and fee_f is not None:
+        net_income = round(price - float(fee_f) - float(shipping_fee), 2)
 
-    te = d.get("transaction_evidence") or {}
+    te = d.get("transaction_evidence") if isinstance(d.get("transaction_evidence"), dict) else {}
     tracking_no = _tracking_no_from_evidence(te, d)
 
     transaction_evidence_id: Optional[int] = None
-    if isinstance(te, dict) and te.get("id") is not None:
+    raw_id = d.get("id")
+    if raw_id is not None:
         try:
-            transaction_evidence_id = int(te["id"])
+            transaction_evidence_id = int(raw_id)
         except (TypeError, ValueError):
             transaction_evidence_id = None
+
+    status_val: Optional[str] = None
+    st = d.get("status")
+    if st is not None and str(st).strip():
+        status_val = str(st).strip()
+
+    order_updated_at_str = _unix_to_utc_str(d.get("updated"))
+    # 购入时间：取引创建时刻（与前端「购入时间」字段对应）
+    purchase_time_str = _unix_to_utc_str(d.get("created"))
+
+    name_raw = d.get("item_name")
+    remark_val = str(name_raw).strip() if name_raw is not None else ""
+
+    desc_raw = d.get("description")
+    description_val = str(desc_raw).strip() if desc_raw is not None else ""
+
+    buyer_id = d.get("buyer_id")
+    customer_name_val = (
+        str(int(buyer_id)).strip()
+        if buyer_id is not None and str(buyer_id).strip() != ""
+        else None
+    )
 
     return {
         "service_fee": fee_f,
         "net_income": net_income,
         "carrier_display_name": carrier_display_name,
-        "request_class_display_name": request_class_display_name,
+        "request_class_display_name": None,
         "shipping_fee": shipping_fee,
         "tracking_no": tracking_no,
         "transaction_evidence_id": transaction_evidence_id,
+        "status": status_val,
+        "order_updated_at": order_updated_at_str,
+        "purchase_time": purchase_time_str,
+        "amount": price,
+        "remark": remark_val if remark_val else None,
+        "description": description_val if description_val else None,
+        "customer_name": customer_name_val,
     }
 
 
-def apply_item_info_to_order(item_id: str, account_id: Optional[int] = None) -> Optional[str]:
+def apply_item_info_to_order(
+    item_id: str,
+    account_id: Optional[int] = None,
+    expected_seller_id: Optional[str] = None,
+) -> Optional[str]:
     """
-    拉取 items/get 并将扩展字段写入已存在的订单（order_no == item_id）。
-    :return: 成功返回 None；失败返回简短错误说明（供统计）。
+    拉取 transaction_evidences/get 并写入已存在订单（order_no == item_id）。
+    expected_seller_id：校验 data.seller_id 与该卖家 ID 一致。
     """
     item_id = str(item_id or "").strip()
     if not item_id:
@@ -167,6 +198,15 @@ def apply_item_info_to_order(item_id: str, account_id: Optional[int] = None) -> 
 
     if not _mercari_response_ok(resp):
         return f"api:{_mercari_error_hint(resp)}"
+
+    if expected_seller_id is not None:
+        exp = str(expected_seller_id).strip()
+        if exp:
+            dat = resp.get("data")
+            if isinstance(dat, dict):
+                sid = dat.get("seller_id")
+                if sid is None or str(sid).strip() != exp:
+                    return "seller_mismatch"
 
     fields = extract_order_info_fields(resp)
     rows = OrderModel.find_all(where="[order_no] = ?", params=(item_id,), limit=1)
@@ -188,6 +228,20 @@ def apply_item_info_to_order(item_id: str, account_id: Optional[int] = None) -> 
         o.tracking_no = fields["tracking_no"]
     if "transaction_evidence_id" in fields:
         o.transaction_evidence_id = fields["transaction_evidence_id"]
+    if fields.get("status"):
+        o.status = fields["status"]
+    if fields.get("order_updated_at"):
+        o.order_updated_at = fields["order_updated_at"]
+    if fields.get("purchase_time"):
+        o.purchase_time = fields["purchase_time"]
+    if fields.get("amount") is not None:
+        o.amount = float(fields["amount"])
+    if fields.get("remark") is not None:
+        o.remark = fields["remark"]
+    if fields.get("description") is not None:
+        o.description = fields["description"]
+    if fields.get("customer_name"):
+        o.customer_name = fields["customer_name"]
 
     if not o.save():
         return "save_failed"
