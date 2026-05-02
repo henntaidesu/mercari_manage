@@ -8,7 +8,7 @@ Mercari 数据同步调度层
 
 from typing import Any, Dict, List, Optional, Tuple
 
-from .get_order.get_open_order.get_history_order.get_history_list import (
+from .get_order.get_history_order.get_history_list import (
     fetch_and_sync_history_orders,
 )
 from .get_order.get_open_order.get_order_list import (

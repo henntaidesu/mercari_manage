@@ -5,7 +5,7 @@ Mercari 统一请求调度模块
 职责：
 1. 直接从数据库读取煤炉账号请求头信息（避免通过 HTTP 接口访问引发鉴权问题）
 2. 将数据库中存储的字段名映射为标准 HTTP 请求头
-3. 提供 send_request(...) 统一接口，支持 GET / POST；DPoP 按 dpop_for 选用 dpop_list 或 dpop_info
+3. 提供 send_request(...) 统一接口，支持 GET / POST；DPoP 按 dpop_for 选用 dpop_list 或 dpop_info（dpop_info 绑定 GET transaction_evidences/get，见 get_order_info）
 4. 每次发起 Mercari 请求前随机休眠 1.0～3.0 秒，降低请求频率
 
 SSL：默认校验证书。若出现 CERTIFICATE_VERIFY_FAILED / self-signed certificate in chain（常见于公司代理、
@@ -25,9 +25,9 @@ from typing import Any, Dict, Literal, Optional, Union
 
 from ..db_manage.models.meilu_account import MeiluAccountModel
 
-# items/get_items 等列表接口：HTTP DPoP 用账号里的 dpop_list（或旧键 dpop）
+# items/get_items、出售中/履歴列表等：DPoP 用 dpop_list（或旧键 dpop）
 DPOP_FOR_ITEMS_LIST: Literal["list"] = "list"
-# items/get 详情接口：优先 dpop_info，空则与账号保存逻辑一致回退 dpop_list / dpop
+# GET transaction_evidences/get?_datetime_format=U&item_id=…（订单详情回填）：DPoP 用 dpop_info；空则回退 dpop_list/dpop
 DPOP_FOR_ITEM_INFO: Literal["info"] = "info"
 
 DpopFor = Literal["list", "info"]
@@ -96,7 +96,13 @@ def _fetch_active_account(account_id: Optional[int] = None) -> Dict[str, Any]:
 
 
 def _dpop_header_value(value: Dict[str, Any], dpop_for: DpopFor) -> str:
-    """从账号 value 中解析发往 HTTP 头 DPoP 的 JWT 字符串。"""
+    """
+    从账号 value 中解析发往 HTTP 头 DPoP 的 JWT 字符串。
+
+    Mercari 侧 DPoP 与请求 URL（及方法）绑定。
+    list=dpop_list：items/get_items 等列表类接口。
+    info=dpop_info：GET transaction_evidences/get（item_id、_datetime_format=U）订单详情；抓包时请对该 URL 生成 JWT。
+    """
     if dpop_for == "info":
         v = (value.get("dpop_info") or "").strip()
         if v:
@@ -113,8 +119,8 @@ def build_headers(
     根据账号信息构建标准 HTTP 请求头字典。
 
     :param account_id: 指定账号 ID；为 None 时自动选取 active 账号。
-    :param dpop_for:   \"list\" 对应 get_items 等列表接口（dpop_list）；
-                       \"info\" 对应 items/get 详情（dpop_info，空则回退 dpop_list / dpop）。
+    :param dpop_for:   \"list\"：items/get_items 等（dpop_list）；
+                       \"info\"：transaction_evidences/get（dpop_info，空则回退 dpop_list / dpop）。
     :return: 可直接传给 requests 的请求头字典。
     """
     account = _fetch_active_account(account_id)
@@ -154,7 +160,7 @@ def send_request(
     :param account_id:    指定使用的账号 ID；为 None 时自动选取 active 账号。
     :param extra_headers: 额外请求头，会覆盖账号默认头中的同名字段。
     :param timeout:       请求超时秒数，默认 30 秒。
-    :param dpop_for:      与 build_headers 相同：list=get_items 用 dpop_list；info=items/get 用 dpop_info。
+    :param dpop_for:      同 build_headers；get_order_info 调 transaction_evidences/get 时用 info（dpop_info）。
     :return:              响应 JSON 反序列化后的字典。
     注意: 发请求前会随机 sleep [1.0, 3.0] 秒。
     :raises ValueError:   method 不为 GET / POST 时抛出。

@@ -122,7 +122,7 @@
           <el-input v-model="form.dpop_list" type="textarea" :rows="3" clearable placeholder="对应 HTTP 头 DPoP 的 JWT 等内容" />
         </el-form-item>
         <el-form-item label="DPoP_Info" prop="dpop_info">
-          <el-input v-model="form.dpop_info" type="textarea" :rows="2" clearable placeholder="DPoP 附属信息（仅存账号配置，不发往 DPoP 头）" />
+          <el-input v-model="form.dpop_info" type="textarea" :rows="2" clearable placeholder="GET transaction_evidences/get 等用的 DPoP JWT（与 DPoP_List 可不同）" />
         </el-form-item>
         <el-form-item label="Priority" prop="priority">
           <el-input v-model="form.priority" clearable />
@@ -231,14 +231,16 @@ function extractPathFromRaw(raw) {
 }
 
 /**
- * 按 :path: 决定 dpop 写入表单哪一项：
- * - /items/get_items → dpop_list（与 list 请求一致，发往 DPoP 头）
- * - /items/get（且不含 get_items）→ dpop_info
+ * 按 :path: 决定 dpop 写入表单哪一项（须与 backend mercari_req_scheduling 一致）：
+ * - /items/get_items → dpop_list
+ * - /transaction_evidences/get → dpop_info（订单详情；与 get_order_info 使用同一头）
+ * - /items/get（且非 get_items）→ dpop_info
  */
 function dpopTargetFormKeyFromPath(pathStr) {
   const p = String(pathStr || '').trim()
   if (!p) return null
   if (p.includes('/items/get_items')) return 'dpop_list'
+  if (p.includes('/transaction_evidences/get')) return 'dpop_info'
   if (p.includes('/items/get')) return 'dpop_info'
   return null
 }

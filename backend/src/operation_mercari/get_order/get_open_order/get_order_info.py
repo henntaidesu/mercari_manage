@@ -1,10 +1,18 @@
 # -*- coding: utf-8 -*-
 """
-Mercari 单笔订单详情：transaction_evidences/get（按 item_id），回填 orders 字段。
-  若传入 expected_seller_id，校验 data.seller_id 一致。
-  remark <- item_name；description <- description；order_updated_at/purchase_time <- Unix 秒（原始时间戳）；
-  承运：shipping_class_carrier_display_name；运费：seller_shipping_fee / buyer_shipping_fee；
-  手续费：售价 price 的 10%（自行计算）；净收益：运费合计 > 0 时为 price − 手续费 − 运费。
+Mercari 单笔订单详情回填：仅调用 transaction_evidences/get（按 item_id）。
+
+实际请求形如::
+  GET https://api.mercari.jp/transaction_evidences/get?_datetime_format=U&item_id=<m...>
+
+HTTP 头 DPoP：账号 JSON 的 ``dpop_info`` 须针对上述 URL（与方法 GET）生成绑定；调度层使用 ``DPOP_FOR_ITEM_INFO``。
+
+本模块不调用 items/get（例如含 id=、include_auction= 等参数的商品详情接口）。
+
+若传入 expected_seller_id，校验 data.seller_id 一致。
+remark <- item_name；description <- description；order_updated_at/purchase_time <- Unix 秒（原始时间戳）；
+承运：shipping_class_carrier_display_name；运费：seller_shipping_fee / buyer_shipping_fee；
+手续费：售价 price 的 10%（自行计算）；净收益：运费合计 > 0 时为 price − 手续费 − 运费。
 """
 
 import json
@@ -88,7 +96,12 @@ def _float_str_or_num(v: Any) -> Optional[float]:
 
 
 def fetch_item_info(item_id: str, account_id: Optional[int] = None) -> Dict[str, Any]:
-    """GET transaction_evidences/get，返回完整 JSON（含 result / data）。"""
+    """
+    GET transaction_evidences/get（非 items/get），返回完整 JSON（含 result / data）。
+
+    DPoP：使用 ``dpop_info``（``dpop_for=DPOP_FOR_ITEM_INFO``），须与完整请求 URL 一致。
+    若 ``dpop_info`` 为空则回退 ``dpop_list`` / ``dpop``（见 mercari_req_scheduling）。
+    """
     url = build_transaction_evidence_url(item_id)
     return send_request(
         "GET",
