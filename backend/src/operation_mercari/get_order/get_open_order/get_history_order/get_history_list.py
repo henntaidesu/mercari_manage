@@ -63,7 +63,7 @@ def fetch_and_sync_history_orders(
 
     for item in items:
         try:
-            order_data = _item_to_order_data(item)
+            order_data = _item_to_order_data(item, seller_id=seller_id)
             result = _upsert_order(order_data)
             stats[result] += 1
             iid = item.get("id")

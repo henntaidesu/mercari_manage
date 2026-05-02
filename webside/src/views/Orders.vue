@@ -24,7 +24,7 @@
           />
         </el-col>
         <el-col :xs="24" :md="8" class="search-actions">
-          <el-button type="success" :icon="RefreshRight" disabled>更新数据</el-button>
+          <el-button type="success" :icon="RefreshRight" @click="openSyncDialog">更新数据</el-button>
         </el-col>
       </el-row>
     </el-card>
@@ -73,7 +73,7 @@
         </el-table-column>
         <el-table-column label="订单号" prop="order_no" width="150" align="center" header-align="center" />
         <el-table-column label="商品名称" prop="remark" min-width="180" show-overflow-tooltip align="left" header-align="center" />
-        <el-table-column label="创建时间" width="176" show-overflow-tooltip align="center" header-align="center">
+        <el-table-column label="上架时间" width="176" show-overflow-tooltip align="center" header-align="center">
           <template #default="{ row }">{{ displayUtcAsLocal(row.order_date) }}</template>
         </el-table-column>
         <el-table-column label="最后更新" width="176" show-overflow-tooltip align="center" header-align="center">
@@ -153,7 +153,7 @@
         <el-form-item label="订单号" prop="order_no">
           <el-input v-model="form.order_no" placeholder="请输入订单号" maxlength="60" clearable />
         </el-form-item>
-        <el-form-item label="创建时间" prop="order_date">
+        <el-form-item label="上架时间" prop="order_date">
           <el-date-picker
             v-model="form.order_date"
             type="datetime"
@@ -263,11 +263,7 @@
 
     <!-- 同步订单弹窗 -->
     <el-dialog v-model="syncDialogVisible" title="更新 Mercari 订单数据" width="420px" destroy-on-close>
-      <div class="sync-desc">
-        <el-icon class="sync-icon"><InfoFilled /></el-icon>
-        <span>将从 Mercari 拉取最新出售中订单并同步到订单管理表，已有记录自动更新状态。</span>
-      </div>
-      <el-form label-width="86px" style="margin-top: 20px;">
+      <el-form label-width="86px">
         <el-form-item label="煤炉账号">
           <el-select
             v-model="syncAccountId"
@@ -283,7 +279,6 @@
               :value="acc.id"
             />
           </el-select>
-          <div class="form-hint">不选择则自动使用第一个 active 账号</div>
         </el-form-item>
       </el-form>
       <template #footer>
@@ -297,7 +292,7 @@
 <script setup>
 import { ref, computed, onMounted } from 'vue'
 import { ElMessage } from 'element-plus'
-import { RefreshRight, InfoFilled } from '@element-plus/icons-vue'
+import { RefreshRight } from '@element-plus/icons-vue'
 import { orderApi, mercariApi, meiluAccountApi } from '@/api/index.js'
 
 const loading = ref(false)
@@ -450,10 +445,10 @@ async function confirmSync() {
   try {
     const payload = {}
     if (syncAccountId.value) payload.account_id = syncAccountId.value
-    const res = await mercariApi.syncOrders(payload)
+    const res = await mercariApi.syncNewData(payload)
     const d = res.data || {}
     ElMessage.success(
-      `同步完成：新增 ${d.inserted ?? 0} 条，更新 ${d.updated ?? 0} 条，共 ${d.total_item_count ?? d.total ?? 0} 条`
+      `更新完成：接口 ${d.api_item_count ?? 0} 条，待入库新单 ${d.pending_new ?? 0} 条，新增 ${d.inserted ?? 0} 条（回填详情 ${d.info_enriched ?? 0} 条）`
     )
     syncDialogVisible.value = false
     load()
@@ -643,7 +638,7 @@ const form = ref(createDefaultForm())
 
 const rules = {
   order_no: [{ required: true, message: '请输入订单号', trigger: 'blur' }],
-  order_date: [{ required: true, message: '请选择订单创建时间', trigger: 'change' }],
+  order_date: [{ required: true, message: '请选择上架时间', trigger: 'change' }],
   status: [{ required: true, message: '请选择订单状态', trigger: 'change' }],
   amount: [{ required: true, message: '请输入订单金额', trigger: 'blur' }],
 }
@@ -894,23 +889,6 @@ onMounted(() => {
 .thumb-fallback {
   color: #909399;
   font-size: 12px;
-}
-.sync-desc {
-  display: flex;
-  align-items: flex-start;
-  gap: 8px;
-  padding: 12px 14px;
-  background: #f0f9eb;
-  border-radius: 6px;
-  color: #606266;
-  font-size: 13px;
-  line-height: 1.6;
-}
-.sync-icon {
-  color: #67c23a;
-  font-size: 16px;
-  flex-shrink: 0;
-  margin-top: 2px;
 }
 .form-hint {
   font-size: 12px;

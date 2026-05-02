@@ -53,6 +53,12 @@ class OrderModel(BaseModel):
                 'not_null': False,
                 'default': None,
             },
+            # 卖家用户 ID（Mercari seller.id）。故意不设 NOT NULL：SQLite 改约束需重建表，维持可空即可。
+            'data_user': {
+                'type': 'TEXT',
+                'not_null': False,
+                'default': None,
+            },
             'status': {
                 'type': 'TEXT',
                 'not_null': True,
@@ -141,9 +147,12 @@ class OrderModel(BaseModel):
         """
         params: List[Any] = []
         if keyword:
-            base_sql += " AND (o.order_no LIKE ? OR o.customer_name LIKE ?)"
+            base_sql += (
+                " AND (o.order_no LIKE ? OR o.customer_name LIKE ? "
+                "OR IFNULL(o.data_user, '') LIKE ?)"
+            )
             kw = f"%{keyword}%"
-            params += [kw, kw]
+            params += [kw, kw, kw]
         if status:
             base_sql += " AND o.status = ?"
             params.append(status)
@@ -205,16 +214,18 @@ class OrderModel(BaseModel):
 
         total = db.execute_query(f"SELECT COUNT(*) {base_sql}", tuple(params))[0][0]
         select_sql = f"""
-            SELECT o.id, o.order_no, o.order_date, o.order_updated_at, o.customer_name, o.status, o.amount,
+            SELECT o.id, o.order_no, o.order_date, o.order_updated_at, o.customer_name, o.data_user,
+                   o.status, o.amount,
                    o.service_fee, o.net_income, o.carrier_display_name, o.request_class_display_name,
                    o.shipping_fee, o.tracking_no, o.transaction_evidence_id, o.remark, o.thumbnails
             {base_sql}
-            ORDER BY o.order_date DESC, o.id DESC
+            ORDER BY COALESCE(o.order_updated_at, o.order_date) DESC, o.id DESC
             LIMIT ? OFFSET ?
         """
         rows = db.execute_query(select_sql, tuple(params + [page_size, (page - 1) * page_size]))
         keys = [
-            'id', 'order_no', 'order_date', 'order_updated_at', 'customer_name', 'status', 'amount',
+            'id', 'order_no', 'order_date', 'order_updated_at', 'customer_name', 'data_user', 'status',
+            'amount',
             'service_fee', 'net_income', 'carrier_display_name', 'request_class_display_name',
             'shipping_fee', 'tracking_no', 'transaction_evidence_id', 'remark', 'thumbnails',
         ]

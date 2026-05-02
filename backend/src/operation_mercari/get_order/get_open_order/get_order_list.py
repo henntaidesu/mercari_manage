@@ -13,6 +13,7 @@
   order_date       <- item["created"] 转 UTC 字符串 YYYY-MM-DD HH:MM:SS（订单创建时间）
   order_updated_at <- item["updated"] 同上（最后更新时间）
   customer_name    <- str(item["buyer"]["id"])      （仅存买家用户 ID）
+  data_user        <- str(seller_id)                （卖家用户 ID，与请求参数 seller_id 一致）
   status           <- item["transaction_evidence"]["status"]（如 wait_shipping）
   amount           <- item["price"]
   remark           <- item["name"]                  (商品名称)
@@ -21,7 +22,7 @@
 
 import datetime
 import json
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Tuple
 
 from ...mercari_req_scheduling import DPOP_FOR_ITEMS_LIST, send_request
 from ....db_manage.models.order import OrderModel
@@ -59,18 +60,22 @@ def _norm_thumbnails_json(raw: Any) -> Optional[str]:
     return json.dumps(urls, ensure_ascii=False)
 
 
-def _item_to_order_data(item: Dict[str, Any]) -> Dict[str, Any]:
+def _item_to_order_data(
+    item: Dict[str, Any], seller_id: Optional[int] = None
+) -> Dict[str, Any]:
     """将 API 返回的单条 item 映射为 OrderModel 所需字段字典。"""
     buyer = item.get("buyer") or {}
     te = item.get("transaction_evidence") or {}
     buyer_id = buyer.get("id")
     buyer_id_str = "" if buyer_id is None else str(buyer_id).strip()
+    data_user = None if seller_id is None else str(int(seller_id))
 
     return {
         "order_no":         item.get("id", ""),
         "order_date":       _unix_to_datetime(item.get("created")),
         "order_updated_at": _unix_to_datetime(item.get("updated")),
         "customer_name":    buyer_id_str or None,
+        "data_user":        data_user,
         "status":           te.get("status") or item.get("status", "trading"),
         "amount":           float(item.get("price") or 0),
         "remark":           item.get("name", ""),
@@ -103,12 +108,35 @@ def _upsert_order(order_data: Dict[str, Any]) -> str:
     existing.status            = order_data["status"]
     existing.amount            = order_data["amount"]
     existing.customer_name     = order_data["customer_name"]
+    existing.data_user         = order_data.get("data_user")
     existing.remark            = order_data["remark"]
     existing.order_date        = order_data["order_date"]
     existing.order_updated_at  = order_data.get("order_updated_at")
     existing.thumbnails        = order_data.get("thumbnails")
     existing.save()
     return "updated"
+
+
+def fetch_open_order_items(
+    seller_id: int,
+    account_id: Optional[int] = None,
+) -> Tuple[List[Dict[str, Any]], Dict[str, Any]]:
+    """
+    仅请求 Mercari 出售中（trading）列表，不写数据库。
+    与 fetch_and_sync_open_orders 使用同一 URL / 参数。
+    """
+    url = f"{_API_URL}?{_API_PARAMS}&seller_id={seller_id}"
+
+    response = send_request(
+        "GET", url, account_id=account_id, dpop_for=DPOP_FOR_ITEMS_LIST
+    )
+
+    if response.get("result") != "OK":
+        raise RuntimeError(f"API 返回异常: {response}")
+
+    items: List[Dict[str, Any]] = response.get("data") or []
+    meta: Dict[str, Any] = response.get("meta") or {}
+    return items, meta
 
 
 def fetch_and_sync_open_orders(
@@ -122,17 +150,9 @@ def fetch_and_sync_open_orders(
     :param account_id: 指定请求头账号 ID；为 None 时自动选取 active 账号。
     :return: 同步结果统计字典，包含 total / inserted / updated / skipped / errors。
     """
-    url = f"{_API_URL}?{_API_PARAMS}&seller_id={seller_id}"
-
-    response = send_request(
-        "GET", url, account_id=account_id, dpop_for=DPOP_FOR_ITEMS_LIST
-    )
-
-    if response.get("result") != "OK":
-        raise RuntimeError(f"API 返回异常: {response}")
-
-    items: List[Dict[str, Any]] = response.get("data") or []
-    meta: Dict[str, Any] = response.get("meta") or {}
+    items: List[Dict[str, Any]]
+    meta: Dict[str, Any]
+    items, meta = fetch_open_order_items(seller_id=seller_id, account_id=account_id)
 
     stats = {
         "total": len(items),
@@ -146,7 +166,7 @@ def fetch_and_sync_open_orders(
 
     for item in items:
         try:
-            order_data = _item_to_order_data(item)
+            order_data = _item_to_order_data(item, seller_id=seller_id)
             result = _upsert_order(order_data)
             stats[result] += 1
             iid = item.get("id")

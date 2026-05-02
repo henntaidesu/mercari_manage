@@ -5,7 +5,7 @@ Mercari 单条商品/订单详情 items/get，回填 orders 扩展字段：
   shipping_fee（shipping_class.fee）、tracking_no、transaction_evidence_id（transaction_evidence.id）。
   net_income：仅当 shipping_class.fee（快递费）存在且 >0 时计算为
   售价 price − 销售手续费 sales_fee.fee − 快递费；快递费为 0 或缺失时不写入净收益（置 None）。
-在 list 同步每条写入后调用 apply_item_info_to_order。
+在 list 同步每条写入后调用 apply_item_info_to_order（含 sync_data.sync_new_data 增量入库）。
 """
 
 import json

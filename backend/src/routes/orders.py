@@ -35,6 +35,7 @@ class OrderCreate(PydanticModel):
     order_date: str
     order_updated_at: Optional[str] = None
     customer_name: Optional[str] = None
+    data_user: Optional[str] = None
     status: str = "to_pack"
     amount: float
     service_fee: Optional[float] = None
@@ -53,6 +54,7 @@ class OrderUpdate(PydanticModel):
     order_date: Optional[str] = None
     order_updated_at: Optional[str] = None
     customer_name: Optional[str] = None
+    data_user: Optional[str] = None
     status: Optional[str] = None
     amount: Optional[float] = None
     service_fee: Optional[float] = None
@@ -153,6 +155,7 @@ def create_order(data: OrderCreate):
         order_date=data.order_date,
         order_updated_at=ou,
         customer_name=(data.customer_name or "").strip() or None,
+        data_user=(data.data_user or "").strip() or None,
         status=data.status,
         amount=data.amount,
         service_fee=data.service_fee,
@@ -184,6 +187,8 @@ def update_order(oid: int, data: OrderUpdate):
         item.order_updated_at = (data.order_updated_at or "").strip() or None
     if data.customer_name is not None:
         item.customer_name = data.customer_name.strip() or None
+    if "data_user" in data.model_fields_set:
+        item.data_user = (data.data_user or "").strip() or None
     if data.status is not None:
         _validate_status_update(data.status)
         item.status = data.status

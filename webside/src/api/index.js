@@ -103,6 +103,9 @@ export const mercariApi = {
   /** 同步订单：默认不设置超时（一直等到服务端返回）。axiosConfig 可覆盖，例如 { timeout: 60000 } */
   syncOrders: (data, axiosConfig = {}) =>
     http.post('/mercari/sync-orders', data, { timeout: 0, ...axiosConfig }),
+  /** 订单页增量更新：仅入库列表中尚未存在的出售中单 */
+  syncNewData: (data, axiosConfig = {}) =>
+    http.post('/mercari/sync-new-data', data, { timeout: 0, ...axiosConfig }),
 }
 
 // 煤炉账号
