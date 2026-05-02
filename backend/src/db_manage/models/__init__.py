@@ -7,6 +7,7 @@ from .user import UserModel
 from .cost_record import CostRecordModel
 from .order import OrderModel
 from .meilu_account import MeiluAccountModel
+from .on_sale_item import OnSaleItemModel
 
 __all__ = [
     'CategoryModel',
@@ -17,4 +18,5 @@ __all__ = [
     'CostRecordModel',
     'OrderModel',
     'MeiluAccountModel',
+    'OnSaleItemModel',
 ]

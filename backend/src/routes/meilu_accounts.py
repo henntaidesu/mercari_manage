@@ -16,6 +16,7 @@ _HEADER_FIELD_LABELS = [
     ("authorization", "Authorization"),
     ("dpop_list", "DPoP_List"),
     ("dpop_info", "DPoP_Info"),
+    ("dpop_on_sale_list", "DPoP_OnSale-List"),
     ("priority", "Priority"),
     ("accept_language", "Accept-Language"),
     ("accept_encoding", "Accept-Encoding"),
@@ -103,6 +104,10 @@ def _norm_headers_dict(d: Optional[dict]) -> dict:
     for key, label in _HEADER_FIELD_LABELS:
         raw = d.get(key)
         text = ("" if raw is None else str(raw)).strip()
+        # 在售列表专用 DPoP：可选；不填则同步在售页时再报错提示补全
+        if key == "dpop_on_sale_list":
+            out[key] = text
+            continue
         if not text:
             raise HTTPException(status_code=400, detail=f"{label}不能为空")
         out[key] = text

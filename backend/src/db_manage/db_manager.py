@@ -15,6 +15,7 @@ from .models import (
     CostRecordModel,
     OrderModel,
     MeiluAccountModel,
+    OnSaleItemModel,
 )
 
 
@@ -36,6 +37,7 @@ class DBManager:
             CostRecordModel,  # 依赖 warehouses（可为空）
             OrderModel,       # 订单管理
             MeiluAccountModel,  # 煤炉账号
+            OnSaleItemModel,  # 在售商品缓存
         ]
 
     def initialize_database(self) -> bool:

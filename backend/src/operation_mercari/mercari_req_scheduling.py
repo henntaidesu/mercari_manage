@@ -5,7 +5,7 @@ Mercari 统一请求调度模块
 职责：
 1. 直接从数据库读取煤炉账号请求头信息（避免通过 HTTP 接口访问引发鉴权问题）
 2. 将数据库中存储的字段名映射为标准 HTTP 请求头
-3. 提供 send_request(...) 统一接口，支持 GET / POST；DPoP 按 dpop_for 选用 dpop_list 或 dpop_info（info 时仅 dpop_info，空则报错，见 get_order_info）
+3. 提供 send_request(...) 统一接口，支持 GET / POST；DPoP 按 dpop_for 选用 dpop_list、dpop_info、dpop_on_sale_list（见各模块注释）
 4. 每次发起 Mercari 请求前随机休眠 1.0～3.0 秒，降低请求频率
 
 SSL：默认校验证书。若出现 CERTIFICATE_VERIFY_FAILED / self-signed certificate in chain（常见于公司代理、
@@ -29,8 +29,10 @@ from ..db_manage.models.meilu_account import MeiluAccountModel
 DPOP_FOR_ITEMS_LIST: Literal["list"] = "list"
 # GET transaction_evidences/get?_datetime_format=U&item_id=…（订单详情回填）：仅 dpop_info，不可回退
 DPOP_FOR_ITEM_INFO: Literal["info"] = "info"
+# GET items/get_items 在售列表（status=on_sale,stop 等）：仅 dpop_on_sale_list（须针对完整查询串生成）
+DPOP_FOR_ON_SALE_LIST: Literal["on_sale_list"] = "on_sale_list"
 
-DpopFor = Literal["list", "info"]
+DpopFor = Literal["list", "info", "on_sale_list"]
 
 # 数据库字段名 -> 标准 HTTP 请求头名 映射（DPoP 由 _dpop_header_value + dpop_for 单独注入）
 _HEADER_FIELD_MAP: Dict[str, str] = {
@@ -100,11 +102,14 @@ def _dpop_header_value(value: Dict[str, Any], dpop_for: DpopFor) -> str:
     从账号 value 中解析发往 HTTP 头 DPoP 的 JWT 字符串。
 
     Mercari 侧 DPoP 与请求 URL（及方法）绑定。
-    list=dpop_list：items/get_items 等列表类接口。
-    info=仅 dpop_info：GET transaction_evidences/get（item_id、_datetime_format=U）订单详情；空串由 build_headers 抛错，不用 dpop_list/dpop 回退。
+    list=dpop_list：items/get_items（如订单用 trading）等。
+    info=仅 dpop_info：GET transaction_evidences/get，空则抛错。
+    on_sale_list=仅 dpop_on_sale_list：GET items/get_items（在售 status=on_sale,stop 等完整 URL），空则抛错。
     """
     if dpop_for == "info":
         return (value.get("dpop_info") or "").strip()
+    if dpop_for == "on_sale_list":
+        return (value.get("dpop_on_sale_list") or "").strip()
     return (value.get("dpop_list") or value.get("dpop") or "").strip()
 
 
@@ -116,8 +121,9 @@ def build_headers(
     根据账号信息构建标准 HTTP 请求头字典。
 
     :param account_id: 指定账号 ID；为 None 时自动选取 active 账号。
-    :param dpop_for:   \"list\"：items/get_items 等（dpop_list）；
-                       \"info\"：transaction_evidences/get，仅 dpop_info，空则抛错。
+    :param dpop_for:   \"list\"：dpop_list；
+                       \"info\"：仅 dpop_info，空则抛错；
+                       \"on_sale_list\"：仅 dpop_on_sale_list（在售商品列表 URL），空则抛错。
     :return: 可直接传给 requests 的请求头字典。
     """
     account = _fetch_active_account(account_id)
@@ -134,6 +140,11 @@ def build_headers(
         raise RuntimeError(
             f"账号 '{account.get('account_name')}' 缺少 dpop_info："
             "订单详情（transaction_evidences/get）须使用针对该 URL 的 DPoP，请补全 dpop_info 字段"
+        )
+    if dpop_for == "on_sale_list" and not dpop_jwt:
+        raise RuntimeError(
+            f"账号 '{account.get('account_name')}' 缺少 dpop_on_sale_list："
+            "在售商品列表（items/get_items，status=on_sale,stop 等）须单独配置 DPoP_OnSale-List（dpop_on_sale_list）"
         )
     if dpop_jwt:
         headers["DPoP"] = dpop_jwt
@@ -162,7 +173,7 @@ def send_request(
     :param account_id:    指定使用的账号 ID；为 None 时自动选取 active 账号。
     :param extra_headers: 额外请求头，会覆盖账号默认头中的同名字段。
     :param timeout:       请求超时秒数，默认 30 秒。
-    :param dpop_for:      同 build_headers；info 时须配置 dpop_info，否则抛错。
+    :param dpop_for:      同 build_headers；on_sale_list 时须配置 dpop_on_sale_list。
     :return:              响应 JSON 反序列化后的字典。
     注意: 发请求前会随机 sleep [1.0, 3.0] 秒。
     :raises ValueError:   method 不为 GET / POST 时抛出。

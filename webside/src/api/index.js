@@ -101,6 +101,13 @@ export const orderApi = {
     http.post('/orders/refresh-info', data, { timeout: 60000, ...axiosConfig })
 }
 
+// 在售商品（本地缓存 items/get_items）
+export const onSaleItemApi = {
+  list: (params) => http.get('/on-sale-items', { params }),
+  sync: (data, axiosConfig = {}) =>
+    http.post('/on-sale-items/sync', data, { timeout: 0, ...axiosConfig }),
+}
+
 // Mercari 操作
 export const mercariApi = {
   /** 同步订单：默认不设置超时（一直等到服务端返回）。axiosConfig 可覆盖，例如 { timeout: 60000 } */

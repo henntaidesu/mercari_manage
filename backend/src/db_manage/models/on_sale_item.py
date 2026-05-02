@@ -1,0 +1,284 @@
+# -*- coding: utf-8 -*-
+"""
+在售商品（Mercari items/get_items 列表项）本地缓存表。
+
+字段与 test_json/在售/list.json 中 data[] 单项对齐；金额 price 为日元整数。
+"""
+
+from typing import Any, Dict, List, Optional, Tuple
+
+from ..base_model import BaseModel
+
+
+class OnSaleItemModel(BaseModel):
+    """在售商品"""
+
+    @classmethod
+    def ensure_table_exists(cls) -> bool:
+        ok = super().ensure_table_exists()
+        if ok and hasattr(cls, "_cached_table_columns"):
+            delattr(cls, "_cached_table_columns")
+        return ok
+
+    @classmethod
+    def get_table_name(cls) -> str:
+        return "on_sale_items"
+
+    @classmethod
+    def get_fields(cls) -> Dict[str, Dict[str, Any]]:
+        return {
+            "id": {
+                "type": "INTEGER",
+                "primary_key": True,
+                "autoincrement": True,
+                "not_null": True,
+            },
+            "item_id": {
+                "type": "TEXT",
+                "not_null": True,
+                "unique": True,
+                "default": None,
+            },
+            "seller_id": {
+                "type": "TEXT",
+                "not_null": True,
+                "default": None,
+            },
+            "status": {
+                "type": "TEXT",
+                "not_null": False,
+                "default": None,
+            },
+            "name": {
+                "type": "TEXT",
+                "not_null": False,
+                "default": None,
+            },
+            "price": {
+                "type": "INTEGER",
+                "not_null": True,
+                "default": 0,
+            },
+            "thumbnails": {
+                "type": "TEXT",
+                "not_null": False,
+                "default": None,
+            },
+            "item_root_category_id": {
+                "type": "INTEGER",
+                "not_null": False,
+                "default": None,
+            },
+            "num_likes": {
+                "type": "INTEGER",
+                "not_null": False,
+                "default": 0,
+            },
+            "num_comments": {
+                "type": "INTEGER",
+                "not_null": False,
+                "default": 0,
+            },
+            "created": {
+                "type": "INTEGER",
+                "not_null": False,
+                "default": None,
+            },
+            "updated": {
+                "type": "INTEGER",
+                "not_null": False,
+                "default": None,
+            },
+            "category_id": {
+                "type": "INTEGER",
+                "not_null": False,
+                "default": None,
+            },
+            "category_name": {
+                "type": "TEXT",
+                "not_null": False,
+                "default": None,
+            },
+            "parent_category_id": {
+                "type": "INTEGER",
+                "not_null": False,
+                "default": None,
+            },
+            "parent_category_name": {
+                "type": "TEXT",
+                "not_null": False,
+                "default": None,
+            },
+            "category_root_id": {
+                "type": "INTEGER",
+                "not_null": False,
+                "default": None,
+            },
+            "category_root_name": {
+                "type": "TEXT",
+                "not_null": False,
+                "default": None,
+            },
+            "parent_categories_json": {
+                "type": "TEXT",
+                "not_null": False,
+                "default": None,
+            },
+            "shipping_from_area_id": {
+                "type": "INTEGER",
+                "not_null": False,
+                "default": None,
+            },
+            "shipping_from_area_name": {
+                "type": "TEXT",
+                "not_null": False,
+                "default": None,
+            },
+            "shipping_method_id": {
+                "type": "INTEGER",
+                "not_null": False,
+                "default": None,
+            },
+            "pager_id": {
+                "type": "INTEGER",
+                "not_null": False,
+                "default": None,
+            },
+            "liked": {
+                "type": "INTEGER",
+                "not_null": False,
+                "default": 0,
+            },
+            "item_pv": {
+                "type": "INTEGER",
+                "not_null": False,
+                "default": 0,
+            },
+            "recent_item_pv": {
+                "type": "INTEGER",
+                "not_null": False,
+                "default": 0,
+            },
+            "search_impression": {
+                "type": "INTEGER",
+                "not_null": False,
+                "default": None,
+            },
+            "recent_search_impression": {
+                "type": "INTEGER",
+                "not_null": False,
+                "default": None,
+            },
+            "is_no_price": {
+                "type": "INTEGER",
+                "not_null": False,
+                "default": 0,
+            },
+            "impression_boost_status": {
+                "type": "TEXT",
+                "not_null": False,
+                "default": None,
+            },
+            "auction_info_json": {
+                "type": "TEXT",
+                "not_null": False,
+                "default": None,
+            },
+            "synced_at": {
+                "type": "INTEGER",
+                "not_null": False,
+                "default": None,
+            },
+        }
+
+    @classmethod
+    def get_indexes(cls) -> List[Dict[str, Any]]:
+        return [
+            {"name": "idx_on_sale_items_seller", "columns": ["seller_id"]},
+            {"name": "idx_on_sale_items_updated", "columns": ["updated"]},
+            {"name": "idx_on_sale_items_status", "columns": ["status"]},
+        ]
+
+    @classmethod
+    def _build_filter(
+        cls,
+        keyword: Optional[str] = None,
+        seller_id: Optional[str] = None,
+        status: Optional[str] = None,
+    ) -> Tuple[str, List[Any]]:
+        sql = " FROM [on_sale_items] t WHERE 1=1 "
+        params: List[Any] = []
+        if keyword:
+            sql += " AND (t.item_id LIKE ? OR IFNULL(t.name,'') LIKE ?)"
+            kw = f"%{keyword.strip()}%"
+            params.extend([kw, kw])
+        if seller_id is not None and str(seller_id).strip():
+            sql += " AND TRIM(t.seller_id) = TRIM(?)"
+            params.append(str(seller_id).strip())
+        if status is not None and str(status).strip():
+            sql += " AND t.status = ?"
+            params.append(str(status).strip())
+        return sql, params
+
+    @classmethod
+    def find_list(
+        cls,
+        keyword: Optional[str] = None,
+        seller_id: Optional[str] = None,
+        status: Optional[str] = None,
+        page: int = 1,
+        page_size: int = 20,
+    ) -> Dict[str, Any]:
+        db = cls().db
+        base_sql, params = cls._build_filter(
+            keyword=keyword, seller_id=seller_id, status=status
+        )
+        total = db.execute_query(f"SELECT COUNT(*) {base_sql}", tuple(params))[0][0]
+        offset = (page - 1) * page_size
+        keys = [
+            "id",
+            "item_id",
+            "seller_id",
+            "status",
+            "name",
+            "price",
+            "thumbnails",
+            "item_root_category_id",
+            "num_likes",
+            "num_comments",
+            "created",
+            "updated",
+            "category_id",
+            "category_name",
+            "parent_category_id",
+            "parent_category_name",
+            "category_root_id",
+            "category_root_name",
+            "parent_categories_json",
+            "shipping_from_area_id",
+            "shipping_from_area_name",
+            "shipping_method_id",
+            "pager_id",
+            "liked",
+            "item_pv",
+            "recent_item_pv",
+            "search_impression",
+            "recent_search_impression",
+            "is_no_price",
+            "impression_boost_status",
+            "auction_info_json",
+            "synced_at",
+        ]
+        sel = f"""
+            SELECT {', '.join('t.' + k for k in keys)}
+            {base_sql}
+            ORDER BY COALESCE(t.updated, t.created, 0) DESC, t.id DESC
+            LIMIT ? OFFSET ?
+        """
+        rows = db.execute_query(sel, tuple(params + [page_size, offset]))
+        return {
+            "total": total,
+            "page": page,
+            "page_size": page_size,
+            "items": [dict(zip(keys, row)) for row in rows],
+        }

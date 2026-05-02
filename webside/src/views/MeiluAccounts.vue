@@ -124,6 +124,15 @@
         <el-form-item label="DPoP_Info" prop="dpop_info">
           <el-input v-model="form.dpop_info" type="textarea" :rows="2" clearable placeholder="GET transaction_evidences/get 等用的 DPoP JWT（与 DPoP_List 可不同）" />
         </el-form-item>
+        <el-form-item label="DPoP_OnSale-List" prop="dpop_on_sale_list">
+          <el-input
+            v-model="form.dpop_on_sale_list"
+            type="textarea"
+            :rows="2"
+            clearable
+            placeholder="GET items/get_items 在售列表（status=on_sale,stop）完整 URL 对应的 DPoP；不填则无法从煤炉同步在售商品页"
+          />
+        </el-form-item>
         <el-form-item label="Priority" prop="priority">
           <el-input v-model="form.priority" clearable />
         </el-form-item>
@@ -170,6 +179,8 @@ const HEADER_TO_FORM = {
   dpop_list: 'dpop_list',
   dpop_info: 'dpop_info',
   'dpop-info': 'dpop_info',
+  dpop_on_sale_list: 'dpop_on_sale_list',
+  'dpop-on-sale-list': 'dpop_on_sale_list',
   priority: 'priority',
   'accept-language': 'accept_language',
   'accept-encoding': 'accept_encoding',
@@ -185,6 +196,7 @@ const HEADER_LABELS = {
   authorization: 'Authorization',
   dpop_list: 'DPoP_List',
   dpop_info: 'DPoP_Info',
+  dpop_on_sale_list: 'DPoP_OnSale-List',
   priority: 'Priority',
   accept_language: 'Accept-Language',
   accept_encoding: 'Accept-Encoding',
@@ -232,13 +244,17 @@ function extractPathFromRaw(raw) {
 
 /**
  * 按 :path: 决定 dpop 写入表单哪一项（须与 backend mercari_req_scheduling 一致）：
- * - /items/get_items → dpop_list
+ * - /items/get_items 且含在售参数（on_sale、stop）→ dpop_on_sale_list
+ * - /items/get_items 其他（如 trading）→ dpop_list
  * - /transaction_evidences/get → dpop_info（订单详情；与 get_order_info 使用同一头）
  * - /items/get（且非 get_items）→ dpop_info
  */
 function dpopTargetFormKeyFromPath(pathStr) {
   const p = String(pathStr || '').trim()
   if (!p) return null
+  if (p.includes('/items/get_items') && (p.includes('on_sale') || p.includes('stop'))) {
+    return 'dpop_on_sale_list'
+  }
   if (p.includes('/items/get_items')) return 'dpop_list'
   if (p.includes('/transaction_evidences/get')) return 'dpop_info'
   if (p.includes('/items/get')) return 'dpop_info'
@@ -326,6 +342,7 @@ const createDefaultForm = () => ({
   authorization: '',
   dpop_list: '',
   dpop_info: '',
+  dpop_on_sale_list: '',
   priority: '',
   accept_language: '',
   accept_encoding: '',
