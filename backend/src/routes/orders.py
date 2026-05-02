@@ -35,9 +35,9 @@ def _encode_thumbnails(urls: Optional[List[str]]) -> Optional[str]:
 
 class OrderCreate(PydanticModel):
     order_no: str
-    order_date: str
-    order_updated_at: Optional[str] = None
-    purchase_time: Optional[str] = None
+    order_date: int
+    order_updated_at: Optional[int] = None
+    purchase_time: Optional[int] = None
     customer_name: Optional[str] = None
     data_user: Optional[str] = None
     status: str = "pending"
@@ -63,9 +63,9 @@ class RefreshOrderInfoBody(PydanticModel):
 
 class OrderUpdate(PydanticModel):
     order_no: Optional[str] = None
-    order_date: Optional[str] = None
-    order_updated_at: Optional[str] = None
-    purchase_time: Optional[str] = None
+    order_date: Optional[int] = None
+    order_updated_at: Optional[int] = None
+    purchase_time: Optional[int] = None
     customer_name: Optional[str] = None
     data_user: Optional[str] = None
     status: Optional[str] = None
@@ -107,29 +107,30 @@ def _normalize_order_no(order_no: str) -> str:
 def order_stats(
     keyword: Optional[str] = None,
     status: Optional[str] = None,
-    start_date: Optional[str] = None,
-    end_date: Optional[str] = None,
-    today_date: Optional[str] = None,
+    start_ts: Optional[int] = None,
+    end_ts: Optional[int] = None,
+    today_start_ts: Optional[int] = None,
+    today_end_ts: Optional[int] = None,
 ):
     """当前筛选条件下的全表汇总（金额、手续费、快递费、净收益及行数），不受分页影响。
 
-    可选 today_date（YYYY-MM-DD，建议传浏览器本地「今天」）：在相同 keyword、status 下，
-    按购入时间 date(COALESCE(purchase_time, order_date)) 落在该自然日的订单汇总「今日购入」，不受 start_date/end_date 影响。
+    筛选购入时间区间：start_ts / end_ts 为 Unix 秒（与列表一致，建议由前端按本地自然日 0 点～当日结束换算）。
+    可选 today_start_ts / today_end_ts（同为 Unix 秒，本地「今天」起止）：在相同 keyword、status 下汇总「今日购入」，
+    不受 start_ts/end_ts 影响。
     """
     _validate_status_query(status)
     out = OrderModel.aggregate_sums(
         keyword=keyword,
         status=status,
-        start_date=start_date,
-        end_date=end_date,
+        start_ts=start_ts,
+        end_ts=end_ts,
     )
-    td = (today_date or "").strip()
-    if td:
+    if today_start_ts is not None and today_end_ts is not None:
         t = OrderModel.aggregate_sums(
             keyword=keyword,
             status=status,
-            start_date=td,
-            end_date=td,
+            start_ts=int(today_start_ts),
+            end_ts=int(today_end_ts),
         )
         out["today_total_count"] = t["total_count"]
         out["today_sum_amount"] = t["sum_amount"]
@@ -143,8 +144,8 @@ def order_stats(
 def list_orders(
     keyword: Optional[str] = None,
     status: Optional[str] = None,
-    start_date: Optional[str] = None,
-    end_date: Optional[str] = None,
+    start_ts: Optional[int] = None,
+    end_ts: Optional[int] = None,
     page: int = 1,
     page_size: int = 20,
 ):
@@ -152,8 +153,8 @@ def list_orders(
     return OrderModel.find_detail_list(
         keyword=keyword,
         status=status,
-        start_date=start_date,
-        end_date=end_date,
+        start_ts=start_ts,
+        end_ts=end_ts,
         page=page,
         page_size=page_size,
     )
@@ -205,13 +206,13 @@ def create_order(data: OrderCreate):
     _validate_order_status(data.status)
     if data.amount <= 0:
         raise HTTPException(status_code=400, detail="金额必须大于0")
-    ou = (data.order_updated_at or "").strip() or None
-    pt = (data.purchase_time or "").strip() or None
+    ou = data.order_updated_at
+    pt = data.purchase_time
     item = OrderModel(
         order_no=order_no,
-        order_date=data.order_date,
-        order_updated_at=ou,
-        purchase_time=pt,
+        order_date=int(data.order_date),
+        order_updated_at=None if ou is None else int(ou),
+        purchase_time=None if pt is None else int(pt),
         customer_name=(data.customer_name or "").strip() or None,
         data_user=(data.data_user or "").strip() or None,
         status=data.status,
@@ -241,11 +242,13 @@ def update_order(oid: int, data: OrderUpdate):
     if data.order_no is not None:
         item.order_no = _normalize_order_no(data.order_no)
     if data.order_date is not None:
-        item.order_date = data.order_date
+        item.order_date = int(data.order_date)
     if "order_updated_at" in data.model_fields_set:
-        item.order_updated_at = (data.order_updated_at or "").strip() or None
+        v = data.order_updated_at
+        item.order_updated_at = None if v is None else int(v)
     if "purchase_time" in data.model_fields_set:
-        item.purchase_time = (data.purchase_time or "").strip() or None
+        v = data.purchase_time
+        item.purchase_time = None if v is None else int(v)
     if data.customer_name is not None:
         item.customer_name = data.customer_name.strip() or None
     if "data_user" in data.model_fields_set:

@@ -1,6 +1,9 @@
 # -*- coding: utf-8 -*-
 """
-订单表模型
+订单表模型。
+
+SQLite：`order_date`、`order_updated_at`、`purchase_time` 均为 INTEGER，存 Mercari 原始 Unix 秒；
+展示与时区换算由前端完成。
 """
 
 from typing import Any, Dict, List, Optional, Tuple
@@ -36,20 +39,19 @@ class OrderModel(BaseModel):
                 'unique': True,
                 'default': None,
             },
+            # Mercari 原始 Unix 时间戳（秒），前端按本地时区展示
             'order_date': {
-                'type': 'TEXT',
+                'type': 'INTEGER',
                 'not_null': True,
                 'default': None,
             },
-            # Mercari item.updated，精确到秒 YYYY-MM-DD HH:MM:SS（UTC）
             'order_updated_at': {
-                'type': 'TEXT',
+                'type': 'INTEGER',
                 'not_null': False,
                 'default': None,
             },
-            # 购入时间（业务可录入，与 order_date 等同格式 UTC 存库）
             'purchase_time': {
-                'type': 'TEXT',
+                'type': 'INTEGER',
                 'not_null': False,
                 'default': None,
             },
@@ -150,8 +152,8 @@ class OrderModel(BaseModel):
         cls,
         keyword: Optional[str] = None,
         status: Optional[str] = None,
-        start_date: Optional[str] = None,
-        end_date: Optional[str] = None,
+        start_ts: Optional[int] = None,
+        end_ts: Optional[int] = None,
     ) -> Tuple[str, List[Any]]:
         base_sql = """
             FROM [orders] o
@@ -170,16 +172,16 @@ class OrderModel(BaseModel):
         if status:
             base_sql += " AND o.status = ?"
             params.append(status)
-        if start_date:
+        if start_ts is not None:
             base_sql += (
-                " AND date(COALESCE(o.purchase_time, o.order_date)) >= date(?)"
+                " AND COALESCE(o.purchase_time, o.order_date) >= ?"
             )
-            params.append(start_date)
-        if end_date:
+            params.append(int(start_ts))
+        if end_ts is not None:
             base_sql += (
-                " AND date(COALESCE(o.purchase_time, o.order_date)) <= date(?)"
+                " AND COALESCE(o.purchase_time, o.order_date) <= ?"
             )
-            params.append(end_date)
+            params.append(int(end_ts))
         return base_sql, params
 
     @classmethod
@@ -187,15 +189,15 @@ class OrderModel(BaseModel):
         cls,
         keyword: Optional[str] = None,
         status: Optional[str] = None,
-        start_date: Optional[str] = None,
-        end_date: Optional[str] = None,
+        start_ts: Optional[int] = None,
+        end_ts: Optional[int] = None,
     ) -> Dict[str, Any]:
         """
         与列表相同的筛选条件下，对全量匹配行求和（非当前页）。
         """
         db = cls().db
         base_sql, params = cls._build_list_filter(
-            keyword=keyword, status=status, start_date=start_date, end_date=end_date
+            keyword=keyword, status=status, start_ts=start_ts, end_ts=end_ts
         )
         sql = f"""
             SELECT
@@ -263,14 +265,14 @@ class OrderModel(BaseModel):
         cls,
         keyword: Optional[str] = None,
         status: Optional[str] = None,
-        start_date: Optional[str] = None,
-        end_date: Optional[str] = None,
+        start_ts: Optional[int] = None,
+        end_ts: Optional[int] = None,
         page: int = 1,
         page_size: int = 20,
     ) -> Dict[str, Any]:
         db = cls().db
         base_sql, params = cls._build_list_filter(
-            keyword=keyword, status=status, start_date=start_date, end_date=end_date
+            keyword=keyword, status=status, start_ts=start_ts, end_ts=end_ts
         )
 
         total = db.execute_query(f"SELECT COUNT(*) {base_sql}", tuple(params))[0][0]

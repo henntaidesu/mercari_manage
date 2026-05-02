@@ -75,10 +75,10 @@
         <el-table-column label="订单号" prop="order_no" width="150" align="center" header-align="center" />
         <el-table-column label="商品名称" prop="remark" min-width="160" show-overflow-tooltip align="left" header-align="center" />
         <el-table-column label="最后更新" width="176" show-overflow-tooltip align="center" header-align="center">
-          <template #default="{ row }">{{ displayUtcAsLocal(row.order_updated_at) }}</template>
+          <template #default="{ row }">{{ displayTsLocal(row.order_updated_at) }}</template>
         </el-table-column>
         <el-table-column label="购入时间" width="176" show-overflow-tooltip align="center" header-align="center">
-          <template #default="{ row }">{{ displayUtcAsLocal(row.purchase_time) }}</template>
+          <template #default="{ row }">{{ displayTsLocal(row.purchase_time) }}</template>
         </el-table-column>
         <el-table-column label="状态" width="110" align="center" header-align="center">
           <template #default="{ row }">
@@ -312,11 +312,6 @@ const stats = ref({
   today_sum_net_income: 0,
 })
 
-function formatLocalYmd(d) {
-  const pad = (n) => String(n).padStart(2, '0')
-  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`
-}
-
 /** 与控制台「订单统计」卡片一致；主数值对应当前列表筛选；今日购入按购入时间（purchase_time）落在本地当日 + 相同 keyword/status */
 const orderStatCards = computed(() => {
   const o = stats.value
@@ -533,35 +528,69 @@ function parseUtcDbToDate(v) {
   return new Date(Date.UTC(y, mo, d, h, mi, sec))
 }
 
-/** 表格：UTC 存库串 -> 本地展示 YYYY-MM-DD HH:mm:ss */
-function displayUtcAsLocal(v) {
-  if (v == null || v === '') return '-'
-  const dt = parseUtcDbToDate(v)
-  if (!dt || Number.isNaN(dt.getTime())) return String(v)
-  return `${dt.getFullYear()}-${pad2(dt.getMonth() + 1)}-${pad2(dt.getDate())} ${pad2(dt.getHours())}:${pad2(dt.getMinutes())}:${pad2(dt.getSeconds())}`
-}
-
 function formatLocalWallToStr(dt) {
   if (!dt || Number.isNaN(dt.getTime())) return ''
   return `${dt.getFullYear()}-${pad2(dt.getMonth() + 1)}-${pad2(dt.getDate())} ${pad2(dt.getHours())}:${pad2(dt.getMinutes())}:${pad2(dt.getSeconds())}`
 }
 
-/** 编辑：服务端 UTC 串 -> 本地串，供 datetime 选择器 */
-function utcDbStringToLocalForm(v) {
-  if (!v) return ''
-  const dt = parseUtcDbToDate(v)
-  if (!dt || Number.isNaN(dt.getTime())) return normalizeDatetimeStr(v)
-  return formatLocalWallToStr(dt)
+/** 本地日历日 YYYY-MM-DD -> 当日起止 Unix 秒（与后端 COALESCE(purchase_time, order_date) 筛选一致） */
+function localYmdToDayStartTs(ymd) {
+  const m = String(ymd).match(/^(\d{4})-(\d{2})-(\d{2})$/)
+  if (!m) return null
+  const d = new Date(+m[1], +m[2] - 1, +m[3], 0, 0, 0, 0)
+  return Math.floor(d.getTime() / 1000)
+}
+
+function localYmdToDayEndTs(ymd) {
+  const m = String(ymd).match(/^(\d{4})-(\d{2})-(\d{2})$/)
+  if (!m) return null
+  const d = new Date(+m[1], +m[2] - 1, +m[3], 23, 59, 59, 999)
+  return Math.floor(d.getTime() / 1000)
 }
 
 /**
- * 保存：选择器本地时间串 -> UTC 存库串 YYYY-MM-DD HH:mm:ss
+ * 存库值：优先 Unix 秒/毫秒时间戳；否则按旧版 UTC 字符串解析（兼容旧数据）
  */
-function localFormStringToUtcDb(v) {
+function tsOrLegacyToDate(v) {
+  if (v == null || v === '') return null
+  if (typeof v === 'number' && Number.isFinite(v)) {
+    if (v > 1e11) return new Date(v)
+    if (v > 1e8) return new Date(v * 1000)
+    return null
+  }
+  const s = String(v).trim()
+  if (/^\d+\.?\d*$/.test(s)) {
+    const n = Number(s)
+    if (Number.isFinite(n)) {
+      if (n > 1e11) return new Date(n)
+      if (n > 1e8) return new Date(n * 1000)
+    }
+  }
+  return parseUtcDbToDate(v)
+}
+
+/** 表格：Unix 秒或旧串 -> 本地展示 */
+function displayTsLocal(v) {
+  if (v == null || v === '') return '-'
+  const dt = tsOrLegacyToDate(v)
+  if (!dt || Number.isNaN(dt.getTime())) return String(v)
+  return formatLocalWallToStr(dt)
+}
+
+/** 编辑弹窗：存库值 -> 选择器 value-format 串 */
+function tsOrLegacyToLocalForm(v) {
+  if (v == null || v === '') return ''
+  const dt = tsOrLegacyToDate(v)
+  if (!dt || Number.isNaN(dt.getTime())) return normalizeDatetimeStr(String(v))
+  return formatLocalWallToStr(dt)
+}
+
+/** 保存：本地 datetime 串 -> Unix 秒（null 表示清空可选字段） */
+function localFormStringToUnixSec(v) {
   if (!v || !String(v).trim()) return null
   const s = String(v).trim()
   const m = s.match(/^(\d{4})-(\d{2})-(\d{2})(?:\s+(\d{2}):(\d{2}):(\d{2}))?$/)
-  if (!m) return s
+  if (!m) return null
   const y = +m[1]
   const mo = +m[2] - 1
   const d = +m[3]
@@ -569,8 +598,8 @@ function localFormStringToUtcDb(v) {
   const mi = m[5] != null ? +m[5] : 0
   const sec = m[6] != null ? +m[6] : 0
   const local = new Date(y, mo, d, h, mi, sec)
-  if (Number.isNaN(local.getTime())) return s
-  return `${local.getUTCFullYear()}-${pad2(local.getUTCMonth() + 1)}-${pad2(local.getUTCDate())} ${pad2(local.getUTCHours())}:${pad2(local.getUTCMinutes())}:${pad2(local.getUTCSeconds())}`
+  if (Number.isNaN(local.getTime())) return null
+  return Math.floor(local.getTime() / 1000)
 }
 
 function optionalNumFromRow(v) {
@@ -701,8 +730,10 @@ function listFilterParams() {
   if (filters.value.keyword) params.keyword = filters.value.keyword
   if (filters.value.status) params.status = filters.value.status
   if (dateRange.value?.length === 2) {
-    params.start_date = dateRange.value[0]
-    params.end_date = dateRange.value[1]
+    const start = localYmdToDayStartTs(dateRange.value[0])
+    const end = localYmdToDayEndTs(dateRange.value[1])
+    if (start != null) params.start_ts = start
+    if (end != null) params.end_ts = end
   }
   return params
 }
@@ -710,9 +741,13 @@ function listFilterParams() {
 async function loadStats() {
   statsLoading.value = true
   try {
+    const now = new Date()
+    const todayStart = Math.floor(new Date(now.getFullYear(), now.getMonth(), now.getDate(), 0, 0, 0, 0).getTime() / 1000)
+    const todayEnd = Math.floor(new Date(now.getFullYear(), now.getMonth(), now.getDate(), 23, 59, 59, 999).getTime() / 1000)
     const res = await orderApi.stats({
       ...listFilterParams(),
-      today_date: formatLocalYmd(new Date()),
+      today_start_ts: todayStart,
+      today_end_ts: todayEnd,
     })
     stats.value = {
       total_count: res.total_count ?? 0,
@@ -759,9 +794,9 @@ function openEdit(row) {
   form.value = {
     id: row.id,
     order_no: row.order_no || '',
-    order_date: utcDbStringToLocalForm(row.order_date),
-    order_updated_at: utcDbStringToLocalForm(row.order_updated_at),
-    purchase_time: utcDbStringToLocalForm(row.purchase_time),
+    order_date: tsOrLegacyToLocalForm(row.order_date),
+    order_updated_at: tsOrLegacyToLocalForm(row.order_updated_at),
+    purchase_time: tsOrLegacyToLocalForm(row.purchase_time),
     customer_name: row.customer_name || '',
     status: row.status || 'pending',
     amount: Number(row.amount || 0),
@@ -809,12 +844,17 @@ async function submit() {
     ElMessage.warning('未选择订单')
     return
   }
+  const orderDateSec = localFormStringToUnixSec(form.value.order_date)
+  if (orderDateSec == null) {
+    ElMessage.warning('订单时间无效，请重新打开编辑或同步数据')
+    return
+  }
   submitting.value = true
   const payload = {
     order_no: String(form.value.order_no || '').trim(),
-    order_date: localFormStringToUtcDb(form.value.order_date),
-    order_updated_at: localFormStringToUtcDb(form.value.order_updated_at),
-    purchase_time: localFormStringToUtcDb(form.value.purchase_time),
+    order_date: orderDateSec,
+    order_updated_at: localFormStringToUnixSec(form.value.order_updated_at),
+    purchase_time: localFormStringToUnixSec(form.value.purchase_time),
     customer_name: String(form.value.customer_name || '').trim() || null,
     status: form.value.status,
     amount: Number(form.value.amount || 0),

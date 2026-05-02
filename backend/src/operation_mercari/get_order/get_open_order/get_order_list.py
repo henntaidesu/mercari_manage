@@ -10,8 +10,8 @@
 
 数据映射（item -> orders 表）:
   order_no         <- item["id"]                    (唯一单号, 如 m12550594804)
-  order_date       <- item["created"] 转 UTC 字符串 YYYY-MM-DD HH:MM:SS（订单创建时间）
-  order_updated_at <- item["updated"] 同上（最后更新时间）
+  order_date       <- item["created"] Unix 秒（原始时间戳）
+  order_updated_at <- item["updated"] Unix 秒（最后更新时间）
   customer_name    <- str(item["buyer"]["id"])      （仅存买家用户 ID）
   data_user        <- str(seller_id)                （卖家用户 ID，与请求参数 seller_id 一致）
   status           <- item["transaction_evidence"]["status"]（如 wait_shipping）
@@ -20,8 +20,8 @@
   thumbnails       <- item["thumbnails"]            (URL 列表 JSON 存库)
 """
 
-import datetime
 import json
+import time
 from typing import Any, Dict, List, Optional, Tuple
 
 from ...mercari_req_scheduling import DPOP_FOR_ITEMS_LIST, send_request
@@ -40,12 +40,12 @@ _API_PARAMS = (
 )
 
 
-def _unix_to_datetime(ts: Any) -> str:
-    """将 Unix 时间戳转换为 UTC 的 YYYY-MM-DD HH:MM:SS；失败则返回当前 UTC 同一时间格式。"""
+def _unix_seconds(ts: Any) -> int:
+    """API 原始 Unix 秒；解析失败则用当前时间秒。"""
     try:
-        return datetime.datetime.utcfromtimestamp(int(ts)).strftime("%Y-%m-%d %H:%M:%S")
+        return int(ts)
     except (TypeError, ValueError, OSError):
-        return datetime.datetime.utcnow().strftime("%Y-%m-%d %H:%M:%S")
+        return int(time.time())
 
 
 def _norm_thumbnails_json(raw: Any) -> Optional[str]:
@@ -72,8 +72,8 @@ def _item_to_order_data(
 
     return {
         "order_no":         item.get("id", ""),
-        "order_date":       _unix_to_datetime(item.get("created")),
-        "order_updated_at": _unix_to_datetime(item.get("updated")),
+        "order_date":       _unix_seconds(item.get("created")),
+        "order_updated_at": _unix_seconds(item.get("updated")),
         "customer_name":    buyer_id_str or None,
         "data_user":        data_user,
         "status":           te.get("status") or item.get("status", "trading"),

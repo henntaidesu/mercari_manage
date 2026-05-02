@@ -2,12 +2,11 @@
 """
 Mercari 单笔订单详情：transaction_evidences/get（按 item_id），回填 orders 字段。
   若传入 expected_seller_id，校验 data.seller_id 一致。
-  remark <- item_name；description <- description；purchase_time <- created（UTC 存库）；
+  remark <- item_name；description <- description；order_updated_at/purchase_time <- Unix 秒（原始时间戳）；
   承运：shipping_class_carrier_display_name；运费：seller_shipping_fee / buyer_shipping_fee；
   手续费：售价 price 的 10%（自行计算）；净收益：运费合计 > 0 时为 price − 手续费 − 运费。
 """
 
-import datetime
 import json
 from typing import Any, Dict, Optional
 from urllib.parse import quote
@@ -33,11 +32,11 @@ def _mercari_response_ok(resp: Any) -> bool:
     return str(rc).strip().upper() == "OK"
 
 
-def _unix_to_utc_str(ts: Any) -> Optional[str]:
-    """Unix 秒 -> UTC 存库串 YYYY-MM-DD HH:MM:SS。"""
+def _unix_int(ts: Any) -> Optional[int]:
+    """API 原始 Unix 秒 -> 存库整数。"""
     try:
-        return datetime.datetime.utcfromtimestamp(int(ts)).strftime("%Y-%m-%d %H:%M:%S")
-    except (TypeError, ValueError, OSError):
+        return int(ts)
+    except (TypeError, ValueError):
         return None
 
 
@@ -143,9 +142,8 @@ def extract_order_info_fields(response: Dict[str, Any]) -> Dict[str, Any]:
     if st is not None and str(st).strip():
         status_val = str(st).strip()
 
-    order_updated_at_str = _unix_to_utc_str(d.get("updated"))
-    # 购入时间：取引创建时刻（与前端「购入时间」字段对应）
-    purchase_time_str = _unix_to_utc_str(d.get("created"))
+    order_updated_at_u = _unix_int(d.get("updated"))
+    purchase_time_u = _unix_int(d.get("created"))
 
     name_raw = d.get("item_name")
     remark_val = str(name_raw).strip() if name_raw is not None else ""
@@ -169,8 +167,8 @@ def extract_order_info_fields(response: Dict[str, Any]) -> Dict[str, Any]:
         "tracking_no": tracking_no,
         "transaction_evidence_id": transaction_evidence_id,
         "status": status_val,
-        "order_updated_at": order_updated_at_str,
-        "purchase_time": purchase_time_str,
+        "order_updated_at": order_updated_at_u,
+        "purchase_time": purchase_time_u,
         "amount": price,
         "remark": remark_val if remark_val else None,
         "description": description_val if description_val else None,
@@ -230,10 +228,10 @@ def apply_item_info_to_order(
         o.transaction_evidence_id = fields["transaction_evidence_id"]
     if fields.get("status"):
         o.status = fields["status"]
-    if fields.get("order_updated_at"):
-        o.order_updated_at = fields["order_updated_at"]
-    if fields.get("purchase_time"):
-        o.purchase_time = fields["purchase_time"]
+    if fields.get("order_updated_at") is not None:
+        o.order_updated_at = int(fields["order_updated_at"])
+    if fields.get("purchase_time") is not None:
+        o.purchase_time = int(fields["purchase_time"])
     if fields.get("amount") is not None:
         o.amount = float(fields["amount"])
     if fields.get("remark") is not None:
