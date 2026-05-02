@@ -84,12 +84,6 @@
         <el-table-column label="类目" min-width="140" show-overflow-tooltip align="left" header-align="center">
           <template #default="{ row }">{{ categoryCell(row) }}</template>
         </el-table-column>
-        <el-table-column label="发货地" width="100" show-overflow-tooltip align="center" header-align="center">
-          <template #default="{ row }">{{ row.shipping_from_area_name || '-' }}</template>
-        </el-table-column>
-        <el-table-column label="运送ID" width="88" align="center" header-align="center">
-          <template #default="{ row }">{{ row.shipping_method_id ?? '-' }}</template>
-        </el-table-column>
         <el-table-column label="赞/评" width="76" align="center" header-align="center">
           <template #default="{ row }">{{ row.num_likes ?? 0 }}/{{ row.num_comments ?? 0 }}</template>
         </el-table-column>
