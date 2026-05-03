@@ -7,10 +7,15 @@ Mercari 操作相关 API 路由
 
 from typing import Optional
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Query
 from pydantic import BaseModel as PydanticModel
 
-from .sync_data import batch_refresh_orders_info, sync_new_data, sync_open_orders
+from .sync_data import (
+    batch_refresh_orders_info,
+    history_sync_precheck,
+    sync_new_data,
+    sync_open_orders,
+)
 
 router = APIRouter(prefix="/api/mercari", tags=["mercari"])
 
@@ -48,6 +53,20 @@ def api_batch_refresh_info(data: SyncOrdersRequest):
         raise HTTPException(status_code=500, detail=f"批量刷新失败: {exc}") from exc
 
     return {"success": True, "data": result}
+
+
+@router.get("/history-sync-precheck")
+def api_history_sync_precheck(account_id: Optional[int] = Query(None)):
+    """
+    「获取历史数据」前置校验：若 orders 中已有 data_user = 该账号卖家 ID 的数据，返回 allowed=false。
+    """
+    try:
+        data = history_sync_precheck(account_id=account_id)
+    except RuntimeError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=f"校验失败: {exc}") from exc
+    return {"success": True, "data": data}
 
 
 @router.post("/sync-orders")

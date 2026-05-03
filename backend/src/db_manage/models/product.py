@@ -65,6 +65,17 @@ class ProductModel(BaseModel):
                 'not_null': False,
                 'default': None,
             },
+            # 出品用：标题 / 正文（与商品名称 name、备注 description 区分）
+            'listing_title': {
+                'type': 'TEXT',
+                'not_null': False,
+                'default': None,
+            },
+            'listing_body': {
+                'type': 'TEXT',
+                'not_null': False,
+                'default': None,
+            },
             'image': {
                 'type': 'TEXT',
                 'not_null': False,

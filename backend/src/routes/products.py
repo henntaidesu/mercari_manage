@@ -22,6 +22,8 @@ PRODUCT_COLUMNS = [
     "price",
     "quantity",
     "description",
+    "listing_title",
+    "listing_body",
     "image",
     "image_front",
     "image_back",
@@ -44,6 +46,8 @@ class ProductCreate(PydanticModel):
     price: int = 0
     quantity: Optional[int] = 1
     description: Optional[str] = None
+    listing_title: Optional[str] = None
+    listing_body: Optional[str] = None
     image_front: Optional[str] = None
     image_back: Optional[str] = None
 
@@ -66,6 +70,8 @@ class ProductUpdate(PydanticModel):
     price: Optional[int] = None
     quantity: Optional[int] = None
     description: Optional[str] = None
+    listing_title: Optional[str] = None
+    listing_body: Optional[str] = None
     image_front: Optional[str] = None
     image_back: Optional[str] = None
 
@@ -321,8 +327,8 @@ def create_product(data: ProductCreate):
             """
             INSERT INTO [inventory] (
                 name, barcode, category_id, warehouse_id, price, quantity,
-                description, image, image_front, image_back
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                description, listing_title, listing_body, image, image_front, image_back
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             (
                 data.name,
@@ -332,6 +338,8 @@ def create_product(data: ProductCreate):
                 data.price,
                 data.quantity,
                 data.description,
+                data.listing_title,
+                data.listing_body,
                 image_front_path,
                 image_front_path,
                 image_back_path,
@@ -376,7 +384,7 @@ def update_product(pid: int, data: ProductUpdate):
             raise HTTPException(status_code=400, detail="所属仓库不存在")
     allowed_fields = {
         "name", "barcode", "category_id", "warehouse_id", "price", "quantity",
-        "description", "image", "image_front", "image_back",
+        "description", "listing_title", "listing_body", "image", "image_front", "image_back",
     }
     update_data = {k: v for k, v in update_data.items() if k in allowed_fields}
     if update_data:

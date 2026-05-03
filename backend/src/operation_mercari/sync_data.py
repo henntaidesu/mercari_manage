@@ -69,6 +69,33 @@ def _resolve_account_and_seller(account_id: Optional[int]) -> Tuple[int, int]:
     return account_id, int(seller_id)
 
 
+def history_sync_precheck(account_id: Optional[int] = None) -> Dict[str, Any]:
+    """
+    「获取历史数据」前置校验：orders 表中若已有 data_user = 该卖家 ID 的记录，则不允许全量拉取。
+
+    :return: allowed、existing_order_count、seller_id、message（供前端提示）
+    """
+    _, sid = _resolve_account_and_seller(account_id)
+    seller_key = str(int(sid))
+    n = OrderModel.count(where="[data_user] = ?", params=(seller_key,))
+    if n > 0:
+        return {
+            "allowed": False,
+            "existing_order_count": n,
+            "seller_id": seller_key,
+            "message": (
+                f"订单表中已有该卖家（data_user={seller_key}）的 {n} 条记录，"
+                "不允许重复执行「获取历史数据」。请使用订单页的增量同步或刷新。"
+            ),
+        }
+    return {
+        "allowed": True,
+        "existing_order_count": 0,
+        "seller_id": seller_key,
+        "message": "本地尚无该卖家的订单，可执行全量拉取。",
+    }
+
+
 def sync_open_orders(
     account_id: Optional[int] = None,
 ) -> Dict[str, Any]:
@@ -77,11 +104,18 @@ def sync_open_orders(
     1）出售中（trading）；2）已售完历史（sold_out）。
     由「获取历史数据」等入口统一触发。
 
+    若 orders 中已存在 data_user 与当前卖家 ID 一致的任意记录，则拒绝执行（与 history_sync_precheck 一致）。
+
     :param account_id: 指定使用的煤炉账号 ID；为 None 时自动选取第一个 active 账号。
     :return: 合并统计 + 分项 trading / history，便于前端展示。
     :raises RuntimeError: 账号不可用或网络请求失败时抛出。
     """
     aid, sid = _resolve_account_and_seller(account_id)
+    seller_key = str(int(sid))
+    if OrderModel.count(where="[data_user] = ?", params=(seller_key,)) > 0:
+        raise RuntimeError(
+            "订单表中已存在该卖家的订单数据（data_user 与卖家 ID 一致），禁止重复执行「获取历史数据」。"
+        )
     trading = fetch_and_sync_open_orders(seller_id=sid, account_id=aid)
     history = fetch_and_sync_history_orders(seller_id=sid, account_id=aid)
 

@@ -41,6 +41,7 @@
             <div class="search-actions-ios-row">
               <el-button type="info" @click="openImageFind">拍照寻找</el-button>
               <el-button type="warning" @click="openNoBarcodeEntry">无码录入</el-button>
+              <el-button @click="listProductStub">出品</el-button>
             </div>
           </template>
           <template v-else>
@@ -50,6 +51,7 @@
             <el-button type="primary" @click="openLookupScan">条码寻找</el-button>
             <el-button type="info" @click="openImageFind">拍照寻找</el-button>
             <el-button type="warning" @click="openNoBarcodeEntry">无码录入</el-button>
+            <el-button @click="listProductStub">出品</el-button>
           </template>
         </el-col>
       </el-row>
@@ -309,6 +311,18 @@
             </el-form-item>
           </el-col>
         </el-row>
+        <el-form-item label="标题">
+          <el-input v-model="form.listing_title" class="listing-field-fullwidth" type="text" clearable />
+        </el-form-item>
+        <el-form-item label="正文">
+          <el-input
+            v-model="form.listing_body"
+            class="listing-field-fullwidth"
+            type="textarea"
+            :rows="5"
+            clearable
+          />
+        </el-form-item>
       </el-form>
       <template #footer>
         <div class="dialog-footer">
@@ -676,6 +690,8 @@ const form = ref({
   price: 0,
   quantity: 1,
   description: '',
+  listing_title: '',
+  listing_body: '',
   image_front: null,
   image_back: null
 })
@@ -1097,6 +1113,8 @@ function openDialog(row = null) {
         price: Math.round(Number(row.price ?? 0)),
         quantity: row.quantity ?? 0,
         description: row.description || null,
+        listing_title: row.listing_title ?? '',
+        listing_body: row.listing_body ?? '',
         image_front: row.image_front || row.image || null,
         image_back: row.image_back || null
       }
@@ -1110,6 +1128,8 @@ function openDialog(row = null) {
         price: 0,
         quantity: 1,
         description: null,
+        listing_title: '',
+        listing_body: '',
         image_front: null,
         image_back: null
       }
@@ -1132,6 +1152,11 @@ function openNoBarcodeEntry() {
     ? crypto.randomUUID()
     : `nb-${Date.now()}-${Math.random().toString(16).slice(2, 10)}`
   form.value.barcode = uuid
+}
+
+/** 煤炉出品入口占位，后续对接 API */
+function listProductStub() {
+  ElMessage.info('出品功能暂未对接')
 }
 
 function triggerUpload(side) {
@@ -1897,5 +1922,13 @@ onBeforeUnmount(() => {
   :deep(.scan-dialog .el-dialog__body) {
     padding: 14px;
   }
+}
+</style>
+
+<!-- 无 scoped：须覆盖 App.vue 全局 `.el-input { width: 180px !important }`，否则标题与正文不同宽 -->
+<style>
+.product-dialog .listing-field-fullwidth.el-input {
+  width: 100% !important;
+  max-width: 100%;
 }
 </style>

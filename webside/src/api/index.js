@@ -110,6 +110,8 @@ export const onSaleItemApi = {
 
 // Mercari 操作
 export const mercariApi = {
+  /** 「获取历史数据」前置校验：orders 是否已有该卖家 data_user 数据 */
+  historySyncPrecheck: (params) => http.get('/mercari/history-sync-precheck', { params }),
   /** 同步订单：默认不设置超时（一直等到服务端返回）。axiosConfig 可覆盖，例如 { timeout: 60000 } */
   syncOrders: (data, axiosConfig = {}) =>
     http.post('/mercari/sync-orders', data, { timeout: 0, ...axiosConfig }),

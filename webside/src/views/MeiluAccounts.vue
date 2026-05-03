@@ -166,7 +166,7 @@
 <script setup>
 import { ref, onMounted, watch, nextTick } from 'vue'
 import { Plus } from '@element-plus/icons-vue'
-import { ElMessage } from 'element-plus'
+import { ElMessage, ElMessageBox } from 'element-plus'
 import { meiluAccountApi, mercariApi } from '@/api/index.js'
 
 /** 小写 HTTP 头名 -> 表单字段名 */
@@ -508,6 +508,39 @@ const syncingIds = ref(new Set())
 
 async function fetchHistory(row) {
   if (syncingIds.value.has(row.id)) return
+  const sid = String(row.seller_id || '').trim()
+  if (!sid) {
+    ElMessage.warning('请先为该账号配置卖家 ID')
+    return
+  }
+
+  let preRes
+  try {
+    preRes = await mercariApi.historySyncPrecheck({ account_id: row.id })
+  } catch {
+    return
+  }
+  const pre = preRes?.data || {}
+  if (!pre.allowed) {
+    ElMessage.warning(pre.message || '该卖家在订单表中已有数据，无法重复获取历史数据')
+    return
+  }
+
+  try {
+    await ElMessageBox.confirm(
+      '本地订单库中尚无该卖家的记录。确认从煤炉全量拉取出售中与历史订单？耗时可能较长，请勿关闭页面。',
+      '获取历史数据',
+      {
+        type: 'warning',
+        confirmButtonText: '确认拉取',
+        cancelButtonText: '取消',
+        distinguishCancelAndClose: true,
+      }
+    )
+  } catch {
+    return
+  }
+
   syncingIds.value = new Set([...syncingIds.value, row.id])
   try {
     const res = await mercariApi.syncOrders({ account_id: row.id })

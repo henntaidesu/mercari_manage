@@ -12,7 +12,7 @@ HTTP 头 DPoP：账号 JSON 的 ``dpop_info`` 须针对上述 URL（与方法 GE
 若传入 expected_seller_id，校验 data.seller_id 一致。
 remark <- item_name；description <- description；order_updated_at/purchase_time <- Unix 秒（原始时间戳）；
 承运：shipping_class_carrier_display_name；运费：seller_shipping_fee / buyer_shipping_fee；
-金额口径均为日元（整数，无小数）；手续费：售价日元 ×10% 四舍五入到整数；
+金额口径均为日元（整数，无小数）；手续费：售价日元 ×10% 向下取整到日元整数（例 6999→699）；
 净收益：运费合计 > 0 时为 售价日元 − 手续费日元 − 运费日元（均为整数运算）。
 """
 
@@ -124,8 +124,8 @@ def extract_order_info_fields(response: Dict[str, Any]) -> Dict[str, Any]:
     raw_price = float(d.get("price") or 0)
     # 煤炉售价为日元整数；接口偶为浮点，统一 round 后存库
     price_yen = int(round(raw_price)) if raw_price else 0
-    # 手续费：售价日元 ×10%，四舍五入到日元整数；不用接口 payment_fee
-    fee_yen: Optional[int] = int(round(price_yen * 0.1)) if price_yen > 0 else None
+    # 手续费：售价日元 ×10%，向下取整到日元整数（与煤炉一致，如 6999→699）；不用接口 payment_fee
+    fee_yen: Optional[int] = (price_yen // 10) if price_yen > 0 else None
 
     carrier_raw = (d.get("shipping_class_carrier_display_name") or "").strip()
     carrier_display_name: Optional[str] = carrier_raw or None
