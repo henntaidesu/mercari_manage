@@ -14,8 +14,8 @@
 from typing import Any, Dict, List, Optional
 
 from ...mercari_req_scheduling import DPOP_FOR_ITEMS_LIST, send_request
-from ..get_open_order.get_order_info import apply_item_info_to_order
-from ..get_open_order.get_order_list import _item_to_order_data, _upsert_order
+from ..get_in_progress_order.get_order_info import apply_item_info_to_order
+from ..get_in_progress_order.get_order_list import _item_to_order_data, _upsert_order
 
 _API_URL = "https://api.mercari.jp/items/get_items"
 _API_PARAMS = (

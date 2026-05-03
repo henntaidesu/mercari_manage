@@ -11,13 +11,13 @@ from typing import Any, Dict, List, Optional, Tuple
 from .get_order.get_history_order.get_history_list import (
     fetch_and_sync_history_orders,
 )
-from .get_order.get_open_order.get_order_list import (
+from .get_order.get_in_progress_order.get_order_list import (
     fetch_and_sync_open_orders,
     fetch_open_order_items,
     _item_to_order_data,
     _upsert_order,
 )
-from .get_order.get_open_order.get_order_info import apply_item_info_to_order
+from .get_order.get_in_progress_order.get_order_info import apply_item_info_to_order
 from ..db_manage.models.meilu_account import MeiluAccountModel
 from ..db_manage.models.order import OrderModel
 
