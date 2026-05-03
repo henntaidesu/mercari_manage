@@ -64,6 +64,7 @@
         :size="isMobile ? 'small' : 'default'"
         @sort-change="onInventorySortChange"
       >
+        <el-table-column label="管理番号" prop="id" width="100" align="center" header-align="center" />
         <el-table-column label="正面图" width="76" align="center" header-align="center">
           <template #default="{ row }">
             <el-image
@@ -203,39 +204,71 @@
           </el-input>
         </el-form-item>
         <el-form-item label="游戏分类" prop="category_id">
-          <el-select v-model="form.category_id" clearable :filterable="!isIOS" placeholder="请选择分类" style="width:100%">
-            <el-option v-for="c in categories" :key="c.id" :label="c.name" :value="c.id" />
-          </el-select>
-          <div class="quick-create-row">
-            <el-input
-              v-model="newCategoryName"
-              placeholder="输入新分类名称"
-              clearable
-              @keyup.enter="createCategoryQuick"
-            />
-            <el-button type="primary" plain @click="createCategoryQuick">新建分类</el-button>
+          <div class="product-field-inline">
+            <template v-if="!categoryCreateMode">
+              <el-select
+                v-model="form.category_id"
+                clearable
+                :filterable="!isIOS"
+                placeholder="请选择分类"
+                class="product-field-inline__main"
+              >
+                <el-option v-for="c in categories" :key="c.id" :label="c.name" :value="c.id" />
+              </el-select>
+              <el-button type="primary" plain @click="startCreateCategory">新建分类</el-button>
+            </template>
+            <template v-else>
+              <el-input
+                v-model="newCategoryName"
+                placeholder="输入新分类名称"
+                clearable
+                class="product-field-inline__main"
+                @keyup.enter="confirmCreateCategory"
+              />
+              <el-button type="primary" @click="confirmCreateCategory">确认</el-button>
+              <el-button @click="cancelCreateCategory">取消</el-button>
+            </template>
           </div>
         </el-form-item>
         <el-row :gutter="12">
           <el-col :xs="24" :sm="16">
             <el-form-item label="所属仓库" prop="warehouse_id">
-              <el-select v-model="form.warehouse_id" clearable :filterable="!isIOS" placeholder="请选择仓库" style="width:100%">
-                <el-option v-for="w in warehouses" :key="w.id" :label="w.name" :value="w.id" />
-              </el-select>
-              <div class="quick-create-row">
-                <el-input
-                  v-model="newWarehouseName"
-                  placeholder="输入新仓库名称"
-                  clearable
-                  @keyup.enter="createWarehouseQuick"
-                />
-                <el-button type="primary" plain @click="createWarehouseQuick">新建仓库</el-button>
+              <div class="product-field-inline">
+                <template v-if="!warehouseCreateMode">
+                  <el-select
+                    v-model="form.warehouse_id"
+                    clearable
+                    :filterable="!isIOS"
+                    placeholder="请选择仓库"
+                    class="product-field-inline__main"
+                  >
+                    <el-option v-for="w in warehouses" :key="w.id" :label="w.name" :value="w.id" />
+                  </el-select>
+                  <el-button type="primary" plain @click="startCreateWarehouse">新建仓库</el-button>
+                </template>
+                <template v-else>
+                  <el-input
+                    v-model="newWarehouseName"
+                    placeholder="输入新仓库名称"
+                    clearable
+                    class="product-field-inline__main"
+                    @keyup.enter="confirmCreateWarehouse"
+                  />
+                  <el-button type="primary" @click="confirmCreateWarehouse">确认</el-button>
+                  <el-button @click="cancelCreateWarehouse">取消</el-button>
+                </template>
               </div>
             </el-form-item>
           </el-col>
           <el-col :xs="24" :sm="8">
             <el-form-item label="数量" prop="quantity">
-              <el-input-number v-model="form.quantity" :min="0" :precision="0" :step="1" style="width:100%" />
+              <el-input
+                v-model="quantityEdit"
+                placeholder=""
+                class="product-qty-input"
+                inputmode="numeric"
+                @blur="applyQuantityEditToForm"
+              />
             </el-form-item>
           </el-col>
         </el-row>
@@ -259,8 +292,8 @@
             </el-form-item>
           </el-col>
           <el-col :xs="24" :sm="12">
-            <el-form-item prop="image_back" style="display:block">
-              <div class="img-label">背面图</div>
+            <el-form-item style="display:block">
+              <div class="img-label">背面图（选填）</div>
               <div class="image-upload-area large" @click="triggerUpload('back')">
                 <img v-if="form.image_back" :src="form.image_back" class="preview-img" />
                 <div v-else class="upload-placeholder">
@@ -560,6 +593,23 @@ const savingInlineCell = ref('')
 const editingCategoryRowId = ref(null)
 const newCategoryName = ref('')
 const newWarehouseName = ref('')
+/** 编辑弹窗：新建分类 / 仓库时，下拉与输入框同位切换 */
+const categoryCreateMode = ref(false)
+const warehouseCreateMode = ref(false)
+/** 编辑弹窗数量：纯文本输入，blur / 保存时写回 form.quantity */
+const quantityEdit = ref('0')
+
+function syncQuantityEditFromForm() {
+  quantityEdit.value = String(form.value.quantity ?? 0)
+}
+
+function applyQuantityEditToForm() {
+  const raw = String(quantityEdit.value ?? '').trim()
+  const n = parseInt(raw, 10)
+  const v = Number.isNaN(n) ? 0 : Math.max(0, n)
+  form.value.quantity = v
+  quantityEdit.value = String(v)
+}
 
 // ---- OCR 状态 ----
 const ocrVisible = ref(false)
@@ -632,9 +682,16 @@ const form = ref({
 
 const rules = {
   barcode: [{ required: true, message: '请填写或扫描条形码', trigger: 'blur' }],
-  warehouse_id: [{ required: true, message: '请选择所属仓库', trigger: 'change' }],
+  warehouse_id: [
+    {
+      validator: (_, val, cb) => {
+        if (val == null || val === '') cb(new Error('请选择所属仓库'))
+        else cb()
+      },
+      trigger: 'change',
+    },
+  ],
   image_front: [{ validator: (_, val, cb) => val ? cb() : cb(new Error('请拍摄或上传正面图')), trigger: 'change' }],
-  image_back: [{ validator: (_, val, cb) => val ? cb() : cb(new Error('请拍摄或上传背面图')), trigger: 'change' }]
 }
 
 function updateViewportState() {
@@ -891,7 +948,17 @@ async function saveCategoryInline(row, categoryId) {
   }
 }
 
-async function createCategoryQuick() {
+function startCreateCategory() {
+  categoryCreateMode.value = true
+  newCategoryName.value = ''
+}
+
+function cancelCreateCategory() {
+  categoryCreateMode.value = false
+  newCategoryName.value = ''
+}
+
+async function confirmCreateCategory() {
   const name = newCategoryName.value.trim()
   if (!name) {
     ElMessage.warning('请输入分类名称')
@@ -901,10 +968,21 @@ async function createCategoryQuick() {
   categories.value = await categoryApi.list()
   form.value.category_id = created?.id ?? form.value.category_id
   newCategoryName.value = ''
+  categoryCreateMode.value = false
   ElMessage.success('分类创建成功')
 }
 
-async function createWarehouseQuick() {
+function startCreateWarehouse() {
+  warehouseCreateMode.value = true
+  newWarehouseName.value = ''
+}
+
+function cancelCreateWarehouse() {
+  warehouseCreateMode.value = false
+  newWarehouseName.value = ''
+}
+
+async function confirmCreateWarehouse() {
   const name = newWarehouseName.value.trim()
   if (!name) {
     ElMessage.warning('请输入仓库名称')
@@ -914,7 +992,9 @@ async function createWarehouseQuick() {
   warehouses.value = await warehouseApi.list()
   form.value.warehouse_id = created?.id ?? form.value.warehouse_id
   newWarehouseName.value = ''
+  warehouseCreateMode.value = false
   ElMessage.success('仓库创建成功')
+  formRef.value?.validateField('warehouse_id')
 }
 
 /** 从指定 video 元素抓一帧，返回 Blob（JPEG） */
@@ -1007,6 +1087,10 @@ const pagedList = computed(() => {
 })
 
 function openDialog(row = null) {
+  categoryCreateMode.value = false
+  warehouseCreateMode.value = false
+  newCategoryName.value = ''
+  newWarehouseName.value = ''
   form.value = row
     ? {
         id: row.id,
@@ -1034,8 +1118,18 @@ function openDialog(row = null) {
         image_front: null,
         image_back: null
       }
+  syncQuantityEditFromForm()
   dialogVisible.value = true
 }
+
+watch(dialogVisible, (visible) => {
+  if (!visible) {
+    categoryCreateMode.value = false
+    warehouseCreateMode.value = false
+    newCategoryName.value = ''
+    newWarehouseName.value = ''
+  }
+})
 
 function openNoBarcodeEntry() {
   openDialog()
@@ -1064,7 +1158,6 @@ function handleImageUpload(e, side) {
       formRef.value?.validateField('image_front')
     } else {
       form.value.image_back = ev.target.result
-      formRef.value?.validateField('image_back')
     }
   }
   reader.readAsDataURL(file)
@@ -1072,6 +1165,7 @@ function handleImageUpload(e, side) {
 }
 
 async function submit() {
+  applyQuantityEditToForm()
   await formRef.value.validate()
   submitting.value = true
   try {
@@ -1597,14 +1691,31 @@ onBeforeUnmount(() => {
   width: 180px;
   max-width: 180px;
 }
-.quick-create-row {
+.product-field-inline {
   display: flex;
+  align-items: center;
   gap: 8px;
-  margin-top: 8px;
+  width: 100%;
+  flex-wrap: wrap;
+}
+.product-field-inline__main {
+  flex: 1;
+  min-width: 0;
+}
+.product-field-inline :deep(.el-select),
+.product-field-inline :deep(.el-input) {
   width: 100%;
 }
-.quick-create-row :deep(.el-input) {
-  flex: 1;
+.product-qty-input {
+  width: 30px;
+}
+.product-qty-input :deep(.el-input__wrapper) {
+  padding-left: 1px;
+  padding-right: 1px;
+  justify-content: center;
+}
+.product-qty-input :deep(input) {
+  text-align: center;
 }
 .table-card { border-radius: 8px; }
 /* 与订单页 #/orders 列表缩略图一致 */

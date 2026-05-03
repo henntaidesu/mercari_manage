@@ -9,8 +9,15 @@
             clearable
             @change="onFilterChange"
           />
-          <el-select v-model="filters.status" placeholder="订单状态" clearable filterable style="width: 100%" @change="onFilterChange">
-            <el-option v-for="item in orderStatusOptions" :key="item.value" :label="item.label" :value="item.value" />
+          <el-select
+            v-model="filters.status"
+            placeholder="待发货 / 待评价 / 已完成 / 已取消"
+            clearable
+            filterable
+            style="width: 100%"
+            @change="onFilterChange"
+          >
+            <el-option v-for="item in orderListStatusFilterOptions" :key="item.value" :label="item.label" :value="item.value" />
           </el-select>
           <el-date-picker
             v-model="dateRange"
@@ -281,15 +288,11 @@
 
     <!-- 同步订单弹窗 -->
     <el-dialog v-model="syncDialogVisible" :title="syncDialogTitle" width="420px" destroy-on-close>
-      <p v-if="syncMode === 'statusRefresh'" class="sync-mode-hint">
-        从数据库读取未完成订单（排除已完成、已取消、已售完），按订单号逐条拉取煤炉详情更新状态与费用等；请选择账号以仅刷新该卖家下的订单，留空则处理库内全部符合条件订单。
-      </p>
       <el-form label-width="86px">
         <el-form-item label="煤炉账号">
           <el-select
             v-model="syncAccountId"
-            placeholder="自动选取第一个活跃账号"
-            clearable
+            :placeholder="accountOptions.length ? '' : '暂无活跃账号'"
             style="width: 100%"
             :loading="accountsLoading"
           >
@@ -343,7 +346,7 @@ const stats = ref({
   today_sum_net_income: 0,
 })
 
-/** 与控制台「订单统计」卡片一致；主数值对应当前列表筛选；今日新增按购入时间落在本地当日 + 相同 keyword/status */
+/** 与列表相同条件：keyword、状态（见下方筛选项）、购入时间区间；今日新增为购入时间落在本地当日且仍满足相同 keyword/状态 */
 const orderStatCards = computed(() => {
   const o = stats.value
   return [
@@ -431,6 +434,16 @@ const statusMap = {
   cancel_request: { label: '取消申请中', tag: 'danger' },
 }
 
+/** 列表/统计筛选项：仅四种（与 load 条件一致） */
+const LIST_FILTER_STATUS_KEYS = ['wait_shipping', 'wait_review', 'done', 'cancelled']
+
+const orderListStatusFilterOptions = computed(() =>
+  LIST_FILTER_STATUS_KEYS.filter((k) => statusMap[k]).map((value) => ({
+    value,
+    label: statusMap[value].label,
+  }))
+)
+
 const orderStatusOptions = computed(() =>
   ORDER_STATUS_KEYS.filter((k) => statusMap[k]).map((value) => ({
     value,
@@ -452,14 +465,14 @@ const formOrderStatusOptions = computed(() => {
 const syncDialogVisible = ref(false)
 const syncLoading = ref(false)
 const syncAccountId = ref(null)
-/** newData：增量入库出售中；statusRefresh：库内未完成订单批量 items/get */
+/** newData：增量入库出售中；statusRefresh：库内未完成订单批量刷新（与单行「刷新」相同接口） */
 const syncMode = ref('newData')
 const accountOptions = ref([])
 const accountsLoading = ref(false)
 
 const syncDialogTitle = computed(() =>
   syncMode.value === 'statusRefresh'
-    ? '批量更新订单状态（items/get）'
+    ? '批量更新订单状态'
     : '更新出售中列表（增量入库）'
 )
 
@@ -471,8 +484,11 @@ async function openSyncDialog(mode = 'newData') {
   try {
     const res = await meiluAccountApi.list({ page: 1, page_size: 100 })
     accountOptions.value = (res.items || []).filter(a => a.status === 'active')
+    const first = accountOptions.value[0]
+    syncAccountId.value = first?.id ?? null
   } catch (_) {
     accountOptions.value = []
+    syncAccountId.value = null
   } finally {
     accountsLoading.value = false
   }
@@ -743,10 +759,13 @@ const rules = {
   amount: [{ required: true, message: '请输入订单金额', trigger: 'blur' }],
 }
 
+const LIST_FILTER_STATUS_SET = new Set(LIST_FILTER_STATUS_KEYS)
+
 function listFilterParams() {
   const params = {}
   if (filters.value.keyword) params.keyword = filters.value.keyword
-  if (filters.value.status) params.status = filters.value.status
+  const st = (filters.value.status || '').trim()
+  if (st && LIST_FILTER_STATUS_SET.has(st)) params.status = st
   if (dateRange.value?.length === 2) {
     const start = localYmdToDayStartTs(dateRange.value[0])
     const end = localYmdToDayEndTs(dateRange.value[1])
@@ -1011,12 +1030,6 @@ onBeforeUnmount(() => {
   justify-content: flex-end;
   flex-wrap: wrap;
   gap: 10px;
-}
-.sync-mode-hint {
-  font-size: 13px;
-  color: #909399;
-  line-height: 1.55;
-  margin: 0 0 12px;
 }
 .table-card {
   border-radius: 8px;

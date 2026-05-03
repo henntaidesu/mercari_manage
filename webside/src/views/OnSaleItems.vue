@@ -113,6 +113,11 @@
         <el-table-column label="更新" width="160" align="center" header-align="center">
           <template #default="{ row }">{{ displayTs(row.updated) }}</template>
         </el-table-column>
+        <el-table-column label="操作" width="88" fixed="right" align="center" header-align="center">
+          <template #default="{ row }">
+            <el-button type="primary" link size="small" @click="openMercariManage(row)">管理</el-button>
+          </template>
+        </el-table-column>
       </el-table>
 
       <div class="pagination">
@@ -308,6 +313,23 @@ function formatJsonPretty(raw) {
   } catch {
     return String(raw || '')
   }
+}
+
+/** 煤炉商品页路径段：API 多为 m 开头，纯数字时补 m */
+function mercariItemPathSegment(itemId) {
+  const raw = String(itemId ?? '').trim()
+  if (!raw) return ''
+  return raw.startsWith('m') ? raw : `m${raw}`
+}
+
+function openMercariManage(row) {
+  const seg = mercariItemPathSegment(row.item_id)
+  if (!seg) {
+    ElMessage.warning('缺少商品 ID')
+    return
+  }
+  const url = `https://jp.mercari.com/item/${encodeURIComponent(seg)}`
+  window.open(url, '_blank', 'noopener,noreferrer')
 }
 
 async function openSyncDialog() {
