@@ -20,7 +20,7 @@
     <el-card shadow="never" class="search-card">
       <el-row :gutter="0" align="middle" class="search-row">
         <el-col :xs="24" :md="16" class="search-left-group">
-          <el-input v-model="keyword" class="search-input-control" placeholder="搜索商品名称 / 条形码" clearable @change="load" prefix-icon="Search" />
+          <el-input v-model="keyword" class="search-input-control" placeholder="搜索商品名称" clearable @change="load" prefix-icon="Search" />
           <div class="search-filters-row">
             <el-select v-model="filterCat" class="search-select-control" placeholder="所有分类" clearable @change="load">
               <el-option v-for="c in categories" :key="c.id" :label="c.name" :value="c.id" />
@@ -107,8 +107,8 @@
             <span v-else class="thumb-fallback">-</span>
           </template>
         </el-table-column>
-        <el-table-column label="条形码" prop="barcode" min-width="150" sortable="custom" />
-        <el-table-column label="商品名称" min-width="130">
+        <el-table-column label="条形码" prop="barcode" min-width="150" align="left" header-align="left" />
+        <el-table-column label="商品名称" min-width="130" align="left" header-align="left">
           <template #default="{ row }">
             <el-input
               v-if="isEditing(row, 'name')"
@@ -121,7 +121,7 @@
             <div v-else class="editable-cell" @click="startInlineEdit(row, 'name')">{{ row.name || '-' }}</div>
           </template>
         </el-table-column>
-        <el-table-column label="游戏分类" width="120">
+        <el-table-column label="游戏分类" width="120" align="center" header-align="center">
           <template #default="{ row }">
             <el-select
               v-if="editingCategoryRowId === row.id"
@@ -138,22 +138,22 @@
             <div v-else class="editable-cell" @click="editingCategoryRowId = row.id">{{ row.category_name || '未分类' }}</div>
           </template>
         </el-table-column>
-        <el-table-column label="所属仓库" width="120">
+        <el-table-column label="所属仓库" width="120" align="center" header-align="center">
           <template #default="{ row }">{{ row.warehouse_name || '-' }}</template>
         </el-table-column>
-        <el-table-column label="单价" prop="price" width="100" align="right" sortable="custom">
+        <el-table-column label="单价" prop="price" width="120" align="center" header-align="center" sortable="custom">
           <template #default="{ row }">
-            <div class="cell-right">¥{{ Number(row.price || 0).toFixed(2) }}</div>
+            {{ Math.round(Number(row.price || 0)) }}
           </template>
         </el-table-column>
-        <el-table-column label="数量" prop="quantity" width="100" align="center" sortable="custom">
+        <el-table-column label="库存数量" prop="quantity" width="110" align="center" header-align="center" sortable="custom">
           <template #default="{ row }">
             <el-tag :type="quantityTagType(row.quantity)" size="small">
               {{ row.quantity || 0 }}
             </el-tag>
           </template>
         </el-table-column>
-        <el-table-column label="操作" :width="isMobile ? 180 : 240" :fixed="isMobile ? false : 'right'">
+        <el-table-column label="操作" :width="isMobile ? 180 : 240" align="center" header-align="center" :fixed="isMobile ? false : 'right'">
           <template #default="{ row }">
             <div class="row-actions">
               <el-button size="small" type="success" @click="openOcrForRow(row)">OCR</el-button>
@@ -261,7 +261,7 @@
             </el-form-item>
           </el-col>
           <el-col :xs="24" :sm="8">
-            <el-form-item label="数量" prop="quantity">
+            <el-form-item label="库存数量" prop="quantity">
               <el-input
                 v-model="quantityEdit"
                 placeholder=""
@@ -596,7 +596,7 @@ const newWarehouseName = ref('')
 /** 编辑弹窗：新建分类 / 仓库时，下拉与输入框同位切换 */
 const categoryCreateMode = ref(false)
 const warehouseCreateMode = ref(false)
-/** 编辑弹窗数量：纯文本输入，blur / 保存时写回 form.quantity */
+/** 编辑弹窗库存数量：纯文本输入，blur / 保存时写回 form.quantity */
 const quantityEdit = ref('0')
 
 function syncQuantityEditFromForm() {
@@ -1057,11 +1057,6 @@ const sortedInventoryList = computed(() => {
       if (va > vb) return 1 * mult
       return 0
     }
-    if (prop === 'barcode') {
-      const va = String(a.barcode || '')
-      const vb = String(b.barcode || '')
-      return va.localeCompare(vb, 'zh-CN') * mult
-    }
     return 0
   })
   return arr
@@ -1073,7 +1068,7 @@ function onInventorySortChange({ prop, order }) {
   currentPage.value = 1
 }
 
-/** 数量：0 红色；1～3 黄色；大于 3 绿色 */
+/** 库存数量：0 红色；1～3 黄色；大于 3 绿色 */
 function quantityTagType(q) {
   const n = Number(q) || 0
   if (n === 0) return 'danger'
@@ -1099,7 +1094,7 @@ function openDialog(row = null) {
         sku: row.sku || null,
         category_id: row.category_id || null,
         warehouse_id: row.warehouse_id || null,
-        price: row.price ?? 0,
+        price: Math.round(Number(row.price ?? 0)),
         quantity: row.quantity ?? 0,
         description: row.description || null,
         image_front: row.image_front || row.image || null,
@@ -1170,6 +1165,7 @@ async function submit() {
   submitting.value = true
   try {
     const payload = { ...form.value }
+    payload.price = Math.round(Number(payload.price ?? 0))
     if (payload.id) await inventoryApi.update(payload.id, payload)
     else await inventoryApi.create(payload)
     ElMessage.success('保存成功')

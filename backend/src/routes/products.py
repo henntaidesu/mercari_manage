@@ -4,7 +4,7 @@ import os
 import time
 import base64
 from fastapi import APIRouter, HTTPException, UploadFile, File
-from pydantic import BaseModel as PydanticModel
+from pydantic import BaseModel as PydanticModel, field_validator
 from typing import Optional
 from PIL import Image
 from ..db_manage.database import DatabaseManager
@@ -41,11 +41,21 @@ class ProductCreate(PydanticModel):
     barcode: str
     category_id: Optional[int] = None
     warehouse_id: Optional[int] = None
-    price: Optional[float] = 0.0
+    price: int = 0
     quantity: Optional[int] = 1
     description: Optional[str] = None
     image_front: Optional[str] = None
     image_back: Optional[str] = None
+
+    @field_validator('price', mode='before')
+    @classmethod
+    def _price_yen_int(cls, v):
+        if v is None or v == '':
+            return 0
+        try:
+            return int(round(float(v)))
+        except (TypeError, ValueError):
+            return 0
 
 
 class ProductUpdate(PydanticModel):
@@ -53,11 +63,21 @@ class ProductUpdate(PydanticModel):
     barcode: Optional[str] = None
     category_id: Optional[int] = None
     warehouse_id: Optional[int] = None
-    price: Optional[float] = None
+    price: Optional[int] = None
     quantity: Optional[int] = None
     description: Optional[str] = None
     image_front: Optional[str] = None
     image_back: Optional[str] = None
+
+    @field_validator('price', mode='before')
+    @classmethod
+    def _price_yen_int_opt(cls, v):
+        if v is None or v == '':
+            return None
+        try:
+            return int(round(float(v)))
+        except (TypeError, ValueError):
+            return None
 
 
 def _row_to_product_detail(row: tuple) -> dict:
@@ -149,8 +169,8 @@ def list_inventory(
     where_parts = []
     params = []
     if keyword:
-        where_parts.append("AND (p.name LIKE ? OR p.barcode LIKE ?)")
-        params.extend([f"%{keyword}%", f"%{keyword}%"])
+        where_parts.append("AND p.name LIKE ?")
+        params.append(f"%{keyword}%")
     if category_id:
         where_parts.append("AND p.category_id = ?")
         params.append(category_id)

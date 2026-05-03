@@ -51,7 +51,7 @@ class ProductModel(BaseModel):
                 'default': None,
             },
             'price': {
-                'type': 'REAL',
+                'type': 'INTEGER',
                 'not_null': False,
                 'default': 0,
             },
@@ -96,6 +96,101 @@ class ProductModel(BaseModel):
         ]
 
     @classmethod
+    def _inventory_column_defs_for_create(cls) -> List[Dict[str, Any]]:
+        return [
+            {
+                'name': fname,
+                'type': fdef['type'],
+                'primary_key': fdef.get('primary_key', False),
+                'autoincrement': fdef.get('autoincrement', False),
+                'not_null': fdef.get('not_null', False),
+                'unique': fdef.get('unique', False),
+                'default': fdef.get('default'),
+            }
+            for fname, fdef in cls.get_fields().items()
+        ]
+
+    @classmethod
+    def _build_create_inventory_sql(cls, table_name: str) -> str:
+        columns = cls._inventory_column_defs_for_create()
+        column_defs: List[str] = []
+        primary_keys = [f'[{col["name"]}]' for col in columns if col.get('primary_key')]
+        for col in columns:
+            col_name = f'[{col["name"]}]'
+            col_def = f"{col_name} {col['type']}"
+            if col.get('primary_key') and len(primary_keys) == 1:
+                col_def += " PRIMARY KEY"
+                if col.get('autoincrement'):
+                    col_def += " AUTOINCREMENT"
+            if col.get('not_null') and not col.get('primary_key'):
+                col_def += " NOT NULL"
+            if col.get('unique') and not col.get('primary_key'):
+                col_def += " UNIQUE"
+            if col.get('default') is not None:
+                col_def += f" DEFAULT {col['default']}"
+            column_defs.append(col_def)
+        if len(primary_keys) > 1:
+            column_defs.append(f"PRIMARY KEY ({', '.join(primary_keys)})")
+        return f"CREATE TABLE [{table_name}] ({', '.join(column_defs)})"
+
+    @classmethod
+    def _migrate_price_to_integer_if_needed(cls) -> None:
+        """旧库 price 为 REAL 时，重建为 INTEGER（日元整数，四舍五入）。"""
+        db = cls().db
+        tn = cls.get_table_name()
+        if not db.table_exists(tn):
+            return
+        cols = db.get_table_columns(tn)
+        pc = next((c for c in cols if c['name'] == 'price'), None)
+        if pc is None:
+            return
+        t = (pc.get('type') or '').upper()
+        if 'INT' in t:
+            return
+        tmp = 'inventory__tmp_price_int'
+        fnames = list(cls.get_fields().keys())
+        sel_parts = [
+            'CAST(ROUND(COALESCE([price],0)) AS INTEGER)' if f == 'price' else f'[{f}]'
+            for f in fnames
+        ]
+        insert_sql = f"INSERT INTO [{tmp}] SELECT {', '.join(sel_parts)} FROM [{tn}]"
+        create_sql = cls._build_create_inventory_sql(tmp)
+        with db.get_connection() as conn:
+            cur = conn.cursor()
+            cur.execute(f'DROP TABLE IF EXISTS [{tmp}]')
+            cur.execute(create_sql)
+            cur.execute(insert_sql)
+            cur.execute(f'DROP TABLE [{tn}]')
+            cur.execute(f'ALTER TABLE [{tmp}] RENAME TO [{tn}]')
+            for idx in cls.get_indexes():
+                idx_name = idx.get('name', f"idx_{tn}_{idx['columns'][0]}")
+                unique_kw = 'UNIQUE ' if idx.get('unique') else ''
+                idx_cols = ', '.join(f'[{c}]' for c in idx['columns'])
+                cur.execute(
+                    f'CREATE {unique_kw}INDEX IF NOT EXISTS [{idx_name}] ON [{tn}] ({idx_cols})'
+                )
+            conn.commit()
+        if hasattr(cls, '_cached_table_columns'):
+            delattr(cls, '_cached_table_columns')
+        print(f'[{tn}] price 列已迁移为 INTEGER（日元整数）')
+
+    @classmethod
+    def ensure_table_exists(cls) -> bool:
+        if hasattr(cls, '_cached_table_columns'):
+            delattr(cls, '_cached_table_columns')
+        ok = super().ensure_table_exists()
+        if not ok:
+            return False
+        if hasattr(cls, '_cached_table_columns'):
+            delattr(cls, '_cached_table_columns')
+        try:
+            cls._migrate_price_to_integer_if_needed()
+        except Exception as exc:
+            print(f'迁移 inventory.price 为 INTEGER 失败: {exc}')
+            return False
+        return True
+
+    @classmethod
     def find_with_stock(cls, keyword: Optional[str] = None, category_id: Optional[int] = None) -> List[dict]:
         """查询商品列表，附带分类名称"""
         db = cls().db
@@ -110,8 +205,8 @@ class ProductModel(BaseModel):
         """
         params = []
         if keyword:
-            sql += " AND (p.name LIKE ? OR p.barcode LIKE ?)"
-            params += [f"%{keyword}%", f"%{keyword}%"]
+            sql += " AND p.name LIKE ?"
+            params.append(f"%{keyword}%")
         if category_id:
             sql += " AND p.category_id = ?"
             params.append(category_id)
