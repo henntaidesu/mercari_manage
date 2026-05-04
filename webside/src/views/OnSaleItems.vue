@@ -115,9 +115,18 @@
         <el-table-column label="更新" width="160" align="center" header-align="center">
           <template #default="{ row }">{{ displayTs(row.updated) }}</template>
         </el-table-column>
-        <el-table-column label="操作" width="88" fixed="right" align="center" header-align="center">
+        <el-table-column label="操作" width="200" fixed="right" align="center" header-align="center">
           <template #default="{ row }">
             <el-button type="primary" link size="small" @click="openMercariManage(row)">管理</el-button>
+            <el-button
+              type="success"
+              link
+              size="small"
+              :loading="detailLoadingIds.has(String(row.item_id || '').trim())"
+              @click="fetchItemDetail(row)"
+            >
+              获取详情
+            </el-button>
           </template>
         </el-table-column>
       </el-table>
@@ -201,6 +210,8 @@ function onSaleStatusTagType(status) {
 }
 
 const loading = ref(false)
+/** 正在请求 items/get 的商品 ID（trim 后） */
+const detailLoadingIds = ref(new Set())
 const syncLoading = ref(false)
 const syncVisible = ref(false)
 const syncAccountId = ref(null)
@@ -318,6 +329,34 @@ function openMercariManage(row) {
   }
   const url = `https://jp.mercari.com/item/${encodeURIComponent(seg)}`
   window.open(url, '_blank', 'noopener,noreferrer')
+}
+
+async function fetchItemDetail(row) {
+  const iid = String(row.item_id || '').trim()
+  if (!iid) {
+    ElMessage.warning('缺少商品 ID')
+    return
+  }
+  if (detailLoadingIds.value.has(iid)) return
+  const next = new Set(detailLoadingIds.value)
+  next.add(iid)
+  detailLoadingIds.value = next
+  try {
+    const res = await onSaleItemApi.fetchDetail({ item_id: iid })
+    const sync = res?.data?.sync || {}
+    if (sync.updated) {
+      ElMessage.success(
+        sync.message ||
+          `已关联库存 #${sync.inventory_id}，煤炉 ID ${sync.mercari_item_id}，在售数量 ${sync.on_sale_quantity ?? '-'}`
+      )
+    } else {
+      ElMessage.warning(sync.message || '未写入库存（请检查说明中的管理番号/条码与账号 DPoP_ItemGet-Info）')
+    }
+  } finally {
+    const done = new Set(detailLoadingIds.value)
+    done.delete(iid)
+    detailLoadingIds.value = done
+  }
 }
 
 async function openSyncDialog() {

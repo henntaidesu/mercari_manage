@@ -151,6 +151,15 @@
             placeholder="GET items/get_items 在售列表（status=on_sale,stop）完整 URL 对应的 DPoP；不填则无法从煤炉同步在售商品页"
           />
         </el-form-item>
+        <el-form-item label="DPoP_ItemGet-Info" prop="dpop_item_get_info">
+          <el-input
+            v-model="form.dpop_item_get_info"
+            type="textarea"
+            :rows="2"
+            clearable
+            placeholder="GET items/get?id=…&include_auction=… 单件详情完整 URL 对应的 DPoP（与订单用 DPoP_Info 分开）；不填则无法在售页「获取详情」"
+          />
+        </el-form-item>
         <el-form-item label="Priority" prop="priority">
           <el-input v-model="form.priority" clearable />
         </el-form-item>
@@ -219,6 +228,8 @@ const HEADER_TO_FORM = {
   'dpop-info': 'dpop_info',
   dpop_on_sale_list: 'dpop_on_sale_list',
   'dpop-on-sale-list': 'dpop_on_sale_list',
+  dpop_item_get_info: 'dpop_item_get_info',
+  'dpop-item-get-info': 'dpop_item_get_info',
   priority: 'priority',
   'accept-language': 'accept_language',
   'accept-encoding': 'accept_encoding',
@@ -235,6 +246,7 @@ const HEADER_LABELS = {
   dpop_list: 'DPoP_List',
   dpop_info: 'DPoP_Info',
   dpop_on_sale_list: 'DPoP_OnSale-List',
+  dpop_item_get_info: 'DPoP_ItemGet-Info',
   priority: 'Priority',
   accept_language: 'Accept-Language',
   accept_encoding: 'Accept-Encoding',
@@ -285,7 +297,7 @@ function extractPathFromRaw(raw) {
  * - /items/get_items 且含在售参数（on_sale、stop）→ dpop_on_sale_list
  * - /items/get_items 其他（如 trading）→ dpop_list
  * - /transaction_evidences/get → dpop_info（订单详情；与 get_order_info 使用同一头）
- * - /items/get（且非 get_items）→ dpop_info
+ * - /items/get（且非 get_items）→ dpop_item_get_info（在售单件详情）
  */
 function dpopTargetFormKeyFromPath(pathStr) {
   const p = String(pathStr || '').trim()
@@ -295,7 +307,7 @@ function dpopTargetFormKeyFromPath(pathStr) {
   }
   if (p.includes('/items/get_items')) return 'dpop_list'
   if (p.includes('/transaction_evidences/get')) return 'dpop_info'
-  if (p.includes('/items/get')) return 'dpop_info'
+  if (p.includes('/items/get')) return 'dpop_item_get_info'
   return null
 }
 
@@ -381,6 +393,7 @@ const createDefaultForm = () => ({
   dpop_list: '',
   dpop_info: '',
   dpop_on_sale_list: '',
+  dpop_item_get_info: '',
   priority: '',
   accept_language: '',
   accept_encoding: '',

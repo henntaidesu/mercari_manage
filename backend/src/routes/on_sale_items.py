@@ -6,7 +6,9 @@ from pydantic import BaseModel as PydanticModel
 
 from ..db_manage.database import DatabaseManager
 from ..db_manage.models.on_sale_item import OnSaleItemModel
+from ..operation_mercari.on_sale_item_detail_sync import fetch_detail_and_sync_inventory
 from ..operation_mercari.on_sale_items_sync import sync_on_sale_items_from_mercari
+from ..operation_mercari.sync_data import resolve_account_id_by_seller_id
 
 router = APIRouter(prefix="/api/on-sale-items", tags=["on-sale-items"])
 
@@ -47,6 +49,12 @@ class SyncOnSaleRequest(PydanticModel):
     account_id: Optional[int] = None
 
 
+class FetchOnSaleDetailRequest(PydanticModel):
+    """items/get 拉取详情并尝试同步库存；account_id 不传则按在售行的 seller_id 匹配 active 账号。"""
+    item_id: str
+    account_id: Optional[int] = None
+
+
 @router.get("")
 def list_on_sale_items(
     keyword: Optional[str] = None,
@@ -79,3 +87,41 @@ def sync_on_sale(data: SyncOnSaleRequest):
     except Exception as exc:
         raise HTTPException(status_code=500, detail=f"同步失败: {exc}") from exc
     return {"success": True, "data": result}
+
+
+@router.post("/fetch-detail")
+def fetch_on_sale_item_detail(data: FetchOnSaleDetailRequest):
+    """
+    GET api.mercari.jp/items/get（完整 include_* 查询串），须配置 dpop_item_get_info。
+    解析 data.description 中的「管理ID / 管理番号 / バーコード」，匹配库存后写入 mercari_item_id、on_sale_quantity。
+    """
+    item_id = (data.item_id or "").strip()
+    if not item_id:
+        raise HTTPException(status_code=400, detail="item_id 不能为空")
+
+    account_id = data.account_id
+    if account_id is None:
+        rows = OnSaleItemModel.find_all(
+            where="TRIM([item_id]) = TRIM(?)",
+            params=(item_id,),
+            limit=1,
+        )
+        seller_id = None
+        if rows:
+            seller_id = str(rows[0].seller_id or "").strip() or None
+        if seller_id:
+            account_id = resolve_account_id_by_seller_id(seller_id)
+        if account_id is None:
+            raise HTTPException(
+                status_code=400,
+                detail="请传 account_id，或在在售列表中存在该商品且卖家已绑定 active 煤炉账号（seller_id）",
+            )
+
+    try:
+        payload = fetch_detail_and_sync_inventory(item_id, account_id=account_id)
+    except RuntimeError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=f"获取详情失败: {exc}") from exc
+
+    return {"success": True, "data": payload}

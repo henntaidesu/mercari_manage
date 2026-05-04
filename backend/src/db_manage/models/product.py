@@ -60,6 +60,18 @@ class ProductModel(BaseModel):
                 'not_null': False,
                 'default': 0,
             },
+            # 煤炉在售：单件详情 items/get 的 data.id（如 m58502999959）
+            'mercari_item_id': {
+                'type': 'TEXT',
+                'not_null': False,
+                'default': None,
+            },
+            # 与煤炉 listing 关联后的在售件数（仅 status=on_sale 计 1，其余 0）
+            'on_sale_quantity': {
+                'type': 'INTEGER',
+                'not_null': False,
+                'default': 0,
+            },
             'description': {
                 'type': 'TEXT',
                 'not_null': False,

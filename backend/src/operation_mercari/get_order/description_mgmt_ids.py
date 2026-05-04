@@ -2,7 +2,7 @@
 """
 从煤炉商品说明（orders.description）中解析待出库标识：
 
-- 「管理ID:57,56,55」—— 对应本地 inventory.id（管理番号）
+- 「管理ID:57,56,55」「管理番号:59」—— 对应本地 inventory.id
 - 「バーコード:6977850080855」或「バーコード:6977850080824,6977850080831」—— 对应 inventory.barcode
 
 支持半角/全角冒号与逗号、顿号、空白分隔；管理 ID 段内支持全角数字；条码段内支持全角数字。
@@ -26,6 +26,12 @@ _FW_DIGITS = str.maketrans("０１２３４５６７８９", "0123456789")
 _MGMT_ID_PATTERN = re.compile(
     r"管理\s*ID\s*[:：]\s*([0-9０-９\s,，、]+)",
     re.IGNORECASE | re.MULTILINE,
+)
+
+# 「管理番号:59」—— 与管理 ID 相同语义，对应 inventory.id
+_MGMT_BANGO_PATTERN = re.compile(
+    r"管理\s*番号\s*[:：]\s*([0-9０-９\s,，、]+)",
+    re.MULTILINE,
 )
 
 # バーコード：后为条码列表（逗号/空白分隔）；条码一般为数字，亦允许字母与常见符号
@@ -60,6 +66,8 @@ def parse_order_description_outbound_tokens(text: Optional[str]) -> List[Outboun
 
     spans: List[Tuple[int, str, str]] = []
     for m in _MGMT_ID_PATTERN.finditer(s):
+        spans.append((m.start(), "mgmt", m.group(1) or ""))
+    for m in _MGMT_BANGO_PATTERN.finditer(s):
         spans.append((m.start(), "mgmt", m.group(1) or ""))
     for m in _BARCODE_PATTERN.finditer(s):
         spans.append((m.start(), "barcode", m.group(1) or ""))
@@ -120,7 +128,7 @@ def _inventory_id_by_barcode(barcode: str) -> Optional[int]:
 def sync_outbound_lines_for_order(order_no: str, description: Optional[str]) -> None:
     """
     根据最新商品说明重写该订单的 order_outbound_lines。
-    无「管理ID:」「バーコード:」或解析结果为空时，仅删除该订单原有明细。
+    无「管理ID:」「管理番号:」「バーコード:」或解析结果为空时，仅删除该订单原有明细。
     """
     ono = (order_no or "").strip()
     if not ono:

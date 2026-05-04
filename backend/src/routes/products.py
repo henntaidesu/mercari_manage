@@ -25,6 +25,8 @@ PRODUCT_COLUMNS = [
     "category_id",
     "price",
     "quantity",
+    "mercari_item_id",
+    "on_sale_quantity",
     "description",
     "listing_title",
     "listing_body",
@@ -52,6 +54,8 @@ class ProductCreate(PydanticModel):
     description: Optional[str] = None
     listing_title: Optional[str] = None
     listing_body: Optional[str] = None
+    mercari_item_id: Optional[str] = None
+    on_sale_quantity: Optional[int] = None
     image_front: Optional[str] = None
     image_back: Optional[str] = None
 
@@ -76,6 +80,8 @@ class ProductUpdate(PydanticModel):
     description: Optional[str] = None
     listing_title: Optional[str] = None
     listing_body: Optional[str] = None
+    mercari_item_id: Optional[str] = None
+    on_sale_quantity: Optional[int] = None
     image_front: Optional[str] = None
     image_back: Optional[str] = None
 
@@ -335,8 +341,9 @@ def create_product(data: ProductCreate):
             """
             INSERT INTO [inventory] (
                 name, barcode, category_id, warehouse_id, price, quantity,
+                mercari_item_id, on_sale_quantity,
                 description, listing_title, listing_body, image, image_front, image_back
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             (
                 data.name,
@@ -345,6 +352,8 @@ def create_product(data: ProductCreate):
                 data.warehouse_id,
                 data.price,
                 data.quantity,
+                (data.mercari_item_id or "").strip() or None,
+                int(data.on_sale_quantity) if data.on_sale_quantity is not None else 0,
                 data.description,
                 data.listing_title,
                 data.listing_body,
@@ -392,6 +401,7 @@ def update_product(pid: int, data: ProductUpdate):
             raise HTTPException(status_code=400, detail="所属仓库不存在")
     allowed_fields = {
         "name", "barcode", "category_id", "warehouse_id", "price", "quantity",
+        "mercari_item_id", "on_sale_quantity",
         "description", "listing_title", "listing_body", "image", "image_front", "image_back",
     }
     update_data = {k: v for k, v in update_data.items() if k in allowed_fields}

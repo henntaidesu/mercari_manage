@@ -163,6 +163,14 @@
             <span v-else class="cell-muted">{{ Number(row.pending_outbound_qty || 0) }}</span>
           </template>
         </el-table-column>
+        <el-table-column label="煤炉商品ID" prop="mercari_item_id" width="120" align="center" header-align="center" show-overflow-tooltip>
+          <template #default="{ row }">
+            <span>{{ row.mercari_item_id || '-' }}</span>
+          </template>
+        </el-table-column>
+        <el-table-column label="在售数量" prop="on_sale_quantity" width="88" align="center" header-align="center">
+          <template #default="{ row }">{{ Number(row.on_sale_quantity ?? 0) }}</template>
+        </el-table-column>
         <el-table-column label="操作" :width="isMobile ? 180 : 240" align="center" header-align="center" :fixed="isMobile ? false : 'right'">
           <template #default="{ row }">
             <div class="row-actions">
@@ -331,6 +339,14 @@
             clearable
           />
         </el-form-item>
+        <template v-if="form.id">
+          <el-form-item label="煤炉商品ID">
+            <el-input v-model="form.mercari_item_id" clearable placeholder="在售页「获取详情」写入，可手改" />
+          </el-form-item>
+          <el-form-item label="在售数量">
+            <el-input-number v-model="form.on_sale_quantity" :min="0" :max="999999" :step="1" controls-position="right" style="width: 160px" />
+          </el-form-item>
+        </template>
       </el-form>
       <template #footer>
         <div class="dialog-footer">
@@ -697,6 +713,8 @@ const form = ref({
   warehouse_id: null,
   price: 0,
   quantity: 1,
+  mercari_item_id: '',
+  on_sale_quantity: 0,
   description: '',
   listing_title: '',
   listing_body: '',
@@ -1120,6 +1138,8 @@ function openDialog(row = null) {
         warehouse_id: row.warehouse_id || null,
         price: Math.round(Number(row.price ?? 0)),
         quantity: row.quantity ?? 0,
+        mercari_item_id: row.mercari_item_id ?? '',
+        on_sale_quantity: Number(row.on_sale_quantity ?? 0),
         description: row.description || null,
         listing_title: row.listing_title ?? '',
         listing_body: row.listing_body ?? '',
@@ -1135,6 +1155,8 @@ function openDialog(row = null) {
         warehouse_id: null,
         price: 0,
         quantity: 1,
+        mercari_item_id: '',
+        on_sale_quantity: 0,
         description: null,
         listing_title: '',
         listing_body: '',
@@ -1199,6 +1221,12 @@ async function submit() {
   try {
     const payload = { ...form.value }
     payload.price = Math.round(Number(payload.price ?? 0))
+    if (payload.mercari_item_id !== undefined && payload.mercari_item_id !== null) {
+      payload.mercari_item_id = String(payload.mercari_item_id).trim() || null
+    }
+    if (payload.on_sale_quantity != null) {
+      payload.on_sale_quantity = Math.max(0, Math.round(Number(payload.on_sale_quantity)))
+    }
     if (payload.id) await inventoryApi.update(payload.id, payload)
     else await inventoryApi.create(payload)
     ElMessage.success('保存成功')

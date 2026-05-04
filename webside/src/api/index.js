@@ -108,6 +108,9 @@ export const onSaleItemApi = {
   list: (params) => http.get('/on-sale-items', { params }),
   sync: (data, axiosConfig = {}) =>
     http.post('/on-sale-items/sync', data, { timeout: 0, ...axiosConfig }),
+  /** items/get 详情并同步库存 mercari_item_id / on_sale_quantity；须配置 dpop_item_get_info */
+  fetchDetail: (data, axiosConfig = {}) =>
+    http.post('/on-sale-items/fetch-detail', data, { timeout: 120000, ...axiosConfig }),
 }
 
 // Mercari 操作
