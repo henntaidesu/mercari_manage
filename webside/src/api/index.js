@@ -106,6 +106,8 @@ export const orderApi = {
 // 在售商品（本地缓存 items/get_items）
 export const onSaleItemApi = {
   list: (params) => http.get('/on-sale-items', { params }),
+  /** 按煤炉商品 ID 查本地 on_sale_items（二级表） */
+  listByItemId: (params) => http.get('/on-sale-items/by-item-id', { params }),
   sync: (data, axiosConfig = {}) =>
     http.post('/on-sale-items/sync', data, { timeout: 0, ...axiosConfig }),
   /** items/get 详情并同步库存 mercari_item_id / on_sale_quantity；须配置 dpop_item_get_info */

@@ -45,6 +45,49 @@ def _attach_seller_name(items: list) -> None:
         row["seller_name"] = name_map.get(sid) or None
 
 
+def _attach_inventory_by_item_id(items: list) -> None:
+    """按煤炉 item_id 与 inventory.mercari_item_id 匹配，附加库存数量、在售绑定数量。"""
+    if not items:
+        return
+    raw = list(
+        {
+            str(i.get("item_id") or "").strip()
+            for i in items
+            if str(i.get("item_id") or "").strip()
+        }
+    )
+    if not raw:
+        return
+    db = DatabaseManager()
+    ph = ",".join(["?"] * len(raw))
+    sql = f"""
+        SELECT TRIM(IFNULL([mercari_item_id], '')), [id], [quantity], [on_sale_quantity]
+        FROM [inventory]
+        WHERE TRIM(IFNULL([mercari_item_id], '')) IN ({ph})
+    """
+    rows = db.execute_query(sql, tuple(raw))
+    by_mid: Dict[str, tuple] = {}
+    for mid, iid, qty, osq in rows:
+        k = str(mid or "").strip()
+        if k:
+            by_mid[k] = (iid, qty, osq)
+    for row in items:
+        k = str(row.get("item_id") or "").strip()
+        hit = by_mid.get(k)
+        if hit is None and k.startswith("m"):
+            hit = by_mid.get(k[1:])
+        if hit is None and k.isdigit():
+            hit = by_mid.get("m" + k)
+        if hit:
+            row["inventory_id"] = int(hit[0]) if hit[0] is not None else None
+            row["inventory_quantity"] = int(hit[1]) if hit[1] is not None else 0
+            row["inventory_on_sale_quantity"] = int(hit[2]) if hit[2] is not None else 0
+        else:
+            row["inventory_id"] = None
+            row["inventory_quantity"] = None
+            row["inventory_on_sale_quantity"] = None
+
+
 class SyncOnSaleRequest(PydanticModel):
     account_id: Optional[int] = None
 
@@ -70,8 +113,23 @@ def list_on_sale_items(
         page=page,
         page_size=page_size,
     )
-    _attach_seller_name(data.get("items") or [])
+    items = data.get("items") or []
+    _attach_seller_name(items)
+    _attach_inventory_by_item_id(items)
     return data
+
+
+@router.get("/by-item-id")
+def list_on_sale_by_item_id(item_id: str):
+    """
+    按煤炉商品 ID 查询本地 on_sale_items（用于二级表格明细）。
+    """
+    iid = (item_id or "").strip()
+    if not iid:
+        raise HTTPException(status_code=400, detail="item_id 不能为空")
+    items = OnSaleItemModel.find_all_by_item_id(iid)
+    _attach_seller_name(items)
+    return {"item_id": iid, "total": len(items), "items": items}
 
 
 @router.post("/sync")

@@ -10,6 +10,43 @@ from typing import Any, Dict, List, Optional, Tuple
 from ..base_model import BaseModel
 
 
+# SELECT 列顺序（find_list / find_all_by_item_id 共用）
+_ON_SALE_ITEM_LIST_KEYS: Tuple[str, ...] = (
+    "id",
+    "item_id",
+    "seller_id",
+    "status",
+    "name",
+    "price",
+    "thumbnails",
+    "item_root_category_id",
+    "num_likes",
+    "num_comments",
+    "created",
+    "updated",
+    "category_id",
+    "category_name",
+    "parent_category_id",
+    "parent_category_name",
+    "category_root_id",
+    "category_root_name",
+    "parent_categories_json",
+    "shipping_from_area_id",
+    "shipping_from_area_name",
+    "shipping_method_id",
+    "pager_id",
+    "liked",
+    "item_pv",
+    "recent_item_pv",
+    "search_impression",
+    "recent_search_impression",
+    "is_no_price",
+    "impression_boost_status",
+    "auction_info_json",
+    "synced_at",
+)
+
+
 class OnSaleItemModel(BaseModel):
     """在售商品"""
 
@@ -221,6 +258,23 @@ class OnSaleItemModel(BaseModel):
         return sql, params
 
     @classmethod
+    def find_all_by_item_id(cls, item_id: str) -> List[Dict[str, Any]]:
+        """按煤炉商品 ID（item_id）精确查询在售缓存表，返回 0～多条（通常唯一一条）。"""
+        iid = (item_id or "").strip()
+        if not iid:
+            return []
+        db = cls().db
+        keys = list(_ON_SALE_ITEM_LIST_KEYS)
+        sel = f"""
+            SELECT {', '.join(f't.[{k}]' for k in keys)}
+            FROM [on_sale_items] t
+            WHERE TRIM(t.[item_id]) = TRIM(?)
+            ORDER BY t.[id] DESC
+        """
+        rows = db.execute_query(sel, (iid,))
+        return [dict(zip(keys, row)) for row in rows]
+
+    @classmethod
     def find_list(
         cls,
         keyword: Optional[str] = None,
@@ -235,40 +289,7 @@ class OnSaleItemModel(BaseModel):
         )
         total = db.execute_query(f"SELECT COUNT(*) {base_sql}", tuple(params))[0][0]
         offset = (page - 1) * page_size
-        keys = [
-            "id",
-            "item_id",
-            "seller_id",
-            "status",
-            "name",
-            "price",
-            "thumbnails",
-            "item_root_category_id",
-            "num_likes",
-            "num_comments",
-            "created",
-            "updated",
-            "category_id",
-            "category_name",
-            "parent_category_id",
-            "parent_category_name",
-            "category_root_id",
-            "category_root_name",
-            "parent_categories_json",
-            "shipping_from_area_id",
-            "shipping_from_area_name",
-            "shipping_method_id",
-            "pager_id",
-            "liked",
-            "item_pv",
-            "recent_item_pv",
-            "search_impression",
-            "recent_search_impression",
-            "is_no_price",
-            "impression_boost_status",
-            "auction_info_json",
-            "synced_at",
-        ]
+        keys = list(_ON_SALE_ITEM_LIST_KEYS)
         sel = f"""
             SELECT {', '.join('t.' + k for k in keys)}
             {base_sql}

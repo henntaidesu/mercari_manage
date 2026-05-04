@@ -49,7 +49,49 @@
     </el-card>
 
     <el-card shadow="never" class="table-card">
-      <el-table :data="list" v-loading="loading" stripe>
+      <el-table :data="list" v-loading="loading" stripe row-key="item_id" @expand-change="onTableExpandChange">
+        <el-table-column type="expand" width="44">
+          <template #default="props">
+            <div v-loading="expandSlot(props.row.item_id)?.loading" class="os-expand-wrap">
+              <div class="os-expand-meta">
+                在售表记录（按商品 ID 查询）共
+                <strong>{{ expandSlot(props.row.item_id)?.total ?? '—' }}</strong>
+                条
+              </div>
+              <el-table
+                :data="expandSlot(props.row.item_id)?.rows || []"
+                border
+                size="small"
+                class="os-expand-table"
+                empty-text="暂无数据，展开后自动加载"
+              >
+                <el-table-column label="商品ID" prop="item_id" min-width="120" show-overflow-tooltip />
+                <el-table-column label="卖家ID" prop="seller_id" width="100" show-overflow-tooltip align="center" />
+                <el-table-column label="卖家" prop="seller_name" width="100" show-overflow-tooltip align="center" />
+                <el-table-column label="状态" width="100" align="center">
+                  <template #default="{ row: r }">
+                    <el-tag :type="onSaleStatusTagType(r.status)" size="small" effect="light">
+                      {{ onSaleStatusLabel(r.status) }}
+                    </el-tag>
+                  </template>
+                </el-table-column>
+                <el-table-column label="标题" prop="name" min-width="160" show-overflow-tooltip />
+                <el-table-column label="价格¥" width="80" align="center">
+                  <template #default="{ row: r }">{{ Number(r.price || 0) }}</template>
+                </el-table-column>
+                <el-table-column label="赞/评" width="72" align="center">
+                  <template #default="{ row: r }">{{ r.num_likes ?? 0 }}/{{ r.num_comments ?? 0 }}</template>
+                </el-table-column>
+                <el-table-column label="PV/近7日" width="92" align="center">
+                  <template #default="{ row: r }">{{ r.item_pv ?? 0 }}/{{ r.recent_item_pv ?? 0 }}</template>
+                </el-table-column>
+                <el-table-column label="更新" width="140" align="center">
+                  <template #default="{ row: r }">{{ displayTs(r.updated) }}</template>
+                </el-table-column>
+              </el-table>
+            </div>
+          </template>
+        </el-table-column>
         <el-table-column label="图" width="72" align="center" header-align="center" fixed>
           <template #default="{ row }">
             <el-image
@@ -70,6 +112,20 @@
           </template>
         </el-table-column>
         <el-table-column label="商品ID" prop="item_id" width="128" show-overflow-tooltip align="center" header-align="center" />
+        <el-table-column label="数量" width="108" align="center" header-align="center">
+          <template #default="{ row }">
+            <el-tooltip
+              v-if="row.inventory_id != null"
+              :content="`库存 #${row.inventory_id}：在库 ${row.inventory_quantity ?? 0}，在售绑定 ${row.inventory_on_sale_quantity ?? 0}`"
+              placement="top"
+            >
+              <span class="os-qty-cell">
+                {{ row.inventory_quantity ?? 0 }}<span class="cell-muted">/</span>{{ row.inventory_on_sale_quantity ?? 0 }}
+              </span>
+            </el-tooltip>
+            <span v-else class="cell-muted">—</span>
+          </template>
+        </el-table-column>
         <el-table-column label="卖家" prop="seller_name" width="120" show-overflow-tooltip align="center" header-align="center">
           <template #default="{ row }">
             <span>{{ row.seller_name || '-' }}</span>
@@ -171,7 +227,7 @@
 </template>
 
 <script setup>
-import { ref, computed, onMounted } from 'vue'
+import { ref, computed, onMounted, reactive } from 'vue'
 import { ElMessage } from 'element-plus'
 import { Download } from '@element-plus/icons-vue'
 import { onSaleItemApi, meiluAccountApi } from '@/api/index.js'
@@ -219,6 +275,8 @@ const accountOptions = ref([])
 const accountsLoading = ref(false)
 
 const list = ref([])
+/** 展开区：key 为 trim 后的 item_id */
+const expandByItemId = reactive({})
 const total = ref(0)
 const page = ref(1)
 const pageSize = ref(20)
@@ -254,12 +312,55 @@ function listParams() {
   return p
 }
 
+function expandKey(itemId) {
+  return String(itemId ?? '').trim()
+}
+
+function expandSlot(itemId) {
+  const k = expandKey(itemId)
+  return k ? expandByItemId[k] : null
+}
+
+async function ensureExpandLoaded(row) {
+  const k = expandKey(row.item_id)
+  if (!k) return
+  if (!expandByItemId[k]) {
+    expandByItemId[k] = { loading: false, loaded: false, rows: [], total: 0 }
+  }
+  const slot = expandByItemId[k]
+  if (slot.loaded || slot.loading) return
+  slot.loading = true
+  try {
+    const res = await onSaleItemApi.listByItemId({ item_id: k })
+    slot.rows = res.items || []
+    slot.total = res.total != null ? res.total : slot.rows.length
+    slot.loaded = true
+  } catch {
+    slot.rows = []
+    slot.total = 0
+    slot.loaded = true
+  } finally {
+    slot.loading = false
+  }
+}
+
+/** 展开行时按商品 ID 拉取在售表明细（二级表格） */
+function onTableExpandChange(row, expandedRows) {
+  const k = expandKey(row.item_id)
+  if (!k) return
+  const opened = expandedRows.some((r) => expandKey(r.item_id) === k)
+  if (opened) ensureExpandLoaded(row)
+}
+
 async function load() {
   loading.value = true
   try {
     const res = await onSaleItemApi.list(listParams())
     list.value = res.items || []
     total.value = res.total || 0
+    for (const k of Object.keys(expandByItemId)) {
+      delete expandByItemId[k]
+    }
   } finally {
     loading.value = false
   }
@@ -461,5 +562,21 @@ onMounted(() => {
   word-break: break-all;
   max-height: 240px;
   overflow: auto;
+}
+.os-expand-wrap {
+  padding: 8px 12px 12px 36px;
+  max-width: 100%;
+}
+.os-expand-meta {
+  font-size: 12px;
+  color: #606266;
+  margin-bottom: 8px;
+}
+.os-expand-table {
+  width: 100%;
+}
+.os-qty-cell {
+  cursor: default;
+  font-variant-numeric: tabular-nums;
 }
 </style>
