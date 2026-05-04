@@ -135,15 +135,10 @@
     </el-card>
 
     <el-dialog v-model="syncVisible" title="从煤炉同步在售列表" width="420px" destroy-on-close>
-      <p class="sync-hint">
-        使用在售专用接口（status=on_sale,stop 等，见后端 on_sale_list）。请在煤炉账号中配置「DPoP_OnSale-List」（dpop_on_sale_list），JWT 须针对该完整 GET URL 生成。
-      </p>
       <el-form label-width="88px">
         <el-form-item label="煤炉账号">
           <el-select
             v-model="syncAccountId"
-            placeholder="默认第一个活跃账号"
-            clearable
             style="width: 100%"
             :loading="accountsLoading"
           >
@@ -333,14 +328,16 @@ function openMercariManage(row) {
 }
 
 async function openSyncDialog() {
-  syncAccountId.value = null
   syncVisible.value = true
+  syncAccountId.value = null
   accountsLoading.value = true
   try {
     const res = await meiluAccountApi.list({ page: 1, page_size: 100 })
     accountOptions.value = (res.items || []).filter((a) => a.status === 'active')
+    syncAccountId.value = accountOptions.value[0]?.id ?? null
   } catch {
     accountOptions.value = []
+    syncAccountId.value = null
   } finally {
     accountsLoading.value = false
   }
@@ -354,7 +351,7 @@ async function runSync() {
     const res = await onSaleItemApi.sync(payload, { timeout: 0 })
     const d = res.data || {}
     ElMessage.success(
-      `同步完成：接口 ${d.api_item_count ?? 0} 条，新增 ${d.inserted ?? 0}，更新 ${d.updated ?? 0}`
+      `同步完成：已清空本地 ${d.deleted_before_sync ?? 0} 条；煤炉 ${d.api_item_count ?? 0} 条，新增 ${d.inserted ?? 0}，更新 ${d.updated ?? 0}`
     )
     syncVisible.value = false
     load()
@@ -424,12 +421,6 @@ onMounted(() => {
   margin-top: 16px;
   display: flex;
   justify-content: flex-end;
-}
-.sync-hint {
-  font-size: 13px;
-  color: #909399;
-  line-height: 1.5;
-  margin: 0 0 12px;
 }
 .auction-pre {
   margin: 0;

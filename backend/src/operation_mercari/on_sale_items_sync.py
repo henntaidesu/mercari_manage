@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 """
-在售商品列表：从 Mercari items/get_items 拉取并 upsert 到 on_sale_items。
+在售商品列表：按卖家清空本地 on_sale_items 后，从 Mercari items/get_items 全量拉取并写入。
 
 使用在售专用 URL（status=on_sale,stop 等）与 DPoP_OnSale-List（dpop_on_sale_list），
 见 get_on_sale.on_sale_list.fetch_on_sale_list_items。
@@ -123,14 +123,20 @@ def upsert_on_sale_item_row(row: Dict[str, Any]) -> str:
 
 def sync_on_sale_items_from_mercari(account_id: Optional[int] = None) -> Dict[str, Any]:
     """
-    拉取在售列表（items/get_items，on_sale,stop），按 item_id upsert 到 on_sale_items。
+    先删除 on_sale_items 中该卖家（seller_id）的本地缓存，再从煤炉拉取在售列表
+    （items/get_items，on_sale,stop），按 item_id 写入 on_sale_items。
     """
     aid, sid = _resolve_account_and_seller(account_id)
     seller_key = str(int(sid))
+    deleted = OnSaleItemModel.delete_all(
+        "TRIM([seller_id]) = TRIM(?)",
+        (seller_key,),
+    )
     items, meta = fetch_on_sale_list_items(seller_id=sid, account_id=aid)
     err_list: List[Dict[str, str]] = []
     stats: Dict[str, Any] = {
         "seller_id": seller_key,
+        "deleted_before_sync": deleted,
         "api_item_count": len(items),
         "inserted": 0,
         "updated": 0,

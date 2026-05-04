@@ -34,7 +34,8 @@ def list_on_sale_items(
 @router.post("/sync")
 def sync_on_sale(data: SyncOnSaleRequest):
     """
-    从煤炉拉取在售列表（items/get_items，status=on_sale,stop 等，见 on_sale_list.build_on_sale_list_url）并写入/更新 on_sale_items；须配置 dpop_on_sale_list。
+    先按卖家删除本地 on_sale_items 缓存，再从煤炉拉取在售列表（items/get_items，
+    status=on_sale,stop 等，见 on_sale_list.build_on_sale_list_url）写入 on_sale_items；须配置 dpop_on_sale_list。
     """
     try:
         result = sync_on_sale_items_from_mercari(account_id=data.account_id)
