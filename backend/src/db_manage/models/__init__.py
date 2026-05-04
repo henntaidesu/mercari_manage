@@ -8,6 +8,7 @@ from .cost_record import CostRecordModel
 from .order import OrderModel
 from .meilu_account import MeiluAccountModel
 from .on_sale_item import OnSaleItemModel
+from .order_outbound_line import OrderOutboundLineModel
 
 __all__ = [
     'CategoryModel',
@@ -19,4 +20,5 @@ __all__ = [
     'OrderModel',
     'MeiluAccountModel',
     'OnSaleItemModel',
+    'OrderOutboundLineModel',
 ]

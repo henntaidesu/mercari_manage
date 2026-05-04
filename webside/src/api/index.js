@@ -93,6 +93,8 @@ export const costRecordApi = {
 export const orderApi = {
   list: (params) => http.get('/orders', { params }),
   stats: (params) => http.get('/orders/stats', { params }),
+  /** 订单展开：从说明解析的待出库明细（管理 ID、仓库等） */
+  outboundLines: (params) => http.get('/orders/outbound-lines', { params }),
   create: (data) => http.post('/orders', data),
   update: (id, data) => http.put(`/orders/${id}`, data),
   remove: (id) => http.delete(`/orders/${id}`),

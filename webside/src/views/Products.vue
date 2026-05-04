@@ -155,6 +155,14 @@
             </el-tag>
           </template>
         </el-table-column>
+        <el-table-column label="待出库数量" prop="pending_outbound_qty" width="110" align="center" header-align="center">
+          <template #default="{ row }">
+            <el-tag v-if="Number(row.pending_outbound_qty || 0) > 0" type="warning" size="small">
+              {{ Number(row.pending_outbound_qty || 0) }}
+            </el-tag>
+            <span v-else class="cell-muted">{{ Number(row.pending_outbound_qty || 0) }}</span>
+          </template>
+        </el-table-column>
         <el-table-column label="操作" :width="isMobile ? 180 : 240" align="center" header-align="center" :fixed="isMobile ? false : 'right'">
           <template #default="{ row }">
             <div class="row-actions">
@@ -1769,6 +1777,7 @@ onBeforeUnmount(() => {
 .inline-input { width: 100%; }
 .cell-center { text-align: center; }
 .cell-right { text-align: right; }
+.cell-muted { color: #909399; font-size: 13px; }
 .row-actions {
   display: inline-flex;
   align-items: center;

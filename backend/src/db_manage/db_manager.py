@@ -14,6 +14,7 @@ from .models import (
     UserModel,
     CostRecordModel,
     OrderModel,
+    OrderOutboundLineModel,
     MeiluAccountModel,
     OnSaleItemModel,
 )
@@ -36,6 +37,7 @@ class DBManager:
             TransactionModel, # 依赖 inventory, warehouses
             CostRecordModel,  # 依赖 warehouses（可为空）
             OrderModel,       # 订单管理
+            OrderOutboundLineModel,  # 订单解析出的待出库明细（依赖 orders / inventory 逻辑）
             MeiluAccountModel,  # 煤炉账号
             OnSaleItemModel,  # 在售商品缓存
         ]

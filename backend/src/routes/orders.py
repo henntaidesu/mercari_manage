@@ -4,8 +4,10 @@ from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel as PydanticModel
 from typing import List, Optional
 from ..db_manage.models.order import OrderModel
+from ..db_manage.models.order_outbound_line import OrderOutboundLineModel
 from ..operation_mercari.sync_data import resolve_account_id_by_seller_id
 from ..operation_mercari.get_order.get_in_progress_order.get_order_info import apply_item_info_to_order
+from ..operation_mercari.get_order.description_mgmt_ids import sync_outbound_lines_for_order
 
 router = APIRouter(prefix="/api/orders", tags=["orders"])
 
@@ -140,6 +142,16 @@ def order_stats(
     return out
 
 
+@router.get("/outbound-lines")
+def list_order_outbound_lines(order_no: str):
+    """某订单从商品说明解析出的待出库明细（管理 ID、库存名称、仓库位置等）。"""
+    ono = (order_no or "").strip()
+    if not ono:
+        raise HTTPException(status_code=400, detail="order_no 不能为空")
+    items = OrderOutboundLineModel.list_enriched_for_order(ono)
+    return {"order_no": ono, "items": items}
+
+
 @router.get("")
 def list_orders(
     keyword: Optional[str] = None,
@@ -230,6 +242,7 @@ def create_order(data: OrderCreate):
     )
     if not item.save():
         raise HTTPException(status_code=400, detail="保存失败，订单号可能重复")
+    sync_outbound_lines_for_order(order_no, item.description)
     return item.to_dict()
 
 
@@ -283,6 +296,7 @@ def update_order(oid: int, data: OrderUpdate):
 
     if not item.save():
         raise HTTPException(status_code=400, detail="更新失败，订单号可能重复")
+    sync_outbound_lines_for_order(item.order_no, item.description)
     return item.to_dict()
 
 
@@ -291,6 +305,9 @@ def delete_order(oid: int):
     item = OrderModel.find_by_id(id=oid)
     if not item:
         raise HTTPException(status_code=404, detail="订单不存在")
+    ono = (item.order_no or "").strip()
+    if ono:
+        OrderOutboundLineModel.delete_all("[order_no] = ?", (ono,))
     if not item.delete():
         raise HTTPException(status_code=500, detail="删除失败")
     return {"message": "删除成功"}

@@ -9,6 +9,10 @@ from typing import Optional
 from PIL import Image
 from ..db_manage.database import DatabaseManager
 from ..image_storage import is_base64_image, save_base64_image, delete_image_file, get_image_root
+from ..operation_mercari.get_order.description_mgmt_ids import (
+    sql_pending_outbound_params,
+    sql_pending_outbound_subquery,
+)
 
 router = APIRouter(prefix="/api/inventory", tags=["inventory"])
 db = DatabaseManager()
@@ -87,20 +91,23 @@ class ProductUpdate(PydanticModel):
 
 
 def _row_to_product_detail(row: tuple) -> dict:
-    keys = PRODUCT_COLUMNS + ["category_name", "warehouse_name"]
+    keys = PRODUCT_COLUMNS + ["category_name", "warehouse_name", "pending_outbound_qty"]
     return dict(zip(keys, row))
 
 
 def _query_product_with_joins(where_sql: str = "", params: tuple = ()) -> list[dict]:
     select_cols = ", ".join([f"p.[{c}]" for c in PRODUCT_COLUMNS])
+    pend_sql = sql_pending_outbound_subquery("p")
     sql = f"""
-        SELECT {select_cols}, c.name AS category_name, w.name AS warehouse_name
+        SELECT {select_cols}, c.name AS category_name, w.name AS warehouse_name,
+               ({pend_sql}) AS pending_outbound_qty
         FROM [inventory] p
         LEFT JOIN [categories] c ON c.id = p.category_id
         LEFT JOIN [warehouses] w ON w.id = p.warehouse_id
         WHERE 1=1 {where_sql}
     """
-    rows = db.execute_query(sql, params)
+    bind = tuple(params) + sql_pending_outbound_params()
+    rows = db.execute_query(sql, bind)
     return [_row_to_product_detail(r) for r in rows]
 
 

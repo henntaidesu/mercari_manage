@@ -62,7 +62,59 @@
     </el-card>
 
     <el-card shadow="never" class="table-card">
-      <el-table :data="list" v-loading="loading" stripe>
+      <el-table
+        :data="list"
+        v-loading="loading"
+        stripe
+        row-key="id"
+        @expand-change="onOrderExpandChange"
+      >
+        <el-table-column type="expand" width="44">
+          <template #default="{ row }">
+            <div class="order-expand-wrap" v-loading="expandState[row.order_no]?.loading">
+              <template v-if="expandState[row.order_no]?.loaded">
+                <el-table
+                  v-if="(expandState[row.order_no]?.rows || []).length"
+                  :data="expandState[row.order_no].rows"
+                  size="small"
+                  border
+                  class="order-expand-inner-table"
+                >
+                  <el-table-column label="类型" width="80" align="center">
+                    <template #default="{ row: line }">
+                      {{ outboundLineKindLabel(line) }}
+                    </template>
+                  </el-table-column>
+                  <el-table-column label="标识" prop="management_id" min-width="120" align="center" show-overflow-tooltip />
+                  <el-table-column label="库存ID" width="88" align="center">
+                    <template #default="{ row: line }">
+                      {{ line.inventory_id != null ? line.inventory_id : '—' }}
+                    </template>
+                  </el-table-column>
+                  <el-table-column label="商品名称" prop="product_name" min-width="140" show-overflow-tooltip />
+                  <el-table-column label="条形码" prop="product_barcode" width="130" show-overflow-tooltip />
+                  <el-table-column label="SKU" prop="product_sku" width="100" show-overflow-tooltip />
+                  <el-table-column label="仓库位置" prop="warehouse_name" width="120" show-overflow-tooltip>
+                    <template #default="{ row: line }">
+                      {{ line.warehouse_name || '—' }}
+                    </template>
+                  </el-table-column>
+                  <el-table-column label="当前库存" width="96" align="center">
+                    <template #default="{ row: line }">
+                      {{ line.stock_quantity != null ? line.stock_quantity : '—' }}
+                    </template>
+                  </el-table-column>
+                  <el-table-column label="本单件数" prop="quantity" width="96" align="center" />
+                </el-table>
+                <el-empty
+                  v-else
+                  description="暂无出库明细（说明中无「管理ID:」「バーコード:」或尚未保存/同步）"
+                  :image-size="64"
+                />
+              </template>
+            </div>
+          </template>
+        </el-table-column>
         <el-table-column label="图片" width="76" align="center" header-align="center">
           <template #default="{ row }">
             <el-image
@@ -397,6 +449,9 @@ const orderStatCards = computed(() => {
     },
   ]
 })
+
+/** 订单行展开：按 order_no 缓存出库明细 */
+const expandState = ref({})
 
 const list = ref([])
 const total = ref(0)
@@ -830,6 +885,46 @@ function resetFilters() {
   loadStats()
 }
 
+function clearOutboundExpandCache(orderNo) {
+  const ono = String(orderNo || '').trim()
+  if (!ono) return
+  const next = { ...expandState.value }
+  delete next[ono]
+  expandState.value = next
+}
+
+/** 出库明细行：后端 line_kind 为 mgmt_id | barcode */
+function outboundLineKindLabel(line) {
+  const k = line?.line_kind
+  if (k === 'barcode') return '条码'
+  return '管理ID'
+}
+
+async function onOrderExpandChange(row, expandedRows) {
+  const ono = String(row?.order_no || '').trim()
+  if (!ono) return
+  const opened = expandedRows.some((r) => String(r?.order_no || '').trim() === ono)
+  if (!opened) return
+  if (expandState.value[ono]?.loaded) return
+  expandState.value = {
+    ...expandState.value,
+    [ono]: { loading: true, loaded: false, rows: [] },
+  }
+  try {
+    const res = await orderApi.outboundLines({ order_no: ono })
+    const rows = Array.isArray(res?.items) ? res.items : []
+    expandState.value = {
+      ...expandState.value,
+      [ono]: { loading: false, loaded: true, rows },
+    }
+  } catch {
+    expandState.value = {
+      ...expandState.value,
+      [ono]: { loading: false, loaded: true, rows: [] },
+    }
+  }
+}
+
 function openEdit(row) {
   form.value = {
     id: row.id,
@@ -872,6 +967,7 @@ async function refreshOrder(row) {
   try {
     await orderApi.refreshInfo({ order_no: orderNo, data_user: dataUser })
     ElMessage.success('已从煤炉刷新该订单')
+    clearOutboundExpandCache(orderNo)
     load()
     loadStats()
   } finally {
@@ -914,6 +1010,7 @@ async function submit() {
   try {
     await orderApi.update(form.value.id, payload)
     ElMessage.success('更新成功')
+    clearOutboundExpandCache(payload.order_no)
     dialogVisible.value = false
     load()
     loadStats()
@@ -925,6 +1022,7 @@ async function submit() {
 async function remove(id) {
   await orderApi.remove(id)
   ElMessage.success('删除成功')
+  expandState.value = {}
   if (list.value.length === 1 && page.value > 1) page.value -= 1
   load()
   loadStats()
@@ -1074,6 +1172,13 @@ onBeforeUnmount(() => {
 .thumb-fallback {
   color: #909399;
   font-size: 12px;
+}
+.order-expand-wrap {
+  padding: 8px 12px 12px 48px;
+  min-height: 48px;
+}
+.order-expand-inner-table {
+  max-width: 100%;
 }
 .form-hint {
   font-size: 12px;
