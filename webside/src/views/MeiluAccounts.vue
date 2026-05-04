@@ -3,9 +3,20 @@
     <el-card shadow="never" class="list-card" v-loading="loading">
       <el-row :gutter="16">
         <el-col :xs="24" :sm="12" :md="8" :lg="6" class="card-col">
-          <div class="add-card" @click="openCreate">
-            <el-icon class="add-card-icon"><Plus /></el-icon>
-            <span>新增账号</span>
+          <div class="add-card">
+            <div class="add-card-main" @click="openCreate">
+              <el-icon class="add-card-icon"><Plus /></el-icon>
+              <span>新增账号</span>
+            </div>
+            <el-button
+              type="primary"
+              plain
+              size="small"
+              :loading="browserLoadingKeys.has('meilu_prepare')"
+              @click.stop="openBrowserByKey('meilu_prepare', '新增前登录')"
+            >
+              打开浏览器
+            </el-button>
           </div>
         </el-col>
         <el-col v-for="row in list" :key="row.id" :xs="24" :sm="12" :md="8" :lg="6" class="card-col">
@@ -25,6 +36,13 @@
             </div>
             <div class="card-item"><span>备注：</span>{{ row.remark || '-' }}</div>
             <div class="card-actions">
+              <el-button
+                size="small"
+                type="primary"
+                plain
+                :loading="browserLoadingKeys.has(browserKeyFor(row.id))"
+                @click="openBrowserForSavedAccount(row)"
+              >打开浏览器</el-button>
               <el-button
                 size="small"
                 type="success"
@@ -156,6 +174,20 @@
         </el-form-item>
       </el-form>
       <template #footer>
+        <el-button
+          v-if="!form.id"
+          type="primary"
+          plain
+          :loading="browserLoadingKeys.has('meilu_prepare')"
+          @click="openBrowserByKey('meilu_prepare', '新增前登录')"
+        >打开浏览器</el-button>
+        <el-button
+          v-else
+          type="primary"
+          plain
+          :loading="browserLoadingKeys.has(browserKeyFor(form.id))"
+          @click="openBrowserFromDialog"
+        >打开浏览器</el-button>
         <el-button @click="dialogVisible = false">取消</el-button>
         <el-button type="primary" :loading="submitting" @click="submit">保存</el-button>
       </template>
@@ -167,7 +199,13 @@
 import { ref, onMounted, watch, nextTick } from 'vue'
 import { Plus } from '@element-plus/icons-vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { meiluAccountApi, mercariApi } from '@/api/index.js'
+import { meiluAccountApi, mercariApi, webDriveApi } from '@/api/index.js'
+
+const MERCARI_HOME = 'https://jp.mercari.com/'
+
+function browserKeyFor(accountId) {
+  return `meilu_${accountId}`
+}
 
 /** 小写 HTTP 头名 -> 表单字段名 */
 const HEADER_TO_FORM = {
@@ -506,6 +544,44 @@ async function remove(id) {
 // 正在同步的账号 ID 集合（用于按钮 loading 状态）
 const syncingIds = ref(new Set())
 
+/** web_drive account_key → loading（含 meilu_prepare、meilu_<id>） */
+const browserLoadingKeys = ref(new Set())
+
+async function openBrowserByKey(accountKey, label) {
+  if (browserLoadingKeys.value.has(accountKey)) return
+  const next = new Set(browserLoadingKeys.value)
+  next.add(accountKey)
+  browserLoadingKeys.value = next
+  try {
+    const res = await webDriveApi.openSession({
+      account_key: accountKey,
+      headless: false,
+      start_url: MERCARI_HOME,
+    })
+    const d = res.data || {}
+    const tip = d.already_running ? '（已在运行，已跳转首页）' : '已启动 Edge'
+    ElMessage.success(`${label || accountKey}：${tip}`)
+  } catch {
+    /* 错误由 axios 拦截器提示 */
+  } finally {
+    const s = new Set(browserLoadingKeys.value)
+    s.delete(accountKey)
+    browserLoadingKeys.value = s
+  }
+}
+
+function openBrowserForSavedAccount(row) {
+  openBrowserByKey(browserKeyFor(row.id), row.account_name || `账号 #${row.id}`)
+}
+
+function openBrowserFromDialog() {
+  if (!form.value.id) {
+    openBrowserByKey('meilu_prepare', '新增前登录')
+    return
+  }
+  openBrowserByKey(browserKeyFor(form.value.id), form.value.account_name || `账号 #${form.value.id}`)
+}
+
 async function fetchHistory(row) {
   if (syncingIds.value.has(row.id)) return
   const sid = String(row.seller_id || '').trim()
@@ -578,14 +654,29 @@ onMounted(() => {
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  gap: 10px;
-  cursor: pointer;
+  gap: 12px;
+  padding: 12px;
   transition: all 0.2s ease;
 }
 .add-card:hover {
-  color: #69b1ff;
   border-color: #409eff;
   background: #1b2942;
+}
+.add-card-main {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  cursor: pointer;
+  width: 100%;
+  min-height: 120px;
+  color: #a8b4c8;
+  transition: color 0.2s ease;
+}
+.add-card:hover .add-card-main {
+  color: #69b1ff;
 }
 .add-card-icon {
   font-size: 24px;
@@ -616,6 +707,7 @@ onMounted(() => {
 }
 .card-actions {
   display: flex;
+  flex-wrap: wrap;
   justify-content: flex-end;
   gap: 8px;
   margin-top: 8px;

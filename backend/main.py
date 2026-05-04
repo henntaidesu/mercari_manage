@@ -15,6 +15,7 @@ from src.routes.cost_records import router as cost_records_router
 from src.routes.orders import router as orders_router
 from src.routes.meilu_accounts import router as meilu_accounts_router
 from src.routes.on_sale_items import router as on_sale_items_router
+from src.routes.web_drive import router as web_drive_router
 from src.operation_mercari.API import router as mercari_router
 
 app = FastAPI(title="mercari 订单管理", version="1.0.0")
@@ -42,12 +43,20 @@ app.include_router(orders_router, dependencies=auth_required)
 app.include_router(meilu_accounts_router, dependencies=auth_required)
 app.include_router(mercari_router, dependencies=auth_required)
 app.include_router(on_sale_items_router, dependencies=auth_required)
+app.include_router(web_drive_router, dependencies=auth_required)
 app.include_router(auth_router)
 
 
 @app.on_event("startup")
 def startup():
     init_database()
+
+
+@app.on_event("shutdown")
+async def shutdown_web_drive():
+    from src.web_drive import get_web_drive_manager
+
+    await get_web_drive_manager().shutdown()
 
 
 @app.get("/api/health")

@@ -133,6 +133,15 @@ export const meiluAccountApi = {
   remove: (id) => http.delete(`/meilu-accounts/${id}`)
 }
 
+/** Edge 持久化会话：按 account_key 隔离 Cookie（与后端 web_drive 一致） */
+export const webDriveApi = {
+  openSession: (data, axiosConfig = {}) =>
+    http.post('/web-drive/sessions/open', data, { timeout: 0, ...axiosConfig }),
+  closeSession: (data) => http.post('/web-drive/sessions/close', data),
+  listSessions: () => http.get('/web-drive/sessions'),
+  profilesRoot: () => http.get('/web-drive/profiles-root')
+}
+
 // OCR 识别
 export const ocrApi = {
   ocrRegion: (base64Image) => http.post('/ocr-region', { image: base64Image })
