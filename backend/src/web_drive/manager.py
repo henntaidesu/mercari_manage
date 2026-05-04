@@ -41,13 +41,27 @@ class EdgeWebDriveManager:
             self._playwright = await async_playwright().start()
         return self._playwright
 
+    @staticmethod
+    def _is_context_alive(ctx: Any) -> bool:
+        """用户手动关窗后 Playwright 上下文已关闭，但字典里可能仍留着引用。"""
+        if ctx is None:
+            return False
+        try:
+            _ = list(ctx.pages)
+            return True
+        except Exception:
+            return False
+
     def list_sessions(self) -> List[Dict[str, Any]]:
+        """仅列出仍存活的上下文；已手动关闭的条目由下次 open_session 时从缓存剔除。"""
         out: List[Dict[str, Any]] = []
-        for key, ctx in self._contexts.items():
+        for key, ctx in list(self._contexts.items()):
+            if not self._is_context_alive(ctx):
+                continue
             try:
-                pages = len(ctx.pages) if ctx else 0
+                pages = len(ctx.pages)
             except Exception:
-                pages = 0
+                continue
             out.append(
                 {
                     "account_key": key,
@@ -66,11 +80,30 @@ class EdgeWebDriveManager:
     ) -> Dict[str, Any]:
         key = validate_account_key(account_key)
         async with self._lock:
-            if key in self._contexts:
-                ctx = self._contexts[key]
+            for k in list(self._contexts.keys()):
+                c = self._contexts.get(k)
+                if c is not None and not self._is_context_alive(c):
+                    self._contexts.pop(k, None)
+
+            ctx = self._contexts.get(key)
+
+            if ctx is not None:
                 if start_url:
-                    page = ctx.pages[0] if ctx.pages else await ctx.new_page()
-                    await page.goto(start_url, wait_until="domcontentloaded")
+                    try:
+                        page = ctx.pages[0] if ctx.pages else await ctx.new_page()
+                        await page.goto(start_url, wait_until="domcontentloaded")
+                    except Exception:
+                        self._contexts.pop(key, None)
+                        ctx = None
+                else:
+                    return {
+                        "account_key": key,
+                        "already_running": True,
+                        "profile_dir": profile_dir_for(key),
+                        "profiles_root": profiles_root(),
+                    }
+
+            if ctx is not None:
                 return {
                     "account_key": key,
                     "already_running": True,
@@ -111,7 +144,11 @@ class EdgeWebDriveManager:
             ctx = self._contexts.pop(key, None)
             if ctx is None:
                 return {"account_key": key, "closed": False}
-            await ctx.close()
+            try:
+                if self._is_context_alive(ctx):
+                    await ctx.close()
+            except Exception:
+                pass
             return {"account_key": key, "closed": True}
 
     async def shutdown(self) -> None:
