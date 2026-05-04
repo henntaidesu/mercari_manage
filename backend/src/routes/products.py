@@ -106,7 +106,8 @@ def _query_product_with_joins(where_sql: str = "", params: tuple = ()) -> list[d
         LEFT JOIN [warehouses] w ON w.id = p.warehouse_id
         WHERE 1=1 {where_sql}
     """
-    bind = tuple(params) + sql_pending_outbound_params()
+    # SQLite 按 SQL 文中「?」出现顺序绑定：SELECT 内待出库子查询的 NOT IN 先于 WHERE，故须先绑终态状态再绑筛选条件
+    bind = tuple(sql_pending_outbound_params()) + tuple(params)
     rows = db.execute_query(sql, bind)
     return [_row_to_product_detail(r) for r in rows]
 

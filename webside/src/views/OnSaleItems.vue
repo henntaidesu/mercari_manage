@@ -70,6 +70,11 @@
           </template>
         </el-table-column>
         <el-table-column label="商品ID" prop="item_id" width="128" show-overflow-tooltip align="center" header-align="center" />
+        <el-table-column label="卖家" prop="seller_name" width="120" show-overflow-tooltip align="center" header-align="center">
+          <template #default="{ row }">
+            <span>{{ row.seller_name || '-' }}</span>
+          </template>
+        </el-table-column>
         <el-table-column label="标题" prop="name" min-width="200" show-overflow-tooltip align="left" header-align="center" />
         <el-table-column label="价格¥" width="88" align="center" header-align="center">
           <template #default="{ row }">{{ Number(row.price || 0) }}</template>
@@ -80,9 +85,6 @@
               {{ onSaleStatusLabel(row.status) }}
             </el-tag>
           </template>
-        </el-table-column>
-        <el-table-column label="类目" min-width="140" show-overflow-tooltip align="left" header-align="center">
-          <template #default="{ row }">{{ categoryCell(row) }}</template>
         </el-table-column>
         <el-table-column label="赞/评" width="76" align="center" header-align="center">
           <template #default="{ row }">{{ row.num_likes ?? 0 }}/{{ row.num_comments ?? 0 }}</template>
@@ -291,15 +293,6 @@ function thumbPreviewList(row) {
 function firstThumb(row) {
   const urls = thumbPreviewList(row)
   return urls.length ? urls[0] : ''
-}
-
-function categoryCell(row) {
-  const parts = []
-  if (row.category_root_name) parts.push(row.category_root_name)
-  if (row.parent_category_name) parts.push(row.parent_category_name)
-  if (row.category_name) parts.push(row.category_name)
-  if (parts.length) return parts.join(' / ')
-  return '-'
 }
 
 function formatJsonPretty(raw) {
