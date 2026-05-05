@@ -165,15 +165,20 @@ def _attach_inventory_by_item_id(items: list) -> None:
 
 
 def _is_on_sale_zero_stock_alert(row: dict) -> bool:
-    """与前端一致：status=on_sale 且匹配库存 quantity<=0 时标红。"""
+    """与前端一致：status=on_sale 且 inventory_quantity<=0 或 None 时标红。
+    前端 Number(null)==0，故 null 也视为缺货预警。
+    """
     status = str(row.get("status") or "").strip()
     if status != "on_sale":
         return False
+    raw = row.get("inventory_quantity")
+    if raw is None:
+        # 未匹配到库存记录，前端 Number(null)==0 → 标红
+        return True
     try:
-        q = float(row.get("inventory_quantity"))
+        return float(raw) <= 0
     except (TypeError, ValueError):
         return False
-    return q <= 0
 
 
 def _on_sale_sort_key(row: dict) -> tuple:
