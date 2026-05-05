@@ -1,5 +1,6 @@
 # -*- coding: utf-8 -*-
 from typing import Dict, Optional, Set
+import re
 
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel as PydanticModel
@@ -11,6 +12,22 @@ from ..operation_mercari.on_sale_items_sync import sync_on_sale_items_from_merca
 from ..operation_mercari.sync_data import resolve_account_id_by_seller_id
 
 router = APIRouter(prefix="/api/on-sale-items", tags=["on-sale-items"])
+_MERCARI_ID_SEP_RE = re.compile(r"[\n,，、\s]+")
+
+
+def _split_mercari_item_ids(raw) -> list[str]:
+    s = str(raw or "").strip()
+    if not s:
+        return []
+    out = []
+    seen = set()
+    for part in _MERCARI_ID_SEP_RE.split(s):
+        t = str(part or "").strip()
+        if not t or t in seen:
+            continue
+        seen.add(t)
+        out.append(t)
+    return out
 
 
 def _seller_name_by_seller_id(seller_ids: Set[str]) -> Dict[str, str]:
@@ -65,10 +82,9 @@ def _attach_inventory_by_item_id(items: list) -> None:
     if not raw:
         return
     db = DatabaseManager()
-    ph = ",".join(["?"] * len(raw))
-    sql = f"""
+    sql = """
         SELECT
-            TRIM(IFNULL(i.[mercari_item_id], '')),
+            i.[mercari_item_id],
             i.[id],
             IFNULL(i.[name], ''),
             i.[quantity],
@@ -78,14 +94,19 @@ def _attach_inventory_by_item_id(items: list) -> None:
             IFNULL(w.[location], '')
         FROM [inventory] i
         LEFT JOIN [warehouses] w ON w.[id] = i.[warehouse_id]
-        WHERE TRIM(IFNULL(i.[mercari_item_id], '')) IN ({ph})
+        WHERE TRIM(IFNULL(i.[mercari_item_id], '')) != ''
     """
-    rows = db.execute_query(sql, tuple(raw))
+    rows = db.execute_query(sql)
     by_mid: Dict[str, list] = {}
-    for mid, iid, iname, qty, osq, barcode, wname, wloc in rows:
-        k = str(mid or "").strip()
-        if k:
-            by_mid.setdefault(k, []).append((iid, iname, qty, osq, barcode, wname, wloc))
+    wanted = set(raw)
+    for mids_raw, iid, iname, qty, osq, barcode, wname, wloc in rows:
+        mids = _split_mercari_item_ids(mids_raw)
+        if not mids:
+            continue
+        payload = (iid, iname, qty, osq, barcode, wname, wloc)
+        for k in mids:
+            if k in wanted:
+                by_mid.setdefault(k, []).append(payload)
     for row in items:
         k = str(row.get("item_id") or "").strip()
         hits = by_mid.get(k)

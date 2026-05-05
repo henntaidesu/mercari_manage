@@ -24,6 +24,8 @@ _BARCODE_PATTERN = re.compile(
     re.MULTILINE,
 )
 
+_MERCARI_ID_SEP_RE = re.compile(r"[\n,，、\s]+")
+
 
 def _mercari_response_ok(resp: Any) -> bool:
     if not isinstance(resp, dict):
@@ -45,6 +47,33 @@ def _normalize_mercari_item_id(raw: Any) -> Optional[str]:
         return None
     t = str(raw).strip()
     return t or None
+
+
+def _split_mercari_item_ids(raw: Any) -> List[str]:
+    s = str(raw or "").strip()
+    if not s:
+        return []
+    out: List[str] = []
+    seen = set()
+    for part in _MERCARI_ID_SEP_RE.split(s):
+        t = str(part or "").strip()
+        if not t or t in seen:
+            continue
+        seen.add(t)
+        out.append(t)
+    return out
+
+
+def _join_mercari_item_ids(ids: List[str]) -> Optional[str]:
+    arr = []
+    seen = set()
+    for v in ids:
+        t = str(v or "").strip()
+        if not t or t in seen:
+            continue
+        seen.add(t)
+        arr.append(t)
+    return "、".join(arr) if arr else None
 
 
 def _split_chunks(segment: str) -> List[str]:
@@ -227,23 +256,48 @@ def fetch_detail_and_sync_inventory(
 
     db = DatabaseManager()
     try:
-        # 同一煤炉商品上次关联但本次未命中的库存，先清空关联。
-        db.execute_update(
+        current_rows = db.execute_query(
             """
-            UPDATE [inventory]
-            SET [mercari_item_id] = NULL, [on_sale_quantity] = 0
-            WHERE TRIM(IFNULL([mercari_item_id], '')) = TRIM(?)
-            """,
-            (mid_api,),
+            SELECT [id], [mercari_item_id], [on_sale_quantity]
+            FROM [inventory]
+            WHERE TRIM(IFNULL([mercari_item_id], '')) != ''
+            """
         )
+        matched_ids = set(int(i) for i in qty_by_inventory.keys())
+        for iid_raw, mids_raw, osq_raw in current_rows:
+            iid = int(iid_raw)
+            mids = _split_mercari_item_ids(mids_raw)
+            if not mids:
+                continue
+            if mid_api in mids and iid not in matched_ids:
+                # 同一煤炉商品上次关联但本次未命中的库存：仅移除该 mid，不破坏该库存绑定的其他 mid。
+                next_mids = [x for x in mids if x != mid_api]
+                next_mid_text = _join_mercari_item_ids(next_mids)
+                next_osq = 0 if not next_mids else int(osq_raw or 0)
+                db.execute_update(
+                    """
+                    UPDATE [inventory]
+                    SET [mercari_item_id] = ?, [on_sale_quantity] = ?
+                    WHERE [id] = ?
+                    """,
+                    (next_mid_text, next_osq, iid),
+                )
         for iid, qty in qty_by_inventory.items():
+            row = db.execute_query(
+                "SELECT [mercari_item_id] FROM [inventory] WHERE [id] = ? LIMIT 1",
+                (int(iid),),
+            )
+            old_mids = _split_mercari_item_ids(row[0][0] if row else None)
+            if mid_api not in old_mids:
+                old_mids.append(mid_api)
+            merged_mid_text = _join_mercari_item_ids(old_mids)
             db.execute_update(
                 """
                 UPDATE [inventory]
                 SET [mercari_item_id] = ?, [on_sale_quantity] = ?
                 WHERE [id] = ?
                 """,
-                (mid_api, int(qty), int(iid)),
+                (merged_mid_text, int(qty), int(iid)),
             )
     except Exception as exc:
         sync["message"] = f"写入库存失败: {exc}"

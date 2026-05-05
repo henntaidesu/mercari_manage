@@ -207,9 +207,25 @@
             <span v-else class="cell-muted">{{ Number(row.pending_outbound_qty || 0) }}</span>
           </template>
         </el-table-column>
-        <el-table-column label="煤炉商品ID" prop="mercari_item_id" width="120" align="center" header-align="center" show-overflow-tooltip>
+        <el-table-column label="煤炉商品ID" prop="mercari_item_id" width="160" align="center" header-align="center">
           <template #default="{ row }">
-            <span>{{ row.mercari_item_id || '-' }}</span>
+            <span v-if="!mercariItemIds(row).length" class="cell-muted">-</span>
+            <span v-else-if="mercariItemIds(row).length === 1">{{ mercariItemIds(row)[0] }}</span>
+            <el-dropdown v-else trigger="click" placement="bottom">
+              <span class="mercari-id-dropdown-trigger">
+                {{ mercariItemIds(row)[0] }}（{{ mercariItemIds(row).length }}）
+              </span>
+              <template #dropdown>
+                <el-dropdown-menu>
+                  <el-dropdown-item
+                    v-for="(mid, idx) in mercariItemIds(row)"
+                    :key="`mid-${row.id}-${idx}`"
+                  >
+                    {{ mid }}
+                  </el-dropdown-item>
+                </el-dropdown-menu>
+              </template>
+            </el-dropdown>
           </template>
         </el-table-column>
         <el-table-column label="在售数量" prop="on_sale_quantity" width="88" align="center" header-align="center">
@@ -1344,6 +1360,23 @@ function quantityTagType(q) {
   return 'success'
 }
 
+function mercariItemIds(row) {
+  const raw = String(row?.mercari_item_id || '').trim()
+  if (!raw) return []
+  const parts = raw
+    .split(/[\n,，、\s]+/)
+    .map((s) => s.trim())
+    .filter(Boolean)
+  const out = []
+  const seen = new Set()
+  for (const p of parts) {
+    if (seen.has(p)) continue
+    seen.add(p)
+    out.push(p)
+  }
+  return out
+}
+
 const pagedList = computed(() => {
   const start = (currentPage.value - 1) * pageSize
   return sortedInventoryList.value.slice(start, start + pageSize)
@@ -2049,6 +2082,27 @@ onBeforeUnmount(() => {
 .cell-center { text-align: center; }
 .cell-right { text-align: right; }
 .cell-muted { color: #909399; font-size: 13px; }
+.multi-line-cell {
+  display: flex;
+  flex-direction: column;
+}
+.multi-line-cell > div {
+  min-height: 30px;
+  line-height: 30px;
+  box-sizing: border-box;
+}
+.multi-line-cell--compact > div {
+  min-height: 22px;
+  line-height: 22px;
+}
+.mercari-id-dropdown-trigger {
+  display: inline-flex;
+  align-items: center;
+  cursor: pointer;
+  color: #79bbff;
+  border-bottom: 1px dashed #79bbff66;
+  line-height: 1.2;
+}
 .row-actions {
   display: inline-flex;
   align-items: center;
