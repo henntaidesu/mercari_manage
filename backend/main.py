@@ -54,6 +54,12 @@ app.include_router(auth_router)
 
 @app.on_event("startup")
 def startup():
+    # 保证业务代码里 logging.info 能出现在 Uvicorn 同一控制台（默认根 logger 常为 WARNING）
+    _fmt = "%(levelname)s | %(name)s | %(message)s"
+    try:
+        logging.basicConfig(level=logging.INFO, format=_fmt, force=True)
+    except TypeError:
+        logging.basicConfig(level=logging.INFO, format=_fmt)
     init_database()
     if os.environ.get("SSL_MITM_AUTO_START", "1").strip().lower() not in ("0", "false", "no", "off"):
         from src.ssl_mitm_proxy.runner import start_mitm_proxy

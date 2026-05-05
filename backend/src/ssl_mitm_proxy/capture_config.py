@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 """
-监控 api.mercari.jp 的 items/get_items（status=trading）请求，将头写入配置文件。
+监控 Mercari 关键接口请求，将头与查询参数写入配置文件。
 
 配置文件：backend/ssl_mitm/items_get_items_capture.json（由 mitm 插件原子写入）
 """
@@ -17,11 +17,9 @@ from .paths import ssl_mitm_data_dir
 
 _lock = threading.Lock()
 
-# 与 meilu 账号 value 中字段名一致；DPoP HTTP 头 → dpop_list
+# 与 meilu 账号 value 中字段名一致（DPoP 字段按接口类型动态映射）
 HEADER_MAP_TO_VALUE = (
     ("authorization", "authorization"),
-    ("dpop", "dpop_list"),
-    ("dpop-list", "dpop_list"),
     ("user-agent", "user_agent"),
     ("accept", "accept"),
     ("accept-language", "accept_language"),
@@ -75,36 +73,95 @@ def clear_session_marker(account_id: int) -> None:
         pass
 
 
-def parse_items_get_items(
-    flow_url: str, path: str, host: str, raw_query: str = ""
+def parse_capture_target(
+    flow_url: str, path: str, host: str, raw_query: str = "", method: str = ""
 ) -> Optional[Dict[str, Any]]:
-    """若匹配 api.mercari.jp items/get_items 且 status=trading，则返回 seller_id / full_url。"""
-    h = (host or "").lower().strip()
-    if "api.mercari.jp" not in h:
-        return None
-    pth = path or ""
-    if "items/get_items" not in pth and "items/get_items" not in (flow_url or ""):
-        return None
+    """匹配关键接口并提取元信息。
+
+    - ``GET /items/get_items``: 提取 seller_id + status（用于 dpop_list / dpop_on_sale_list）
+    - ``GET /transaction_evidences/get``: 提取 item_id（用于 dpop_info）
+    - ``GET /items/get``: 提取 item_id（用于 dpop_item_get_info）
+    """
     try:
+        m = (method or "").strip().upper()
+        if m and m != "GET":
+            return None
+        h = (host or "").lower().strip()
+        pth = (path or "").split("?", 1)[0]
         u = (flow_url or "").strip()
         if not u.startswith("http"):
             q = f"?{raw_query}" if raw_query else ""
             u = f"https://{h}{pth}{q}"
-        qd = parse_qs(urlparse(u).query)
-        sid_list = qd.get("seller_id") or qd.get("sellerId") or []
-        sid = (sid_list[0] or "").strip() if sid_list else ""
-        status_vals = [(x or "").strip().lower() for x in qd.get("status", [])]
-        if not status_vals or "trading" not in status_vals:
+        parsed = urlparse(u)
+        if parsed.netloc.lower() != "api.mercari.jp":
             return None
-        if not sid.isdigit():
-            return None
-        return {"seller_id": sid, "full_url": u}
+        norm_path = (parsed.path or "").rstrip("/")
+        qd = parse_qs(parsed.query)
+        if norm_path.endswith("items/get_items"):
+            sid_list = qd.get("seller_id") or qd.get("sellerId") or []
+            sid = (sid_list[0] or "").strip() if sid_list else ""
+            status_vals = [(x or "").strip().lower() for x in qd.get("status", []) if (x or "").strip()]
+            if not sid.isdigit():
+                return None
+            if not status_vals:
+                return None
+            dpop_field = "dpop_on_sale_list" if any(s in ("on_sale", "stop") for s in status_vals) else "dpop_list"
+            return {
+                "capture_type": "items_get_items",
+                "seller_id": sid,
+                "status_values": status_vals,
+                "http_method": "GET",
+                "dpop_field": dpop_field,
+                "full_url": u,
+            }
+        if norm_path.endswith("transaction_evidences/get"):
+            item_list = qd.get("item_id") or qd.get("itemId") or []
+            item_id = (item_list[0] or "").strip() if item_list else ""
+            if not item_id:
+                return None
+            return {
+                "capture_type": "transaction_evidences_get",
+                "item_id": item_id,
+                "http_method": "GET",
+                "dpop_field": "dpop_info",
+                "full_url": u,
+            }
+        if norm_path.endswith("items/get"):
+            item_list = qd.get("id") or qd.get("item_id") or qd.get("itemId") or []
+            item_id = (item_list[0] or "").strip() if item_list else ""
+            if not item_id:
+                return None
+            return {
+                "capture_type": "items_get",
+                "item_id": item_id,
+                "http_method": "GET",
+                "dpop_field": "dpop_item_get_info",
+                "full_url": u,
+            }
+        return None
     except Exception:
         return None
 
 
-def headers_to_value_dict(flow_headers: Any) -> Dict[str, str]:
+def headers_to_value_dict(flow_headers: Any, dpop_field: str = "dpop_list") -> Dict[str, str]:
     out: Dict[str, str] = {}
+    dpop_val = ""
+    for dkey in ("dpop", "dpop-list"):
+        raw_dpop = None
+        try:
+            raw_dpop = flow_headers.get(dkey)
+        except Exception:
+            raw_dpop = None
+        if raw_dpop is None:
+            continue
+        if isinstance(raw_dpop, bytes):
+            raw_dpop = raw_dpop.decode("utf-8", "replace")
+        dpop_val = str(raw_dpop).strip()
+        if dpop_val:
+            break
+    if dpop_val:
+        out[dpop_field or "dpop_list"] = dpop_val
+
     for hk, vk in HEADER_MAP_TO_VALUE:
         raw = None
         try:
@@ -127,8 +184,6 @@ def headers_to_value_dict(flow_headers: Any) -> Dict[str, str]:
         val = str(raw).strip()
         if val:
             out[vk] = val
-    if out.get("dpop_list") and not out.get("dpop_info"):
-        out["dpop_info"] = out["dpop_list"]
     return out
 
 

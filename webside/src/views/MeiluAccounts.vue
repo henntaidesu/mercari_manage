@@ -48,7 +48,6 @@
                 type="warning"
                 plain
                 :loading="mitmAuthLoadingId === row.id"
-                :disabled="!row.seller_id"
                 @click="fetchAuthViaMitmForRow(row)"
               >获取新的认证</el-button>
               <el-button
@@ -119,7 +118,7 @@
             v-model="form.seller_id"
             maxlength="30"
             clearable
-            placeholder="纯数字，与 items/get_items 请求 URL 中的 seller_id= 一致"
+            placeholder="纯数字；留空时可通过「获取新的认证」从抓包自动填入"
           />
           <p class="form-item-tip">
             与监控煤炉列表接口时抓包得到的地址一致，例如
@@ -258,7 +257,6 @@
           type="warning"
           plain
           :loading="mitmAuthLoadingId === form.id"
-          :disabled="!form.seller_id"
           @click="fetchAuthViaMitmFromDialog"
         >获取新的认证</el-button>
         <el-button @click="dialogVisible = false">取消</el-button>
@@ -512,11 +510,10 @@ const reqBlur = { required: true, message: '不能为空', trigger: 'blur' }
 const rules = {
   account_name: [{ required: true, message: '请输入账号名称', trigger: 'blur' }],
   seller_id: [
-    { required: true, message: '请输入卖家ID', trigger: 'blur' },
     {
       validator(_rule, val, cb) {
         const text = String(val || '').trim()
-        if (!text) return cb(new Error('请输入卖家ID'))
+        if (!text) return cb()
         if (!/^\d+$/.test(text)) return cb(new Error('卖家ID必须为纯数字'))
         cb()
       },
@@ -707,13 +704,9 @@ const mitmAuthLoadingId = ref(null)
 
 async function fetchAuthViaMitmForRow(row) {
   if (!row?.id) return
-  if (!(row.seller_id || '').toString().trim()) {
-    ElMessage.warning('请先填写卖家 ID')
-    return
-  }
   try {
     await ElMessageBox.confirm(
-      '将启动 MITM 并打开 Edge（请先将 MITM 根证书安装到「受信任的根证书」）。随后在浏览器进入会产生「取引中」列表的请求（与 items/get_items&status=trading 一致），最多等待约 2 分钟。',
+      '将启动 MITM 并按顺序自动抓取 4 项：DPoP_List（items/get_items?status=trading）→ DPoP_Info（transaction_evidences/get）→ DPoP_OnSale-List（items/get_items?status=on_sale/stop）→ DPoP_ItemGet-Info（items/get）。顺序固定，任一步失败会停止并提示。最多等待约 2 分钟。',
       '获取新的认证',
       { type: 'info', confirmButtonText: '开始', cancelButtonText: '取消' }
     )
@@ -722,8 +715,15 @@ async function fetchAuthViaMitmForRow(row) {
   }
   mitmAuthLoadingId.value = row.id
   try {
-    await meiluAccountApi.fetchAuthViaMitm(row.id, { timeout: 0 })
-    ElMessage.success('已根据抓包更新账号中的 Authorization、DPoP_List 等字段')
+    const res = await meiluAccountApi.fetchAuthViaMitm(row.id, { timeout: 0 })
+    const keys = Array.isArray(res?.captured_field_keys) ? res.captured_field_keys : []
+    const capSid = res?.capture_meta?.seller_id
+    const sidPart = capSid != null && String(capSid).trim() ? `卖家 ID：${capSid}。` : ''
+    ElMessage.success(
+      keys.length
+        ? `${sidPart}已合并请求头（${keys.length} 项）：${keys.join('、')}`
+        : `${sidPart}已根据抓包更新账号`
+    )
     await load()
     if (dialogVisible.value && form.value.id === row.id) {
       const refreshed = list.value.find((r) => r.id === row.id)

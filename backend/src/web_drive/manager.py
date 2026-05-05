@@ -30,6 +30,37 @@ class EdgeWebDriveManager:
         self._playwright: Any = None
         self._contexts: Dict[str, Any] = {}
 
+    @staticmethod
+    async def _navigate_one_tab(
+        context: Any,
+        start_url: str,
+        *,
+        wait_until: str = "domcontentloaded",
+    ) -> None:
+        """只保留一个标签并打开 start_url。
+
+        Edge 持久化 profile 的「继续浏览上次页面」可能在 launch 后异步再开标签，
+        仅关掉 pages[1:] 仍会出现两个相同页面；因此先关掉启动时所有页再 new_page，
+        并在 goto 后短循环关闭晚到的恢复标签。
+        """
+        for p in list(context.pages):
+            try:
+                await p.close()
+            except Exception:
+                pass
+        page = await context.new_page()
+        await page.goto(start_url, wait_until=wait_until)
+        for _ in range(12):
+            extra = [p for p in context.pages if p is not page]
+            if not extra:
+                break
+            for p in extra:
+                try:
+                    await p.close()
+                except Exception:
+                    pass
+            await asyncio.sleep(0.15)
+
     async def _ensure_playwright(self) -> Any:
         if self._playwright is None:
             try:
@@ -91,8 +122,7 @@ class EdgeWebDriveManager:
             if ctx is not None:
                 if start_url:
                     try:
-                        page = ctx.pages[0] if ctx.pages else await ctx.new_page()
-                        await page.goto(start_url, wait_until="domcontentloaded")
+                        await self._navigate_one_tab(ctx, start_url)
                     except Exception:
                         self._contexts.pop(key, None)
                         ctx = None
@@ -119,11 +149,18 @@ class EdgeWebDriveManager:
                 "channel": "msedge",
                 "headless": headless,
                 "viewport": {"width": 1280, "height": 800},
-                "args": ["--disable-blink-features=AutomationControlled"],
+                "args": [
+                    "--disable-blink-features=AutomationControlled",
+                    # 减轻启动时再拉起「上次会话」标签（配合 _navigate_one_tab 收敛）
+                    "--disable-session-crashed-bubble",
+                    "--disable-infobars",
+                ],
             }
             ps = (proxy_server or "").strip()
             if ps:
                 launch_kw["proxy"] = {"server": ps}
+                # 本地 mitmproxy 动态签发站点证书，未将 mitm CA 导入系统前 Edge 会报 ERR_CERT_AUTHORITY_INVALID
+                launch_kw["ignore_https_errors"] = True
             try:
                 context = await pw.chromium.launch_persistent_context(**launch_kw)
             except Exception as exc:
@@ -133,8 +170,7 @@ class EdgeWebDriveManager:
 
             self._contexts[key] = context
             if start_url:
-                page = context.pages[0] if context.pages else await context.new_page()
-                await page.goto(start_url, wait_until="domcontentloaded")
+                await self._navigate_one_tab(context, start_url)
 
             return {
                 "account_key": key,
@@ -156,6 +192,51 @@ class EdgeWebDriveManager:
             except Exception:
                 pass
             return {"account_key": key, "closed": True}
+
+    async def click_xpath(
+        self,
+        account_key: str,
+        xpath: str,
+        *,
+        timeout_ms: int = 20000,
+    ) -> Dict[str, Any]:
+        key = validate_account_key(account_key)
+        xp = (xpath or "").strip()
+        if not xp:
+            raise ValueError("xpath 不能为空")
+        async with self._lock:
+            ctx = self._contexts.get(key)
+            if ctx is None or not self._is_context_alive(ctx):
+                raise RuntimeError(f"会话未运行: {key}")
+            page = ctx.pages[0] if ctx.pages else await ctx.new_page()
+            locator = page.locator(f"xpath={xp}")
+            await locator.first.wait_for(state="visible", timeout=timeout_ms)
+            await locator.first.click(timeout=timeout_ms)
+            try:
+                await page.wait_for_load_state("domcontentloaded", timeout=timeout_ms)
+            except Exception:
+                pass
+            return {"account_key": key, "clicked": True, "xpath": xp}
+
+    async def open_new_tab(
+        self,
+        account_key: str,
+        url: str,
+        *,
+        wait_until: str = "domcontentloaded",
+        timeout_ms: int = 30000,
+    ) -> Dict[str, Any]:
+        key = validate_account_key(account_key)
+        u = (url or "").strip()
+        if not u:
+            raise ValueError("url 不能为空")
+        async with self._lock:
+            ctx = self._contexts.get(key)
+            if ctx is None or not self._is_context_alive(ctx):
+                raise RuntimeError(f"会话未运行: {key}")
+            page = await ctx.new_page()
+            await page.goto(u, wait_until=wait_until, timeout=timeout_ms)
+            return {"account_key": key, "opened": True, "url": u}
 
     async def shutdown(self) -> None:
         async with self._lock:
