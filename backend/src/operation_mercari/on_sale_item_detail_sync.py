@@ -5,6 +5,7 @@
 
 from __future__ import annotations
 
+import re
 from typing import Any, Dict, List, Optional, Tuple
 
 from ..db_manage.database import DatabaseManager
@@ -14,6 +15,14 @@ from .get_order.description_mgmt_ids import (
     parse_order_description_outbound_tokens,
 )
 from .get_order.mercari_item_get import fetch_mercari_item_get
+
+_FW_DIGITS = str.maketrans("０１２３４５６７８９", "0123456789")
+_MGMT_ID_PATTERN = re.compile(r"管理\s*ID\s*[:：]\s*([0-9０-９\s,，、*xX×]+)", re.IGNORECASE | re.MULTILINE)
+_MGMT_BANGO_PATTERN = re.compile(r"管理\s*番号\s*[:：]\s*([0-9０-９\s,，、*xX×]+)", re.MULTILINE)
+_BARCODE_PATTERN = re.compile(
+    r"バーコード\s*[:：]\s*([0-9A-Za-z０-９\s,，、\-_*xX×]+)",
+    re.MULTILINE,
+)
 
 
 def _mercari_response_ok(resp: Any) -> bool:
@@ -36,6 +45,73 @@ def _normalize_mercari_item_id(raw: Any) -> Optional[str]:
         return None
     t = str(raw).strip()
     return t or None
+
+
+def _split_chunks(segment: str) -> List[str]:
+    parts: List[str] = []
+    for part in re.split(r"[,，、\s]+", segment or ""):
+        p = (part or "").strip()
+        if p:
+            parts.append(p)
+    return parts
+
+
+def _value_and_quantity(token: str) -> Tuple[str, int]:
+    """
+    支持 token 尾部数量语法：6977850080862*10 / 6977850080862×10 / 6977850080862x10。
+    未携带数量时默认 1。
+    """
+    t = (token or "").translate(_FW_DIGITS).strip()
+    if not t:
+        return "", 1
+    m = re.match(r"^(.*?)(?:\s*[*xX×]\s*(\d+))?$", t)
+    if not m:
+        return t, 1
+    base = (m.group(1) or "").strip()
+    qraw = (m.group(2) or "").strip()
+    if not qraw:
+        return base, 1
+    try:
+        q = int(qraw)
+    except (TypeError, ValueError):
+        q = 1
+    return base, max(1, q)
+
+
+def parse_listing_description_tokens_with_quantity(text: Optional[str]) -> List[Dict[str, Any]]:
+    """
+    解析说明中的管理番号/条码，并保留每个识别值对应数量。
+    返回项：{kind: mgmt_id|barcode, value: int|str, quantity: int, raw: str}
+    """
+    if text is None:
+        return []
+    s = str(text).strip()
+    if not s:
+        return []
+    spans: List[Tuple[int, str, str]] = []
+    for m in _MGMT_ID_PATTERN.finditer(s):
+        spans.append((m.start(), "mgmt", m.group(1) or ""))
+    for m in _MGMT_BANGO_PATTERN.finditer(s):
+        spans.append((m.start(), "mgmt", m.group(1) or ""))
+    for m in _BARCODE_PATTERN.finditer(s):
+        spans.append((m.start(), "barcode", m.group(1) or ""))
+    spans.sort(key=lambda x: x[0])
+
+    out: List[Dict[str, Any]] = []
+    for _, kind, chunk in spans:
+        for part in _split_chunks(chunk):
+            base, qty = _value_and_quantity(part)
+            if not base:
+                continue
+            if kind == "mgmt":
+                try:
+                    mid = int(base)
+                except (TypeError, ValueError):
+                    continue
+                out.append({"kind": "mgmt_id", "value": mid, "quantity": qty, "raw": part})
+            else:
+                out.append({"kind": "barcode", "value": str(base).strip(), "quantity": qty, "raw": part})
+    return out
 
 
 def resolve_inventory_id_from_listing_description(text: Optional[str]) -> Optional[int]:
@@ -98,15 +174,16 @@ def fetch_detail_and_sync_inventory(
         return {"api": resp, "sync": sync}
 
     desc = data.get("description")
-    inv_id = resolve_inventory_id_from_listing_description(
-        desc if isinstance(desc, str) else None
-    )
+    desc_text = desc if isinstance(desc, str) else None
+    inv_id = resolve_inventory_id_from_listing_description(desc_text)
     mid_api = _normalize_mercari_item_id(data.get("id"))
     status = data.get("status")
     on_sale_qty = _on_sale_quantity_from_status(status if isinstance(status, str) else None)
 
-    hints = extract_mgmt_barcode_hints(desc if isinstance(desc, str) else None)
+    hints = extract_mgmt_barcode_hints(desc_text)
     sync["parsed_hints"] = hints
+    parsed_tokens = parse_listing_description_tokens_with_quantity(desc_text)
+    sync["parsed_tokens"] = parsed_tokens
 
     if inv_id is None:
         sync["message"] = (
@@ -119,23 +196,64 @@ def fetch_detail_and_sync_inventory(
         sync["message"] = "响应中缺少商品 id"
         return {"api": resp, "sync": sync}
 
+    resolved_lines: List[Dict[str, Any]] = []
+    qty_by_inventory: Dict[int, int] = {}
+    for token in parsed_tokens:
+        kind = str(token.get("kind") or "")
+        value = token.get("value")
+        qty = int(token.get("quantity") or 1)
+        resolved_inv_id: Optional[int] = None
+        if kind == "mgmt_id":
+            mid = int(value)
+            if _inventory_id_exists(mid):
+                resolved_inv_id = mid
+        elif kind == "barcode":
+            resolved_inv_id = _inventory_id_by_barcode(str(value or "").strip())
+        resolved_lines.append(
+            {
+                "kind": kind,
+                "value": value,
+                "quantity": qty,
+                "inventory_id": resolved_inv_id,
+            }
+        )
+        if resolved_inv_id is not None:
+            qty_by_inventory[resolved_inv_id] = qty_by_inventory.get(resolved_inv_id, 0) + qty
+
+    if not qty_by_inventory and inv_id is not None:
+        # 回退兼容：若解析列表为空但旧逻辑能识别到单个库存，按 status 推导 0/1。
+        qty_by_inventory[int(inv_id)] = max(0, int(on_sale_qty))
+    sync["resolved_lines"] = resolved_lines
+
     db = DatabaseManager()
     try:
+        # 同一煤炉商品上次关联但本次未命中的库存，先清空关联。
         db.execute_update(
             """
             UPDATE [inventory]
-            SET [mercari_item_id] = ?, [on_sale_quantity] = ?
-            WHERE [id] = ?
+            SET [mercari_item_id] = NULL, [on_sale_quantity] = 0
+            WHERE TRIM(IFNULL([mercari_item_id], '')) = TRIM(?)
             """,
-            (mid_api, on_sale_qty, int(inv_id)),
+            (mid_api,),
         )
+        for iid, qty in qty_by_inventory.items():
+            db.execute_update(
+                """
+                UPDATE [inventory]
+                SET [mercari_item_id] = ?, [on_sale_quantity] = ?
+                WHERE [id] = ?
+                """,
+                (mid_api, int(qty), int(iid)),
+            )
     except Exception as exc:
         sync["message"] = f"写入库存失败: {exc}"
         return {"api": resp, "sync": sync}
 
-    sync["updated"] = True
-    sync["inventory_id"] = int(inv_id)
+    sync["updated"] = bool(qty_by_inventory)
+    sync["inventory_id"] = int(inv_id) if inv_id is not None else None
     sync["mercari_item_id"] = mid_api
-    sync["on_sale_quantity"] = on_sale_qty
-    sync["message"] = "已同步煤炉商品 ID 与在售数量"
+    sync["on_sale_quantity"] = sum(qty_by_inventory.values()) if qty_by_inventory else 0
+    sync["inventory_ids"] = sorted(qty_by_inventory.keys())
+    sync["inventory_quantity_map"] = {str(k): int(v) for k, v in qty_by_inventory.items()}
+    sync["message"] = "已同步煤炉商品 ID 与在售数量" if qty_by_inventory else "未匹配到可写入库存"
     return {"api": resp, "sync": sync}

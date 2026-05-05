@@ -46,7 +46,13 @@ def _attach_seller_name(items: list) -> None:
 
 
 def _attach_inventory_by_item_id(items: list) -> None:
-    """按煤炉 item_id 与 inventory.mercari_item_id 匹配，附加库存数量、在售绑定数量。"""
+    """按煤炉 item_id 与 inventory.mercari_item_id 匹配，附加库存位置与数量（支持一对多）。"""
+    def _to_int(v, default=0) -> int:
+        try:
+            return int(v)
+        except (TypeError, ValueError):
+            return default
+
     if not items:
         return
     raw = list(
@@ -61,31 +67,68 @@ def _attach_inventory_by_item_id(items: list) -> None:
     db = DatabaseManager()
     ph = ",".join(["?"] * len(raw))
     sql = f"""
-        SELECT TRIM(IFNULL([mercari_item_id], '')), [id], [quantity], [on_sale_quantity]
-        FROM [inventory]
-        WHERE TRIM(IFNULL([mercari_item_id], '')) IN ({ph})
+        SELECT
+            TRIM(IFNULL(i.[mercari_item_id], '')),
+            i.[id],
+            IFNULL(i.[name], ''),
+            i.[quantity],
+            i.[on_sale_quantity],
+            TRIM(IFNULL(i.[barcode], '')),
+            IFNULL(w.[name], ''),
+            IFNULL(w.[location], '')
+        FROM [inventory] i
+        LEFT JOIN [warehouses] w ON w.[id] = i.[warehouse_id]
+        WHERE TRIM(IFNULL(i.[mercari_item_id], '')) IN ({ph})
     """
     rows = db.execute_query(sql, tuple(raw))
-    by_mid: Dict[str, tuple] = {}
-    for mid, iid, qty, osq in rows:
+    by_mid: Dict[str, list] = {}
+    for mid, iid, iname, qty, osq, barcode, wname, wloc in rows:
         k = str(mid or "").strip()
         if k:
-            by_mid[k] = (iid, qty, osq)
+            by_mid.setdefault(k, []).append((iid, iname, qty, osq, barcode, wname, wloc))
     for row in items:
         k = str(row.get("item_id") or "").strip()
-        hit = by_mid.get(k)
-        if hit is None and k.startswith("m"):
-            hit = by_mid.get(k[1:])
-        if hit is None and k.isdigit():
-            hit = by_mid.get("m" + k)
-        if hit:
-            row["inventory_id"] = int(hit[0]) if hit[0] is not None else None
-            row["inventory_quantity"] = int(hit[1]) if hit[1] is not None else 0
-            row["inventory_on_sale_quantity"] = int(hit[2]) if hit[2] is not None else 0
+        hits = by_mid.get(k)
+        if hits is None and k.startswith("m"):
+            hits = by_mid.get(k[1:])
+        if hits is None and k.isdigit():
+            hits = by_mid.get("m" + k)
+        if hits:
+            first = hits[0]
+            row["inventory_id"] = int(first[0]) if first[0] is not None else None
+            # first: (iid, iname, qty, osq, barcode, wname, wloc)
+            row["inventory_quantity"] = _to_int(first[2], 0)
+            row["inventory_on_sale_quantity"] = _to_int(first[3], 0)
+            loc_parts = []
+            mgmt_id_parts = []
+            barcode_parts = []
+            product_name_parts = []
+            for iid, iname, qty, osq, barcode, wname, wloc in hits:
+                loc_name = str(wname or "").strip() or str(wloc or "").strip() or "-"
+                loc_parts.append(
+                    f"#{int(iid)} {loc_name} x{int(osq) if osq is not None else 0}"
+                )
+                mgmt_id_parts.append(str(int(iid)))
+                bc = str(barcode or "").strip()
+                if bc:
+                    barcode_parts.append(bc)
+                n = str(iname or "").strip()
+                if n:
+                    product_name_parts.append(n)
+            row["inventory_match_count"] = len(hits)
+            row["inventory_locations_text"] = "、".join(loc_parts)
+            row["inventory_mgmt_ids_text"] = "、".join(mgmt_id_parts)
+            row["inventory_barcodes_text"] = "、".join(barcode_parts)
+            row["inventory_product_names_text"] = "、".join(product_name_parts)
         else:
             row["inventory_id"] = None
             row["inventory_quantity"] = None
             row["inventory_on_sale_quantity"] = None
+            row["inventory_match_count"] = 0
+            row["inventory_locations_text"] = None
+            row["inventory_mgmt_ids_text"] = None
+            row["inventory_barcodes_text"] = None
+            row["inventory_product_names_text"] = None
 
 
 class SyncOnSaleRequest(PydanticModel):
@@ -129,6 +172,7 @@ def list_on_sale_by_item_id(item_id: str):
         raise HTTPException(status_code=400, detail="item_id 不能为空")
     items = OnSaleItemModel.find_all_by_item_id(iid)
     _attach_seller_name(items)
+    _attach_inventory_by_item_id(items)
     return {"item_id": iid, "total": len(items), "items": items}
 
 

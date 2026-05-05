@@ -65,25 +65,34 @@
                 class="os-expand-table"
                 empty-text="暂无数据，展开后自动加载"
               >
-                <el-table-column label="商品ID" prop="item_id" min-width="120" show-overflow-tooltip />
-                <el-table-column label="卖家ID" prop="seller_id" width="100" show-overflow-tooltip align="center" />
-                <el-table-column label="卖家" prop="seller_name" width="100" show-overflow-tooltip align="center" />
-                <el-table-column label="状态" width="100" align="center">
+                <el-table-column label="商品名称" min-width="180" show-overflow-tooltip>
                   <template #default="{ row: r }">
-                    <el-tag :type="onSaleStatusTagType(r.status)" size="small" effect="light">
-                      {{ onSaleStatusLabel(r.status) }}
-                    </el-tag>
+                    <span>{{ r.inventory_product_names_text || '-' }}</span>
                   </template>
                 </el-table-column>
-                <el-table-column label="标题" prop="name" min-width="160" show-overflow-tooltip />
-                <el-table-column label="价格¥" width="80" align="center">
-                  <template #default="{ row: r }">{{ Number(r.price || 0) }}</template>
+                <el-table-column label="管理ID" min-width="120" show-overflow-tooltip>
+                  <template #default="{ row: r }">
+                    <span v-if="r.inventory_mgmt_ids_text">{{ r.inventory_mgmt_ids_text }}</span>
+                    <span v-else class="cell-muted">-</span>
+                  </template>
                 </el-table-column>
-                <el-table-column label="赞/评" width="72" align="center">
-                  <template #default="{ row: r }">{{ r.num_likes ?? 0 }}/{{ r.num_comments ?? 0 }}</template>
+                <el-table-column label="条码" min-width="180" show-overflow-tooltip>
+                  <template #default="{ row: r }">
+                    <span v-if="r.inventory_barcodes_text">{{ r.inventory_barcodes_text }}</span>
+                    <span v-else class="cell-muted">-</span>
+                  </template>
                 </el-table-column>
-                <el-table-column label="PV/近7日" width="92" align="center">
-                  <template #default="{ row: r }">{{ r.item_pv ?? 0 }}/{{ r.recent_item_pv ?? 0 }}</template>
+                <el-table-column label="存储位置" min-width="180" show-overflow-tooltip>
+                  <template #default="{ row: r }">
+                    <span v-if="r.inventory_locations_text">{{ r.inventory_locations_text }}</span>
+                    <span v-else class="cell-muted">-</span>
+                  </template>
+                </el-table-column>
+                <el-table-column label="在售数" width="90" align="center">
+                  <template #default="{ row: r }">
+                    <span v-if="r.inventory_on_sale_quantity != null">{{ r.inventory_on_sale_quantity }}</span>
+                    <span v-else class="cell-muted">-</span>
+                  </template>
                 </el-table-column>
                 <el-table-column label="更新" width="140" align="center">
                   <template #default="{ row: r }">{{ displayTs(r.updated) }}</template>
@@ -112,20 +121,6 @@
           </template>
         </el-table-column>
         <el-table-column label="商品ID" prop="item_id" width="128" show-overflow-tooltip align="center" header-align="center" />
-        <el-table-column label="数量" width="108" align="center" header-align="center">
-          <template #default="{ row }">
-            <el-tooltip
-              v-if="row.inventory_id != null"
-              :content="`库存 #${row.inventory_id}：在库 ${row.inventory_quantity ?? 0}，在售绑定 ${row.inventory_on_sale_quantity ?? 0}`"
-              placement="top"
-            >
-              <span class="os-qty-cell">
-                {{ row.inventory_quantity ?? 0 }}<span class="cell-muted">/</span>{{ row.inventory_on_sale_quantity ?? 0 }}
-              </span>
-            </el-tooltip>
-            <span v-else class="cell-muted">—</span>
-          </template>
-        </el-table-column>
         <el-table-column label="卖家" prop="seller_name" width="120" show-overflow-tooltip align="center" header-align="center">
           <template #default="{ row }">
             <span>{{ row.seller_name || '-' }}</span>
@@ -487,8 +482,9 @@ async function fetchItemDetail(row) {
     if (sync.updated) {
       ElMessage.success(
         sync.message ||
-          `已关联库存 #${sync.inventory_id}，煤炉 ID ${sync.mercari_item_id}，在售数量 ${sync.on_sale_quantity ?? '-'}`
+          `已关联 ${sync.inventory_ids?.length ?? 0} 条库存，煤炉 ID ${sync.mercari_item_id}`
       )
+      await load()
     } else {
       ElMessage.warning(sync.message || '未写入库存（请检查说明中的管理番号/条码与账号 DPoP_ItemGet-Info）')
     }
@@ -615,9 +611,5 @@ onMounted(() => {
 }
 .os-expand-table {
   width: 100%;
-}
-.os-qty-cell {
-  cursor: default;
-  font-variant-numeric: tabular-nums;
 }
 </style>
