@@ -248,7 +248,10 @@ class EdgeWebDriveManager:
             ctx = self._contexts.get(key)
             if ctx is None or not self._is_context_alive(ctx):
                 raise RuntimeError(f"会话未运行: {key}")
-            page = ctx.pages[0] if ctx.pages else await ctx.new_page()
+            # 始终操作最后打开的标签页：
+            # Step2 click → pages[-1]=取引中(open_new_tab后) → 点进交易详情
+            # Step4 click → pages[-1]=出品一覧(open_new_tab后) → 点进商品详情
+            page = ctx.pages[-1] if ctx.pages else await ctx.new_page()
             locator = page.locator(f"xpath={xp}")
             await locator.first.wait_for(state="visible", timeout=timeout_ms)
             await locator.first.click(timeout=timeout_ms)
