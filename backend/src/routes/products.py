@@ -5,9 +5,10 @@ import time
 import base64
 from fastapi import APIRouter, HTTPException, UploadFile, File
 from fastapi import Depends
+from fastapi.responses import FileResponse
 from pydantic import BaseModel as PydanticModel, field_validator
 from typing import Optional
-from PIL import Image
+from PIL import Image, ImageOps
 from ..auth import require_auth
 from ..db_manage.database import DatabaseManager
 from ..image_storage import is_base64_image, save_base64_image, delete_image_file, get_image_root
@@ -17,6 +18,8 @@ from ..operation_mercari.get_order.description_mgmt_ids import (
 )
 
 router = APIRouter(prefix="/api/inventory", tags=["inventory"])
+# 公开路由：缩略图等无需登录即可访问（图片本身已通过静态文件公开）
+public_router = APIRouter(prefix="/api/inventory", tags=["inventory-public"])
 db = DatabaseManager()
 
 PRODUCT_COLUMNS = [
@@ -205,6 +208,54 @@ def _load_image_for_match(image_value: Optional[str]) -> Optional[Image.Image]:
     except Exception:
         return None
     return None
+
+
+@public_router.get("/image-thumb")
+def get_image_thumb(path: str, size: int = 300):
+    """
+    按需生成缩略图并缓存到磁盘。
+    - path: /imges/xxx.jpg 格式
+    - size: 最长边像素（默认 300，列表小图用 200 即可）
+    """
+    clean = (path or "").strip()
+    if not clean.startswith("/imges/") or ".." in clean:
+        raise HTTPException(status_code=400, detail="无效路径")
+    size = max(50, min(size, 1200))
+
+    filename = clean.split("/imges/", 1)[1].strip("/")
+    orig_abs = os.path.join(get_image_root(), filename)
+    if not os.path.exists(orig_abs):
+        raise HTTPException(status_code=404, detail="图片不存在")
+
+    # 缩略图缓存目录
+    thumb_dir = os.path.join(get_image_root(), "_thumbs")
+    os.makedirs(thumb_dir, exist_ok=True)
+
+    stem = filename.rsplit(".", 1)[0] if "." in filename else filename
+    # 将路径分隔符统一替换，避免子目录名带入文件名
+    safe_stem = stem.replace("/", "_").replace("\\", "_")
+    thumb_filename = f"{safe_stem}_s{size}.jpg"
+    thumb_abs = os.path.join(thumb_dir, thumb_filename)
+
+    if not os.path.exists(thumb_abs):
+        try:
+            img = Image.open(orig_abs)
+            # 先应用 EXIF 方向信息，避免手机竖拍图片在缩略图中出现旋转偏差
+            img = ImageOps.exif_transpose(img)
+            img = img.convert("RGB")
+            w, h = img.size
+            if max(w, h) > size:
+                scale = size / max(w, h)
+                img = img.resize(
+                    (int(w * scale), int(h * scale)),
+                    Image.Resampling.LANCZOS,
+                )
+            img.save(thumb_abs, "JPEG", quality=75, optimize=True)
+        except Exception:
+            # PIL 无法处理时直接返回原图
+            return FileResponse(orig_abs)
+
+    return FileResponse(thumb_abs, media_type="image/jpeg")
 
 
 @router.get("")

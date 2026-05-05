@@ -11,6 +11,7 @@ from src.routes.categories import router as categories_router
 from src.routes.warehouses import router as warehouses_router
 from src.routes.product_types import router as product_types_router
 from src.routes.inventory import router as inventory_router
+from src.routes.products import public_router as inventory_public_router
 from src.routes.transactions import router as transactions_router
 from src.routes.scan import router as scan_router
 from src.routes.auth import router as auth_router
@@ -37,6 +38,7 @@ app.mount("/imges", StaticFiles(directory=ensure_image_dir()), name="imges")
 
 auth_required = [Depends(require_auth)]
 
+app.include_router(inventory_public_router)  # 缩略图等公开接口，无需登录
 app.include_router(categories_router, dependencies=auth_required)
 app.include_router(warehouses_router, dependencies=auth_required)
 app.include_router(product_types_router, dependencies=auth_required)

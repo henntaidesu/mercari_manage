@@ -69,16 +69,34 @@
         :data="pagedList"
         v-loading="loading"
         stripe
+        row-key="id"
         :size="isMobile ? 'small' : 'default'"
         @sort-change="onInventorySortChange"
       >
+        <el-table-column type="expand" width="44">
+          <template #default="{ row }">
+            <div class="inventory-expand-wrap">
+              <el-table
+                v-if="mercariItemIds(row).length"
+                :data="mercariItemIds(row).map((mid, i) => ({ no: i + 1, mid }))"
+                size="small"
+                border
+                class="inventory-expand-inner-table"
+              >
+                <el-table-column label="序号" prop="no" width="60" align="center" />
+                <el-table-column label="煤炉商品ID" prop="mid" min-width="180" align="left" />
+              </el-table>
+              <el-empty v-else description="暂无煤炉商品ID" :image-size="48" />
+            </div>
+          </template>
+        </el-table-column>
         <el-table-column label="管理番号" prop="id" width="100" align="center" header-align="center" />
         <el-table-column label="正面图" width="76" align="center" header-align="center">
           <template #default="{ row }">
             <el-image
               v-if="row.image_front || row.image"
               class="order-thumb"
-              :src="row.image_front || row.image"
+              :src="thumbUrl(row.image_front || row.image)"
               :preview-src-list="[row.image_front || row.image]"
               :hide-on-click-modal="true"
               :preview-teleported="true"
@@ -99,7 +117,7 @@
             <el-image
               v-if="row.image_back"
               class="order-thumb"
-              :src="row.image_back"
+              :src="thumbUrl(row.image_back)"
               :preview-src-list="[row.image_back]"
               :hide-on-click-modal="true"
               :preview-teleported="true"
@@ -207,25 +225,12 @@
             <span v-else class="cell-muted">{{ Number(row.pending_outbound_qty || 0) }}</span>
           </template>
         </el-table-column>
-        <el-table-column label="煤炉商品ID" prop="mercari_item_id" width="160" align="center" header-align="center">
+        <el-table-column label="煤炉商品ID" width="130" align="center" header-align="center">
           <template #default="{ row }">
             <span v-if="!mercariItemIds(row).length" class="cell-muted">-</span>
-            <span v-else-if="mercariItemIds(row).length === 1">{{ mercariItemIds(row)[0] }}</span>
-            <el-dropdown v-else trigger="click" placement="bottom">
-              <span class="mercari-id-dropdown-trigger">
-                {{ mercariItemIds(row)[0] }}（{{ mercariItemIds(row).length }}）
-              </span>
-              <template #dropdown>
-                <el-dropdown-menu>
-                  <el-dropdown-item
-                    v-for="(mid, idx) in mercariItemIds(row)"
-                    :key="`mid-${row.id}-${idx}`"
-                  >
-                    {{ mid }}
-                  </el-dropdown-item>
-                </el-dropdown-menu>
-              </template>
-            </el-dropdown>
+            <el-tag v-else size="small" type="primary" effect="plain">
+              {{ mercariItemIds(row).length }} 个ID
+            </el-tag>
           </template>
         </el-table-column>
         <el-table-column label="在售数量" prop="on_sale_quantity" width="88" align="center" header-align="center">
@@ -439,7 +444,19 @@
         </el-form-item>
         <template v-if="form.id">
           <el-form-item label="煤炉商品ID">
-            <el-input v-model="form.mercari_item_id" clearable placeholder="在售页「获取详情」写入，可手改" />
+            <div class="mercari-id-editor">
+              <div v-for="(_, idx) in mercariIdList" :key="idx" class="mercari-id-row">
+                <el-input
+                  v-model="mercariIdList[idx]"
+                  size="small"
+                  placeholder="输入商品ID"
+                  class="mercari-id-input"
+                  clearable
+                />
+                <el-button size="small" type="danger" text @click="removeMercariId(idx)">删除</el-button>
+              </div>
+              <el-button size="small" type="primary" plain @click="addMercariId">+ 添加商品ID</el-button>
+            </div>
           </el-form-item>
           <el-form-item label="在售数量">
             <el-input-number v-model="form.on_sale_quantity" :min="0" :max="999999" :step="1" controls-position="right" style="width: 160px" />
@@ -749,6 +766,9 @@ const productTypeCreateMode = ref(false)
 /** 编辑弹窗库存数量：纯文本输入，blur / 保存时写回 form.quantity */
 const quantityEdit = ref('0')
 
+/** 编辑弹窗：煤炉商品ID 列表（一对多） */
+const mercariIdList = ref([])
+
 function syncQuantityEditFromForm() {
   quantityEdit.value = String(form.value.quantity ?? 0)
 }
@@ -759,6 +779,32 @@ function applyQuantityEditToForm() {
   const v = Number.isNaN(n) ? 0 : Math.max(0, n)
   form.value.quantity = v
   quantityEdit.value = String(v)
+}
+
+function parseMercariIdsRaw(raw) {
+  return String(raw || '').trim()
+    .split(/[\n,，、\s]+/)
+    .map((s) => s.trim())
+    .filter(Boolean)
+}
+
+function syncMercariIdListFromForm() {
+  mercariIdList.value = parseMercariIdsRaw(form.value.mercari_item_id)
+}
+
+function applyMercariIdListToForm() {
+  form.value.mercari_item_id = mercariIdList.value
+    .map((s) => String(s || '').trim())
+    .filter(Boolean)
+    .join(',')
+}
+
+function addMercariId() {
+  mercariIdList.value.push('')
+}
+
+function removeMercariId(idx) {
+  mercariIdList.value.splice(idx, 1)
 }
 
 // ---- OCR 状态 ----
@@ -1360,6 +1406,15 @@ function quantityTagType(q) {
   return 'success'
 }
 
+/**
+ * 将本地 /imges/ 路径转为缩略图接口 URL（列表小图用）。
+ * 非本地图片（外部 URL）原样返回。
+ */
+function thumbUrl(src, size = 200) {
+  if (!src || !src.startsWith('/imges/')) return src
+  return `/api/inventory/image-thumb?path=${encodeURIComponent(src)}&size=${size}`
+}
+
 function mercariItemIds(row) {
   const raw = String(row?.mercari_item_id || '').trim()
   if (!raw) return []
@@ -1429,6 +1484,7 @@ function openDialog(row = null) {
         image_back: null
       }
   syncQuantityEditFromForm()
+  syncMercariIdListFromForm()
   dialogVisible.value = true
 }
 
@@ -1483,6 +1539,7 @@ function handleImageUpload(e, side) {
 
 async function submit() {
   applyQuantityEditToForm()
+  applyMercariIdListToForm()
   await formRef.value.validate()
   submitting.value = true
   try {
@@ -2095,13 +2152,29 @@ onBeforeUnmount(() => {
   min-height: 22px;
   line-height: 22px;
 }
-.mercari-id-dropdown-trigger {
-  display: inline-flex;
+/* ---- 库存展开：二级表格 ---- */
+.inventory-expand-wrap {
+  padding: 8px 12px 12px 48px;
+  min-height: 48px;
+}
+.inventory-expand-inner-table {
+  max-width: 480px;
+}
+
+/* ---- 编辑弹窗：煤炉商品ID 列表编辑器 ---- */
+.mercari-id-editor {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  width: 100%;
+}
+.mercari-id-row {
+  display: flex;
   align-items: center;
-  cursor: pointer;
-  color: #79bbff;
-  border-bottom: 1px dashed #79bbff66;
-  line-height: 1.2;
+  gap: 8px;
+}
+.mercari-id-input {
+  flex: 1;
 }
 .row-actions {
   display: inline-flex;
