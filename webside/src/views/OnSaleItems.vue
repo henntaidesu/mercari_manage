@@ -317,16 +317,7 @@ function isOnSaleZeroStockAlert(row) {
 }
 
 const displayList = computed(() => {
-  const arr = Array.isArray(list.value) ? list.value.slice() : []
-  return arr
-    .map((row, idx) => ({ row, idx }))
-    .sort((a, b) => {
-      const aw = isOnSaleZeroStockAlert(a.row) ? 1 : 0
-      const bw = isOnSaleZeroStockAlert(b.row) ? 1 : 0
-      if (aw !== bw) return bw - aw
-      return a.idx - b.idx
-    })
-    .map((x) => x.row)
+  return Array.isArray(list.value) ? list.value : []
 })
 
 function onSaleRowClassName({ row }) {

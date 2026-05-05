@@ -164,6 +164,48 @@ def _attach_inventory_by_item_id(items: list) -> None:
             row["inventory_lines"] = []
 
 
+def _is_on_sale_zero_stock_alert(row: dict) -> bool:
+    """与前端一致：status=on_sale 且匹配库存 quantity<=0 时标红。"""
+    status = str(row.get("status") or "").strip()
+    if status != "on_sale":
+        return False
+    try:
+        q = float(row.get("inventory_quantity"))
+    except (TypeError, ValueError):
+        return False
+    return q <= 0
+
+
+def _on_sale_sort_key(row: dict) -> tuple:
+    """
+    在售列表排序键（全表维度）：
+    1) 标红项优先（on_sale 且 inventory_quantity<=0）
+    2) 其余按更新时间倒序
+    3) 再按创建时间倒序
+    4) 最后按 id 倒序兜底，保证稳定
+    """
+    return (
+        0 if _is_on_sale_zero_stock_alert(row) else 1,
+        -int(row.get("updated") or 0),
+        -int(row.get("created") or 0),
+        -int(row.get("id") or 0),
+    )
+
+
+def _sort_on_sale_items_for_alert(items: list[dict]) -> None:
+    """
+    原地排序（全量）：
+    1) 先将标红项与非标红项拆分，保证标红组整体在前
+    2) 各组内按更新时间/创建时间/id 倒序
+    """
+    alerts = [r for r in items if _is_on_sale_zero_stock_alert(r)]
+    others = [r for r in items if not _is_on_sale_zero_stock_alert(r)]
+    # 组内倒序：这里复用原有 key，避免时间并列时不稳定
+    alerts.sort(key=_on_sale_sort_key)
+    others.sort(key=_on_sale_sort_key)
+    items[:] = alerts + others
+
+
 class SyncOnSaleRequest(PydanticModel):
     account_id: Optional[int] = None
 
@@ -182,17 +224,42 @@ def list_on_sale_items(
     page: int = 1,
     page_size: int = 20,
 ):
-    data = OnSaleItemModel.find_list(
-        keyword=keyword,
-        seller_id=seller_id,
-        status=status,
-        page=page,
-        page_size=page_size,
-    )
-    items = data.get("items") or []
-    _attach_seller_name(items)
-    _attach_inventory_by_item_id(items)
-    return data
+    page = max(1, int(page or 1))
+    page_size = max(1, min(int(page_size or 20), 200))
+
+    # 后端全表排序：先取全部匹配项，补齐库存字段后按“标红优先”排序，再做分页切片。
+    all_items = []
+    fetch_page = 1
+    fetch_size = 500
+    while True:
+        chunk = OnSaleItemModel.find_list(
+            keyword=keyword,
+            seller_id=seller_id,
+            status=status,
+            page=fetch_page,
+            page_size=fetch_size,
+        )
+        rows = chunk.get("items") or []
+        all_items.extend(rows)
+        total = int(chunk.get("total") or 0)
+        if not rows or len(all_items) >= total:
+            break
+        fetch_page += 1
+
+    _attach_seller_name(all_items)
+    _attach_inventory_by_item_id(all_items)
+
+    _sort_on_sale_items_for_alert(all_items)
+
+    total = len(all_items)
+    start = (page - 1) * page_size
+    end = start + page_size
+    return {
+        "total": total,
+        "page": page,
+        "page_size": page_size,
+        "items": all_items[start:end],
+    }
 
 
 @router.get("/by-item-id")
