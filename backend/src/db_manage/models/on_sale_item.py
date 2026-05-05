@@ -44,6 +44,7 @@ _ON_SALE_ITEM_LIST_KEYS: Tuple[str, ...] = (
     "impression_boost_status",
     "auction_info_json",
     "synced_at",
+    "is_delete",
 )
 
 
@@ -226,6 +227,11 @@ class OnSaleItemModel(BaseModel):
                 "not_null": False,
                 "default": None,
             },
+            "is_delete": {
+                "type": "INTEGER",
+                "not_null": True,
+                "default": 0,
+            },
         }
 
     @classmethod
@@ -242,9 +248,12 @@ class OnSaleItemModel(BaseModel):
         keyword: Optional[str] = None,
         seller_id: Optional[str] = None,
         status: Optional[str] = None,
+        include_deleted: bool = False,
     ) -> Tuple[str, List[Any]]:
         sql = " FROM [on_sale_items] t WHERE 1=1 "
         params: List[Any] = []
+        if not include_deleted:
+            sql += " AND COALESCE(t.is_delete, 0) = 0"
         if keyword:
             sql += " AND (t.item_id LIKE ? OR IFNULL(t.name,'') LIKE ?)"
             kw = f"%{keyword.strip()}%"
@@ -280,12 +289,13 @@ class OnSaleItemModel(BaseModel):
         keyword: Optional[str] = None,
         seller_id: Optional[str] = None,
         status: Optional[str] = None,
+        include_deleted: bool = False,
         page: int = 1,
         page_size: int = 20,
     ) -> Dict[str, Any]:
         db = cls().db
         base_sql, params = cls._build_filter(
-            keyword=keyword, seller_id=seller_id, status=status
+            keyword=keyword, seller_id=seller_id, status=status, include_deleted=include_deleted
         )
         total = db.execute_query(f"SELECT COUNT(*) {base_sql}", tuple(params))[0][0]
         offset = (page - 1) * page_size

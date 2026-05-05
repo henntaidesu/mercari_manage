@@ -18,6 +18,7 @@ Charles 等 MITM），可设置环境变量 MERCARI_REQUESTS_VERIFY：
 import os
 import random
 import time
+import json
 
 import requests
 import urllib3
@@ -54,6 +55,43 @@ _HEADER_FIELD_MAP: Dict[str, str] = {
     "sec_fetch_dest":     "Sec-Fetch-Dest",
     "referer":            "Referer",
 }
+
+
+def _format_http_error_message(
+    method: str,
+    url: str,
+    status_code: Optional[int],
+    body_text: str,
+) -> str:
+    """
+    将 Mercari HTTP 错误包装为更可操作的提示。
+    重点处理 401 token 过期场景，避免前端只看到长串原始 JSON。
+    """
+    sc = int(status_code) if status_code is not None else -1
+    base = f"HTTP 请求失败 [{method} {url}]: {sc} {body_text}"
+    if sc != 401:
+        return base
+
+    try:
+        payload = json.loads(body_text or "{}")
+    except Exception:
+        payload = {}
+    msg = str(payload.get("message") or "").lower()
+    code = payload.get("code")
+    unauth_type = (
+        (((payload.get("details") or {}).get("unauthenticatedInfo") or {}).get("unauthenticatedType"))
+        or ""
+    )
+    unauth_type = str(unauth_type).strip().upper()
+
+    # 401 常见根因：Authorization 过期（EXPIRED_TOKEN）
+    if unauth_type == "EXPIRED_TOKEN" or ("invalid token" in msg) or code == 16:
+        return (
+            "煤炉接口鉴权失败：Authorization 已失效（EXPIRED_TOKEN）。"
+            "请在【账号管理】重新抓取/更新该账号请求头（至少 Authorization、DPoP_OnSale-List），"
+            "然后重试“从煤炉同步”。"
+        )
+    return base
 
 
 def _requests_verify() -> Union[bool, str]:
@@ -224,9 +262,8 @@ def send_request(
         response.raise_for_status()
     except requests.HTTPError as exc:
         body = exc.response.text if exc.response is not None else ""
-        raise RuntimeError(
-            f"HTTP 请求失败 [{method_upper} {url}]: {exc.response.status_code} {body}"
-        ) from exc
+        status_code = exc.response.status_code if exc.response is not None else None
+        raise RuntimeError(_format_http_error_message(method_upper, url, status_code, body)) from exc
     except requests.RequestException as exc:
         # 异常信息放前，避免长 URL 占满日志；便于对接口返回 502 时看到根因（超时/SSL/代理/DNS）
         hint = ""

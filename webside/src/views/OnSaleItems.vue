@@ -173,7 +173,15 @@
         </el-table-column>
         <el-table-column label="操作" width="200" fixed="right" align="center" header-align="center">
           <template #default="{ row }">
-            <el-button type="primary" link size="small" @click="openMercariManage(row)">管理</el-button>
+            <el-button
+              type="primary"
+              link
+              size="small"
+              :loading="manageLoadingIds.has(String(row.item_id || '').trim())"
+              @click="openMercariManage(row)"
+            >
+              管理
+            </el-button>
             <el-button
               type="success"
               link
@@ -230,7 +238,7 @@
 import { ref, computed, onMounted, reactive } from 'vue'
 import { ElMessage } from 'element-plus'
 import { Download } from '@element-plus/icons-vue'
-import { onSaleItemApi, meiluAccountApi } from '@/api/index.js'
+import { onSaleItemApi, meiluAccountApi, webDriveApi } from '@/api/index.js'
 
 /** 煤炉商品 item.status → 中文（与 API 原始值对应，筛选仍传英文枚举） */
 const onSaleStatusMap = {
@@ -268,6 +276,8 @@ function onSaleStatusTagType(status) {
 const loading = ref(false)
 /** 正在请求 items/get 的商品 ID（trim 后） */
 const detailLoadingIds = ref(new Set())
+/** 正在打开管理页的商品 ID（trim 后） */
+const manageLoadingIds = ref(new Set())
 const syncLoading = ref(false)
 const syncVisible = ref(false)
 const syncAccountId = ref(null)
@@ -422,14 +432,43 @@ function mercariItemPathSegment(itemId) {
   return raw.startsWith('m') ? raw : `m${raw}`
 }
 
-function openMercariManage(row) {
+async function openMercariManage(row) {
   const seg = mercariItemPathSegment(row.item_id)
   if (!seg) {
     ElMessage.warning('缺少商品 ID')
     return
   }
+  const sid = String(row.seller_id || '').trim()
+  if (!sid) {
+    ElMessage.warning('缺少卖家 ID，无法定位对应账号')
+    return
+  }
+  const matched = sellerFromAccounts.value.find((a) => String(a.seller_id || '').trim() === sid)
+  if (!matched?.id) {
+    ElMessage.warning(`未找到卖家 ${sid} 对应的 active 账号，请先在账号管理配置 seller_id`)
+    return
+  }
+  const iid = String(row.item_id || '').trim()
+  if (manageLoadingIds.value.has(iid)) return
+  const next = new Set(manageLoadingIds.value)
+  next.add(iid)
+  manageLoadingIds.value = next
   const url = `https://jp.mercari.com/item/${encodeURIComponent(seg)}`
-  window.open(url, '_blank', 'noopener,noreferrer')
+  try {
+    const res = await webDriveApi.openSession({
+      account_key: `meilu_${matched.id}`,
+      headless: false,
+      start_url: url,
+    })
+    const d = res?.data || {}
+    ElMessage.success(d.already_running ? '已使用系统浏览器会话打开管理页（会话已在运行）' : '已使用系统浏览器会话打开管理页')
+  } catch {
+    /* 错误由 axios 拦截器提示 */
+  } finally {
+    const done = new Set(manageLoadingIds.value)
+    done.delete(iid)
+    manageLoadingIds.value = done
+  }
 }
 
 async function fetchItemDetail(row) {
@@ -484,7 +523,7 @@ async function runSync() {
     const res = await onSaleItemApi.sync(payload, { timeout: 0 })
     const d = res.data || {}
     ElMessage.success(
-      `同步完成：已清空本地 ${d.deleted_before_sync ?? 0} 条；煤炉 ${d.api_item_count ?? 0} 条，新增 ${d.inserted ?? 0}，更新 ${d.updated ?? 0}`
+      `同步完成：煤炉 ${d.api_item_count ?? 0} 条，新增 ${d.inserted ?? 0}，更新 ${d.updated ?? 0}，标记删除 ${d.marked_deleted ?? 0}`
     )
     syncVisible.value = false
     load()
@@ -499,6 +538,8 @@ async function loadSellerAccounts() {
     sellerFromAccounts.value = (res.items || [])
       .filter((a) => a.status === 'active' && (a.seller_id || '').toString().trim())
       .map((a) => ({
+        id: a.id,
+        seller_id: String(a.seller_id).trim(),
         value: String(a.seller_id).trim(),
         label: `${a.account_name} (${a.seller_id})`,
       }))

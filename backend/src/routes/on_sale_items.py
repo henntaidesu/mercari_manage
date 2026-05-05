@@ -135,8 +135,9 @@ def list_on_sale_by_item_id(item_id: str):
 @router.post("/sync")
 def sync_on_sale(data: SyncOnSaleRequest):
     """
-    先按卖家删除本地 on_sale_items 缓存，再从煤炉拉取在售列表（items/get_items，
-    status=on_sale,stop 等，见 on_sale_list.build_on_sale_list_url）写入 on_sale_items；须配置 dpop_on_sale_list。
+    从煤炉拉取在售列表（items/get_items，status=on_sale,stop 等）并同步本地：
+    新列表中不存在的本地记录不物理删除，而是标记 is_delete=1（软删除）。
+    列表接口默认仅返回 is_delete=0 数据。须配置 dpop_on_sale_list。
     """
     try:
         result = sync_on_sale_items_from_mercari(account_id=data.account_id)

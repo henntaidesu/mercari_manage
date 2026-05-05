@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 """
-在售商品列表：按卖家清空本地 on_sale_items 后，从 Mercari items/get_items 全量拉取并写入。
+在售商品列表：从 Mercari items/get_items 拉取后，执行“新增/更新 + 软删除标记”同步。
 
 使用在售专用 URL（status=on_sale,stop 等）与 DPoP_OnSale-List（dpop_on_sale_list），
 见 get_on_sale.on_sale_list.fetch_on_sale_list_items。
@@ -123,24 +123,35 @@ def upsert_on_sale_item_row(row: Dict[str, Any]) -> str:
 
 def sync_on_sale_items_from_mercari(account_id: Optional[int] = None) -> Dict[str, Any]:
     """
-    先删除 on_sale_items 中该卖家（seller_id）的本地缓存，再从煤炉拉取在售列表
-    （items/get_items，on_sale,stop），按 item_id 写入 on_sale_items。
+    从煤炉拉取在售列表（items/get_items，on_sale,stop）并同步本地：
+    - 列表中存在：按 item_id 新增/更新，且 is_delete=0
+    - 本地存在但新列表中不存在：标记 is_delete=1（软删除）
     """
     aid, sid = _resolve_account_and_seller(account_id)
     seller_key = str(int(sid))
-    deleted = OnSaleItemModel.delete_all(
-        "TRIM([seller_id]) = TRIM(?)",
-        (seller_key,),
-    )
     items, meta = fetch_on_sale_list_items(seller_id=sid, account_id=aid)
+    incoming_ids = {
+        str(it.get("id") or "").strip()
+        for it in items
+        if str(it.get("id") or "").strip()
+    }
+    existed_rows = OnSaleItemModel.find_all(
+        where="TRIM([seller_id]) = TRIM(?)",
+        params=(seller_key,),
+    )
+    existed_id_set = {str(r.item_id or "").strip() for r in existed_rows if str(r.item_id or "").strip()}
+    soft_deleted_ids = existed_id_set - incoming_ids
+    marked_deleted = 0
+    restored = 0
     err_list: List[Dict[str, str]] = []
     stats: Dict[str, Any] = {
         "seller_id": seller_key,
-        "deleted_before_sync": deleted,
         "api_item_count": len(items),
         "inserted": 0,
         "updated": 0,
         "skipped": 0,
+        "marked_deleted": 0,
+        "restored": 0,
         "errors": err_list,
     }
 
@@ -150,16 +161,34 @@ def sync_on_sale_items_from_mercari(account_id: Optional[int] = None) -> Dict[st
             if not row:
                 stats["skipped"] += 1
                 continue
+            row["is_delete"] = 0
+            before = OnSaleItemModel.find_all(where="[item_id] = ?", params=(row["item_id"],), limit=1)
+            was_deleted = bool(before and int(getattr(before[0], "is_delete", 0) or 0) == 1)
             r = upsert_on_sale_item_row(row)
             if r == "inserted":
                 stats["inserted"] += 1
             elif r == "updated":
                 stats["updated"] += 1
+                if was_deleted:
+                    restored += 1
             else:
                 stats["skipped"] += 1
         except Exception as exc:
             err_list.append({"item_id": str(item.get("id", "")), "error": str(exc)})
 
+    if soft_deleted_ids:
+        placeholders = ",".join(["?"] * len(soft_deleted_ids))
+        sql = (
+            "UPDATE [on_sale_items] "
+            "SET [is_delete] = 1, [synced_at] = ? "
+            f"WHERE TRIM([seller_id]) = TRIM(?) AND TRIM([item_id]) IN ({placeholders}) "
+            "AND COALESCE([is_delete], 0) = 0"
+        )
+        params = (int(time.time()), seller_key, *sorted(soft_deleted_ids))
+        marked_deleted = OnSaleItemModel().db.execute_update(sql, params)
+
+    stats["marked_deleted"] = marked_deleted
+    stats["restored"] = restored
     stats["has_next"] = meta.get("has_next", False)
     stats["total_item_count"] = meta.get("total_item_count", len(items))
     return stats
