@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import asyncio
 import os
+import shutil
 from typing import Any, Dict, List, Optional
 
 from .paths import profile_dir_for, profiles_root, validate_account_key
@@ -71,6 +72,44 @@ class EdgeWebDriveManager:
                 ) from exc
             self._playwright = await async_playwright().start()
         return self._playwright
+
+    @staticmethod
+    def _purge_non_auth_cache(user_data_dir: str) -> None:
+        """清理浏览器运行期缓存，尽量保留登录态相关数据（cookies/local storage/indexeddb）。"""
+        if not user_data_dir or not os.path.isdir(user_data_dir):
+            return
+
+        targets = [
+            os.path.join(user_data_dir, "Default", "Cache"),
+            os.path.join(user_data_dir, "Default", "Code Cache"),
+            os.path.join(user_data_dir, "Default", "GPUCache"),
+            os.path.join(user_data_dir, "Default", "DawnCache"),
+            os.path.join(user_data_dir, "Default", "DawnGraphiteCache"),
+            os.path.join(user_data_dir, "Default", "DawnWebGPUCache"),
+            os.path.join(user_data_dir, "Default", "Service Worker", "CacheStorage"),
+            os.path.join(user_data_dir, "Default", "Media Cache"),
+            os.path.join(user_data_dir, "GrShaderCache"),
+            os.path.join(user_data_dir, "ShaderCache"),
+        ]
+        for p in targets:
+            try:
+                if os.path.isdir(p):
+                    shutil.rmtree(p, ignore_errors=True)
+            except Exception:
+                # 清理失败不影响浏览器启动
+                pass
+
+        # 这类文件不影响登录态，但可减少站点缓存/状态噪音
+        files = [
+            os.path.join(user_data_dir, "Default", "Network Action Predictor"),
+            os.path.join(user_data_dir, "Default", "Network Action Predictor-journal"),
+        ]
+        for f in files:
+            try:
+                if os.path.isfile(f):
+                    os.remove(f)
+            except Exception:
+                pass
 
     @staticmethod
     def _is_context_alive(ctx: Any) -> bool:
@@ -162,6 +201,7 @@ class EdgeWebDriveManager:
                 # 本地 mitmproxy 动态签发站点证书，未将 mitm CA 导入系统前 Edge 会报 ERR_CERT_AUTHORITY_INVALID
                 launch_kw["ignore_https_errors"] = True
             try:
+                self._purge_non_auth_cache(udir)
                 context = await pw.chromium.launch_persistent_context(**launch_kw)
             except Exception as exc:
                 raise RuntimeError(

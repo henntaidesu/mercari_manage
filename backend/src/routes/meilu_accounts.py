@@ -30,6 +30,11 @@ MERCARI_IN_PROGRESS_URL = "https://jp.mercari.com/mypage/listings/in_progress"
 MERCARI_LISTINGS_URL = "https://jp.mercari.com/mypage/listings"
 IN_PROGRESS_FIRST_LINK_XPATH = '//*[@id="my-page-main-content"]/div/div/div/div/ul/li[1]/a/div[1]/div'
 LISTINGS_FIRST_ITEM_XPATH = '//*[@id="my-page-main-content"]/div/div/div/div/ul/li[1]/a/div[1]/div/span[1]'
+IN_PROGRESS_CLICK_XPATH_CANDIDATES = (
+    IN_PROGRESS_FIRST_LINK_XPATH,
+    '//*[@id="my-page-main-content"]/div/div/div/div/ul/li[1]/a/div[1]/div/span[1]',
+    '//*[@id="my-page-main-content"]//ul/li[1]//a',
+)
 
 # 与 jp.mercari.com Web 抓包一致；可选：在售列表 / 单件详情专用 DPoP
 _HEADER_FIELD_LABELS = [
@@ -195,20 +200,20 @@ async def _wait_capture(
 ) -> Optional[Dict[str, Any]]:
     deadline = time.monotonic() + wait_seconds
     while time.monotonic() < deadline:
-        data = read_capture_file()
+        # 直接读该 capture_type 专属文件，不受其他类型请求覆盖干扰
+        data = read_capture_file(capture_type)
         if data and int(data.get("ts") or 0) >= since_ms:
-            if str(data.get("capture_type") or "").strip() == capture_type:
-                if seller_id:
-                    sid = str(data.get("seller_id") or "").strip()
-                    if sid and sid != seller_id:
-                        await asyncio.sleep(0.9)
-                        continue
-                if dpop_field:
-                    df = str(data.get("dpop_field") or "").strip()
-                    if df != dpop_field:
-                        await asyncio.sleep(0.9)
-                        continue
-                return data
+            if seller_id:
+                sid = str(data.get("seller_id") or "").strip()
+                if sid and sid != seller_id:
+                    await asyncio.sleep(0.9)
+                    continue
+            if dpop_field:
+                df = str(data.get("dpop_field") or "").strip()
+                if df != dpop_field:
+                    await asyncio.sleep(0.9)
+                    continue
+            return data
         await asyncio.sleep(0.9)
     return None
 
@@ -222,6 +227,7 @@ async def _wait_capture_with_progress(
     dpop_field: Optional[str] = None,
     acquired_fields: Optional[List[str]] = None,
     step_name: str = "",
+    url_contains: Optional[str] = None,
 ) -> Optional[Dict[str, Any]]:
     """等待捕获并每 3 秒打印一次进度（CLI 可见）。"""
     acquired_fields = acquired_fields or []
@@ -239,22 +245,40 @@ async def _wait_capture_with_progress(
             log.info(msg)
             print(msg, flush=True)
             next_log_at = now + 3.0
-        data = read_capture_file()
+        # 直接读该 capture_type 专属文件，不受其他类型请求覆盖干扰
+        data = read_capture_file(capture_type)
         if data and int(data.get("ts") or 0) >= since_ms:
-            if str(data.get("capture_type") or "").strip() == capture_type:
-                if seller_id:
-                    sid = str(data.get("seller_id") or "").strip()
-                    if sid and sid != seller_id:
-                        await asyncio.sleep(0.9)
-                        continue
-                if dpop_field:
-                    df = str(data.get("dpop_field") or "").strip()
-                    if df != dpop_field:
-                        await asyncio.sleep(0.9)
-                        continue
-                return data
+            if seller_id:
+                sid = str(data.get("seller_id") or "").strip()
+                if sid and sid != seller_id:
+                    await asyncio.sleep(0.9)
+                    continue
+            if dpop_field:
+                df = str(data.get("dpop_field") or "").strip()
+                if df != dpop_field:
+                    await asyncio.sleep(0.9)
+                    continue
+            if url_contains:
+                u = str(data.get("url") or "")
+                if url_contains not in u:
+                    await asyncio.sleep(0.9)
+                    continue
+            return data
         await asyncio.sleep(0.9)
     return None
+
+
+async def _click_first_match_xpath(mgr: Any, account_key: str, xpaths: List[str], timeout_ms: int = 25000) -> str:
+    """按顺序尝试点击多个 XPath，返回成功的 XPath。"""
+    last_exc: Optional[Exception] = None
+    for xp in xpaths:
+        try:
+            await mgr.click_xpath(account_key, xp, timeout_ms=timeout_ms)
+            return xp
+        except Exception as exc:
+            last_exc = exc
+            continue
+    raise RuntimeError(f"所有候选 XPath 点击失败: {last_exc}")
 
 
 @router.get("")
@@ -390,13 +414,28 @@ async def fetch_auth_via_mitm(
         acquired_fields.append("dpop_list")
         capture_meta["dpop_list_url"] = cap_list.get("url")
         capture_meta["dpop_list_ts"] = cap_list.get("ts")
+        log.info("[MITM] Step 1 完成，等待 3s 后进入 Step 2")
+        print("[MITM] Step 1 完成，等待 3s 后进入 Step 2", flush=True)
+        await asyncio.sleep(3)
 
         # Step 2: DPoP_Info
         if cfg.open_browser and mgr is not None:
             try:
-                await mgr.click_xpath(f"meilu_{aid}", cfg.in_progress_xpath, timeout_ms=25000)
+                # 先确保处于「取引中」页，再点击首条交易触发 transaction_evidences/get
+                await mgr.open_new_tab(f"meilu_{aid}", MERCARI_IN_PROGRESS_URL)
+                clicked = await _click_first_match_xpath(
+                    mgr,
+                    f"meilu_{aid}",
+                    [cfg.in_progress_xpath, *list(IN_PROGRESS_CLICK_XPATH_CANDIDATES)],
+                    timeout_ms=25000,
+                )
+                log.info("[MITM] Step 2 点击成功 XPath: %s", clicked)
+                print(f"[MITM] Step 2 点击成功 XPath: {clicked}", flush=True)
             except Exception as exc:
-                raise HTTPException(status_code=500, detail=f"步骤2前置失败：自动点击「取引中」首条失败: {exc}") from exc
+                raise HTTPException(
+                    status_code=500,
+                    detail=f"步骤2前置失败：自动点击「取引中」首条失败（可能无取引中数据或页面结构变化）: {exc}",
+                ) from exc
         cap_info = await _wait_capture_with_progress(
             since_ms=int(cap_list.get("ts") or t0),
             capture_type="transaction_evidences_get",
@@ -404,6 +443,7 @@ async def fetch_auth_via_mitm(
             dpop_field="dpop_info",
             acquired_fields=acquired_fields,
             step_name="Step 2/4 DPoP_Info",
+            url_contains="/transaction_evidences/get?",
         )
         if not cap_info:
             raise HTTPException(status_code=408, detail="步骤2失败：未截获 DPoP_Info（GET /transaction_evidences/get）")
@@ -414,6 +454,9 @@ async def fetch_auth_via_mitm(
         acquired_fields.append("dpop_info")
         capture_meta["dpop_info_url"] = cap_info.get("url")
         capture_meta["dpop_info_ts"] = cap_info.get("ts")
+        log.info("[MITM] Step 2 完成，等待 3s 后进入 Step 3")
+        print("[MITM] Step 2 完成，等待 3s 后进入 Step 3", flush=True)
+        await asyncio.sleep(3)
 
         # Step 3: DPoP_OnSale-List
         if cfg.open_browser and mgr is not None:
@@ -436,6 +479,9 @@ async def fetch_auth_via_mitm(
         acquired_fields.append("dpop_on_sale_list")
         capture_meta["dpop_on_sale_list_url"] = cap_on_sale.get("url")
         capture_meta["dpop_on_sale_list_ts"] = cap_on_sale.get("ts")
+        log.info("[MITM] Step 3 完成，等待 3s 后进入 Step 4")
+        print("[MITM] Step 3 完成，等待 3s 后进入 Step 4", flush=True)
+        await asyncio.sleep(3)
 
         # Step 4: DPoP_ItemGet-Info
         if cfg.open_browser and mgr is not None:

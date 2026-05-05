@@ -10,7 +10,7 @@ from __future__ import annotations
 import json
 import os
 import threading
-from typing import Any, Dict, Optional
+from typing import Any, Dict, List, Optional
 from urllib.parse import parse_qs, urlparse
 
 from .paths import ssl_mitm_data_dir
@@ -38,8 +38,10 @@ HEADER_MAP_TO_VALUE = (
 )
 
 
-def capture_json_path() -> str:
-    return os.path.join(ssl_mitm_data_dir(), "items_get_items_capture.json")
+def capture_json_path(capture_type: str = "") -> str:
+    """每种 capture_type 对应独立文件，避免并发请求互相覆盖。"""
+    name = f"capture_{capture_type}.json" if capture_type else "items_get_items_capture.json"
+    return os.path.join(ssl_mitm_data_dir(), name)
 
 
 def session_marker_path(account_id: int) -> str:
@@ -100,7 +102,13 @@ def parse_capture_target(
         if norm_path.endswith("items/get_items"):
             sid_list = qd.get("seller_id") or qd.get("sellerId") or []
             sid = (sid_list[0] or "").strip() if sid_list else ""
-            status_vals = [(x or "").strip().lower() for x in qd.get("status", []) if (x or "").strip()]
+            # status 可能是多值（?status=on_sale&status=stop）也可能是逗号分隔（?status=on_sale,stop）
+            status_vals: List[str] = []
+            for raw_s in qd.get("status", []):
+                for part in (raw_s or "").split(","):
+                    part = part.strip().lower()
+                    if part:
+                        status_vals.append(part)
             if not sid.isdigit():
                 return None
             if not status_vals:
@@ -115,10 +123,8 @@ def parse_capture_target(
                 "full_url": u,
             }
         if norm_path.endswith("transaction_evidences/get"):
-            item_list = qd.get("item_id") or qd.get("itemId") or []
+            item_list = qd.get("item_id") or qd.get("itemId") or qd.get("id") or []
             item_id = (item_list[0] or "").strip() if item_list else ""
-            if not item_id:
-                return None
             return {
                 "capture_type": "transaction_evidences_get",
                 "item_id": item_id,
@@ -188,9 +194,10 @@ def headers_to_value_dict(flow_headers: Any, dpop_field: str = "dpop_list") -> D
 
 
 def atomic_write_capture_file(payload: Dict[str, Any]) -> None:
+    capture_type = str(payload.get("capture_type") or "")
     d = ssl_mitm_data_dir()
     os.makedirs(d, exist_ok=True)
-    path = capture_json_path()
+    path = capture_json_path(capture_type)
     tmp = path + ".tmp"
     with _lock:
         with open(tmp, "w", encoding="utf-8") as f:
@@ -198,8 +205,8 @@ def atomic_write_capture_file(payload: Dict[str, Any]) -> None:
         os.replace(tmp, path)
 
 
-def read_capture_file() -> Optional[Dict[str, Any]]:
-    path = capture_json_path()
+def read_capture_file(capture_type: str = "") -> Optional[Dict[str, Any]]:
+    path = capture_json_path(capture_type)
     if not os.path.isfile(path):
         return None
     with _lock:
