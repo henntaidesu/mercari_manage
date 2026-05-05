@@ -47,6 +47,14 @@ export const warehouseApi = {
   remove: (id) => http.delete(`/warehouses/${id}`)
 }
 
+// 商品类型
+export const productTypeApi = {
+  list: () => http.get('/product-types'),
+  create: (data) => http.post('/product-types', data),
+  update: (id, data) => http.put(`/product-types/${id}`, data),
+  remove: (id) => http.delete(`/product-types/${id}`)
+}
+
 // 库存
 export const inventoryApi = {
   list: (params) => http.get('/inventory', { params }),

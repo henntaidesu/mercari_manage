@@ -9,6 +9,7 @@ from .database import DatabaseManager
 from .models import (
     CategoryModel,
     WarehouseModel,
+    ProductTypeModel,
     ProductModel,
     TransactionModel,
     UserModel,
@@ -33,6 +34,7 @@ class DBManager:
             UserModel,        # 无外键依赖（登录依赖）
             CategoryModel,    # 无外键依赖
             WarehouseModel,   # 无外键依赖
+            ProductTypeModel, # 无外键依赖
             ProductModel,     # 依赖 categories
             TransactionModel, # 依赖 inventory, warehouses
             CostRecordModel,  # 依赖 warehouses（可为空）

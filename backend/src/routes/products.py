@@ -23,6 +23,8 @@ PRODUCT_COLUMNS = [
     "barcode",
     "sku",
     "category_id",
+    "product_type_id",
+    "owner_user_id",
     "price",
     "quantity",
     "mercari_item_id",
@@ -48,6 +50,8 @@ class ProductCreate(PydanticModel):
     name: Optional[str] = None
     barcode: str
     category_id: Optional[int] = None
+    product_type_id: Optional[int] = None
+    owner_user_id: Optional[int] = None
     warehouse_id: Optional[int] = None
     price: int = 0
     quantity: Optional[int] = 1
@@ -74,6 +78,8 @@ class ProductUpdate(PydanticModel):
     name: Optional[str] = None
     barcode: Optional[str] = None
     category_id: Optional[int] = None
+    product_type_id: Optional[int] = None
+    owner_user_id: Optional[int] = None
     warehouse_id: Optional[int] = None
     price: Optional[int] = None
     quantity: Optional[int] = None
@@ -97,7 +103,7 @@ class ProductUpdate(PydanticModel):
 
 
 def _row_to_product_detail(row: tuple) -> dict:
-    keys = PRODUCT_COLUMNS + ["category_name", "warehouse_name", "pending_outbound_qty"]
+    keys = PRODUCT_COLUMNS + ["category_name", "warehouse_name", "product_type_name", "owner_user_name", "pending_outbound_qty"]
     return dict(zip(keys, row))
 
 
@@ -106,10 +112,14 @@ def _query_product_with_joins(where_sql: str = "", params: tuple = ()) -> list[d
     pend_sql = sql_pending_outbound_subquery("p")
     sql = f"""
         SELECT {select_cols}, c.name AS category_name, w.name AS warehouse_name,
+               pt.name AS product_type_name,
+               COALESCE(u.display_name, u.username) AS owner_user_name,
                ({pend_sql}) AS pending_outbound_qty
         FROM [inventory] p
         LEFT JOIN [categories] c ON c.id = p.category_id
         LEFT JOIN [warehouses] w ON w.id = p.warehouse_id
+        LEFT JOIN [product_types] pt ON pt.id = p.product_type_id
+        LEFT JOIN [users] u ON u.id = p.owner_user_id
         WHERE 1=1 {where_sql}
     """
     # SQLite 按 SQL 文中「?」出现顺序绑定：SELECT 内待出库子查询的 NOT IN 先于 WHERE，故须先绑终态状态再绑筛选条件
@@ -124,6 +134,10 @@ def _product_exists(pid: int) -> bool:
 
 def _warehouse_exists(wid: int) -> bool:
     return bool(db.execute_query("SELECT 1 FROM [warehouses] WHERE id = ? LIMIT 1", (wid,)))
+
+
+def _user_exists(uid: int) -> bool:
+    return bool(db.execute_query("SELECT 1 FROM [users] WHERE id = ? LIMIT 1", (uid,)))
 
 
 def _convert_image_payload(image_value: Optional[str], prefix: str) -> Optional[str]:
@@ -184,6 +198,8 @@ def _load_image_for_match(image_value: Optional[str]) -> Optional[Image.Image]:
 def list_inventory(
     keyword: Optional[str] = None,
     category_id: Optional[int] = None,
+    product_type_id: Optional[int] = None,
+    owner_user_id: Optional[int] = None,
     warehouse_id: Optional[int] = None,
 ):
     where_parts = []
@@ -194,6 +210,12 @@ def list_inventory(
     if category_id:
         where_parts.append("AND p.category_id = ?")
         params.append(category_id)
+    if product_type_id:
+        where_parts.append("AND p.product_type_id = ?")
+        params.append(product_type_id)
+    if owner_user_id:
+        where_parts.append("AND p.owner_user_id = ?")
+        params.append(owner_user_id)
     if warehouse_id:
         where_parts.append("AND p.warehouse_id = ?")
         params.append(warehouse_id)
@@ -334,21 +356,25 @@ def create_product(data: ProductCreate):
         raise HTTPException(status_code=400, detail="所属仓库必填")
     if not _warehouse_exists(data.warehouse_id):
         raise HTTPException(status_code=400, detail="所属仓库不存在")
+    if data.owner_user_id is not None and not _user_exists(data.owner_user_id):
+        raise HTTPException(status_code=400, detail="商品归属用户不存在")
     image_front_path = _convert_image_payload(data.image_front, "product_front")
     image_back_path = _convert_image_payload(data.image_back, "product_back")
     try:
         new_id = db.execute_insert(
             """
             INSERT INTO [inventory] (
-                name, barcode, category_id, warehouse_id, price, quantity,
+                name, barcode, category_id, product_type_id, owner_user_id, warehouse_id, price, quantity,
                 mercari_item_id, on_sale_quantity,
                 description, listing_title, listing_body, image, image_front, image_back
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             (
                 data.name,
                 data.barcode.strip(),
                 data.category_id,
+                data.product_type_id,
+                data.owner_user_id,
                 data.warehouse_id,
                 data.price,
                 data.quantity,
@@ -399,8 +425,11 @@ def update_product(pid: int, data: ProductUpdate):
     if 'warehouse_id' in update_data:
         if not _warehouse_exists(final_warehouse_id):
             raise HTTPException(status_code=400, detail="所属仓库不存在")
+    if 'owner_user_id' in update_data and update_data['owner_user_id'] is not None:
+        if not _user_exists(update_data['owner_user_id']):
+            raise HTTPException(status_code=400, detail="商品归属用户不存在")
     allowed_fields = {
-        "name", "barcode", "category_id", "warehouse_id", "price", "quantity",
+        "name", "barcode", "category_id", "product_type_id", "owner_user_id", "warehouse_id", "price", "quantity",
         "mercari_item_id", "on_sale_quantity",
         "description", "listing_title", "listing_body", "image", "image_front", "image_back",
     }

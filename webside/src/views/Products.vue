@@ -28,6 +28,12 @@
             <el-select v-model="filterWarehouse" class="search-select-control" placeholder="所有仓库" clearable @change="load">
               <el-option v-for="w in warehouses" :key="w.id" :label="w.name" :value="w.id" />
             </el-select>
+            <el-select v-model="filterProductType" class="search-select-control" placeholder="所有商品类型" clearable @change="load">
+              <el-option v-for="t in productTypes" :key="t.id" :label="t.name" :value="t.id" />
+            </el-select>
+            <el-select v-model="filterOwnerUserId" class="search-select-control" placeholder="所有商品归属" clearable @change="load">
+              <el-option v-for="u in ownerUsers" :key="u.id" :label="u.display_name || u.username" :value="u.id" />
+            </el-select>
           </div>
         </el-col>
         <el-col :xs="24" :md="8" class="search-actions" :class="{ 'search-actions--ios': isIOS }">
@@ -140,6 +146,16 @@
             <div v-else class="editable-cell" @click="editingCategoryRowId = row.id">{{ row.category_name || '未分类' }}</div>
           </template>
         </el-table-column>
+        <el-table-column label="商品类型" width="120" align="center" header-align="center">
+          <template #default="{ row }">
+            <span>{{ row.product_type_name || '未设置' }}</span>
+          </template>
+        </el-table-column>
+        <el-table-column label="商品归属" width="120" align="center" header-align="center">
+          <template #default="{ row }">
+            <span>{{ row.owner_user_name || '未设置' }}</span>
+          </template>
+        </el-table-column>
         <el-table-column label="所属仓库" width="120" align="center" header-align="center">
           <template #default="{ row }">{{ row.warehouse_name || '-' }}</template>
         </el-table-column>
@@ -247,6 +263,44 @@
               <el-button @click="cancelCreateCategory">取消</el-button>
             </template>
           </div>
+        </el-form-item>
+        <el-form-item label="商品类型" prop="product_type_id">
+          <div class="product-field-inline">
+            <template v-if="!productTypeCreateMode">
+              <el-select
+                v-model="form.product_type_id"
+                clearable
+                :filterable="!isIOS"
+                placeholder="请选择商品类型"
+                class="product-field-inline__main"
+              >
+                <el-option v-for="t in productTypes" :key="t.id" :label="t.name" :value="t.id" />
+              </el-select>
+              <el-button type="primary" plain @click="startCreateProductType">新建类型</el-button>
+            </template>
+            <template v-else>
+              <el-input
+                v-model="newProductTypeName"
+                placeholder="输入新商品类型名称"
+                clearable
+                class="product-field-inline__main"
+                @keyup.enter="confirmCreateProductType"
+              />
+              <el-button type="primary" @click="confirmCreateProductType">确认</el-button>
+              <el-button @click="cancelCreateProductType">取消</el-button>
+            </template>
+          </div>
+        </el-form-item>
+        <el-form-item label="商品归属" prop="owner_user_id">
+          <el-select
+            v-model="form.owner_user_id"
+            clearable
+            :filterable="!isIOS"
+            placeholder="请选择归属用户"
+            class="product-field-inline__main"
+          >
+            <el-option v-for="u in ownerUsers" :key="u.id" :label="u.display_name || u.username" :value="u.id" />
+          </el-select>
         </el-form-item>
         <el-row :gutter="12">
           <el-col :xs="24" :sm="16">
@@ -591,7 +645,7 @@
 <script setup>
 import { ref, computed, watch, onMounted, onBeforeUnmount, nextTick } from 'vue'
 import { ElMessage } from 'element-plus'
-import { inventoryApi, categoryApi, warehouseApi, scanApi, ocrApi, transactionApi } from '@/api/index.js'
+import { inventoryApi, categoryApi, warehouseApi, productTypeApi, authApi, scanApi, ocrApi, transactionApi } from '@/api/index.js'
 
 const list = ref([])
 const loading = ref(false)
@@ -608,9 +662,13 @@ const inventoryStatCards = [
 ]
 const categories = ref([])
 const warehouses = ref([])
+const productTypes = ref([])
+const ownerUsers = ref([])
 const keyword = ref('')
 const filterCat = ref(null)
 const filterWarehouse = ref(null)
+const filterProductType = ref(null)
+const filterOwnerUserId = ref(null)
 const currentPage = ref(1)
 const pageSize = 15
 const dialogVisible = ref(false)
@@ -631,9 +689,11 @@ const savingInlineCell = ref('')
 const editingCategoryRowId = ref(null)
 const newCategoryName = ref('')
 const newWarehouseName = ref('')
+const newProductTypeName = ref('')
 /** 编辑弹窗：新建分类 / 仓库时，下拉与输入框同位切换 */
 const categoryCreateMode = ref(false)
 const warehouseCreateMode = ref(false)
+const productTypeCreateMode = ref(false)
 /** 编辑弹窗库存数量：纯文本输入，blur / 保存时写回 form.quantity */
 const quantityEdit = ref('0')
 
@@ -710,6 +770,7 @@ const form = ref({
   barcode: '',
   name: '',
   category_id: null,
+  product_type_id: null,
   warehouse_id: null,
   price: 0,
   quantity: 1,
@@ -1000,6 +1061,30 @@ function cancelCreateCategory() {
   newCategoryName.value = ''
 }
 
+function startCreateProductType() {
+  productTypeCreateMode.value = true
+  newProductTypeName.value = ''
+}
+
+function cancelCreateProductType() {
+  productTypeCreateMode.value = false
+  newProductTypeName.value = ''
+}
+
+async function confirmCreateProductType() {
+  const name = newProductTypeName.value.trim()
+  if (!name) {
+    ElMessage.warning('请输入商品类型名称')
+    return
+  }
+  const created = await productTypeApi.create({ name })
+  productTypes.value = await productTypeApi.list()
+  form.value.product_type_id = created?.id ?? form.value.product_type_id
+  newProductTypeName.value = ''
+  productTypeCreateMode.value = false
+  ElMessage.success('商品类型创建成功')
+}
+
 async function confirmCreateCategory() {
   const name = newCategoryName.value.trim()
   if (!name) {
@@ -1056,6 +1141,8 @@ async function load() {
   if (keyword.value) params.keyword = keyword.value
   if (filterCat.value) params.category_id = filterCat.value
   if (filterWarehouse.value) params.warehouse_id = filterWarehouse.value
+  if (filterProductType.value) params.product_type_id = filterProductType.value
+  if (filterOwnerUserId.value) params.owner_user_id = filterOwnerUserId.value
   list.value = await inventoryApi.list(params).finally(() => (loading.value = false))
   inventorySortProp.value = ''
   inventorySortOrder.value = ''
@@ -1126,8 +1213,10 @@ const pagedList = computed(() => {
 function openDialog(row = null) {
   categoryCreateMode.value = false
   warehouseCreateMode.value = false
+  productTypeCreateMode.value = false
   newCategoryName.value = ''
   newWarehouseName.value = ''
+  newProductTypeName.value = ''
   form.value = row
     ? {
         id: row.id,
@@ -1135,6 +1224,8 @@ function openDialog(row = null) {
         name: row.name || null,
         sku: row.sku || null,
         category_id: row.category_id || null,
+        product_type_id: row.product_type_id || null,
+        owner_user_id: row.owner_user_id || null,
         warehouse_id: row.warehouse_id || null,
         price: Math.round(Number(row.price ?? 0)),
         quantity: row.quantity ?? 0,
@@ -1152,6 +1243,8 @@ function openDialog(row = null) {
         name: null,
         sku: null,
         category_id: null,
+        product_type_id: null,
+        owner_user_id: null,
         warehouse_id: null,
         price: 0,
         quantity: 1,
@@ -1171,8 +1264,10 @@ watch(dialogVisible, (visible) => {
   if (!visible) {
     categoryCreateMode.value = false
     warehouseCreateMode.value = false
+    productTypeCreateMode.value = false
     newCategoryName.value = ''
     newWarehouseName.value = ''
+    newProductTypeName.value = ''
   }
 })
 
@@ -1575,6 +1670,8 @@ async function openLookupScan() {
 async function handleLookupBarcode(barcode) {
   keyword.value = barcode
   filterCat.value = null
+  filterProductType.value = null
+  filterOwnerUserId.value = null
   await load()
   ElMessage.success(`已定位条形码：${barcode}`)
   lookupScanVisible.value = false
@@ -1630,6 +1727,8 @@ async function handleImageFindCapture(e) {
     if (res?.found && res.product) {
       keyword.value = res.product.barcode || res.product.name || ''
       filterCat.value = null
+      filterProductType.value = null
+      filterOwnerUserId.value = null
       filterWarehouse.value = null
       await load()
       const distanceText = Number.isFinite(res.distance) ? `（相似度距离 ${res.distance}）` : ''
@@ -1657,9 +1756,11 @@ onBeforeUnmount(stopLookupScan)
 onMounted(async () => {
   updateViewportState()
   window.addEventListener('resize', updateViewportState)
-  const [cats, whs] = await Promise.all([categoryApi.list(), warehouseApi.list()])
+  const [cats, whs, types, users] = await Promise.all([categoryApi.list(), warehouseApi.list(), productTypeApi.list(), authApi.listUsers()])
   categories.value = cats
   warehouses.value = whs
+  productTypes.value = types
+  ownerUsers.value = users
   await Promise.all([load(), loadInventoryStats()])
 })
 

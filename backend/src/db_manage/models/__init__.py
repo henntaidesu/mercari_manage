@@ -1,6 +1,7 @@
 # -*- coding: utf-8 -*-
 from .category import CategoryModel
 from .warehouse import WarehouseModel
+from .product_type import ProductTypeModel
 from .product import ProductModel
 from .transaction import TransactionModel
 from .user import UserModel
@@ -13,6 +14,7 @@ from .order_outbound_line import OrderOutboundLineModel
 __all__ = [
     'CategoryModel',
     'WarehouseModel',
+    'ProductTypeModel',
     'ProductModel',
     'TransactionModel',
     'UserModel',

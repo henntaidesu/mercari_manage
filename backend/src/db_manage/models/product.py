@@ -50,6 +50,16 @@ class ProductModel(BaseModel):
                 'not_null': False,
                 'default': None,
             },
+            'product_type_id': {
+                'type': 'INTEGER',
+                'not_null': False,
+                'default': None,
+            },
+            'owner_user_id': {
+                'type': 'INTEGER',
+                'not_null': False,
+                'default': None,
+            },
             'price': {
                 'type': 'INTEGER',
                 'not_null': False,
@@ -220,10 +230,13 @@ class ProductModel(BaseModel):
         product_fields = list(cls.get_fields().keys())
         product_select = ", ".join([f"p.[{f}] AS [{f}]" for f in product_fields])
         sql = f"""
-            SELECT {product_select}, c.name as category_name, w.name as warehouse_name
+            SELECT {product_select}, c.name as category_name, w.name as warehouse_name, pt.name as product_type_name,
+                   COALESCE(u.display_name, u.username) as owner_user_name
             FROM [inventory] p
             LEFT JOIN [categories] c ON c.id = p.category_id
             LEFT JOIN [warehouses] w ON w.id = p.warehouse_id
+            LEFT JOIN [product_types] pt ON pt.id = p.product_type_id
+            LEFT JOIN [users] u ON u.id = p.owner_user_id
             WHERE 1=1
         """
         params = []
@@ -237,5 +250,5 @@ class ProductModel(BaseModel):
         rows = db.execute_query(sql, tuple(params))
         if not rows:
             return []
-        field_names = product_fields + ['category_name', 'warehouse_name']
+        field_names = product_fields + ['category_name', 'warehouse_name', 'product_type_name', 'owner_user_name']
         return [dict(zip(field_names, row)) for row in rows]
