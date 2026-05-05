@@ -706,7 +706,7 @@ async function fetchAuthViaMitmForRow(row) {
   if (!row?.id) return
   try {
     await ElMessageBox.confirm(
-      '将启动 MITM 并按顺序自动抓取 4 项：DPoP_List（items/get_items?status=trading）→ DPoP_Info（transaction_evidences/get）→ DPoP_OnSale-List（items/get_items?status=on_sale/stop）→ DPoP_ItemGet-Info（items/get）。顺序固定，任一步失败会停止并提示。最多等待约 2 分钟。',
+      '将启动 MITM 并按顺序自动抓取 4 项：DPoP_List（items/get_items?status=trading）→ DPoP_Info（transaction_evidences/get）→ DPoP_OnSale-List（items/get_items?status=on_sale/stop）→ DPoP_ItemGet-Info（items/get）。顺序固定，任一步失败会停止并提示。单步超时 15 秒。',
       '获取新的认证',
       { type: 'info', confirmButtonText: '开始', cancelButtonText: '取消' }
     )
