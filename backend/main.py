@@ -1,3 +1,6 @@
+import logging
+import os
+
 from fastapi import FastAPI, Depends
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
@@ -16,6 +19,7 @@ from src.routes.orders import router as orders_router
 from src.routes.meilu_accounts import router as meilu_accounts_router
 from src.routes.on_sale_items import router as on_sale_items_router
 from src.routes.web_drive import router as web_drive_router
+from src.routes.ssl_mitm import router as ssl_mitm_router
 from src.operation_mercari.API import router as mercari_router
 
 app = FastAPI(title="mercari 订单管理", version="1.0.0")
@@ -44,19 +48,28 @@ app.include_router(meilu_accounts_router, dependencies=auth_required)
 app.include_router(mercari_router, dependencies=auth_required)
 app.include_router(on_sale_items_router, dependencies=auth_required)
 app.include_router(web_drive_router, dependencies=auth_required)
+app.include_router(ssl_mitm_router, dependencies=auth_required)
 app.include_router(auth_router)
 
 
 @app.on_event("startup")
 def startup():
     init_database()
+    if os.environ.get("SSL_MITM_AUTO_START", "1").strip().lower() not in ("0", "false", "no", "off"):
+        from src.ssl_mitm_proxy.runner import start_mitm_proxy
+
+        r = start_mitm_proxy()
+        if r.get("error"):
+            logging.getLogger(__name__).warning("SSL MITM 未启动: %s", r["error"])
 
 
 @app.on_event("shutdown")
 async def shutdown_web_drive():
     from src.web_drive import get_web_drive_manager
+    from src.ssl_mitm_proxy.runner import stop_mitm_proxy
 
     await get_web_drive_manager().shutdown()
+    stop_mitm_proxy()
 
 
 @app.get("/api/health")

@@ -135,7 +135,10 @@ export const meiluAccountApi = {
   list: (params) => http.get('/meilu-accounts', { params }),
   create: (data) => http.post('/meilu-accounts', data),
   update: (id, data) => http.put(`/meilu-accounts/${id}`, data),
-  remove: (id) => http.delete(`/meilu-accounts/${id}`)
+  remove: (id) => http.delete(`/meilu-accounts/${id}`),
+  /** MITM 抓取 items/get_items(trading) 请求头并写回账号（可能较久，timeout: 0） */
+  fetchAuthViaMitm: (id, axiosConfig = {}) =>
+    http.post(`/meilu-accounts/${id}/fetch-auth-via-mitm`, {}, { timeout: 0, ...axiosConfig })
 }
 
 /** Edge 持久化会话：按 account_key 隔离 Cookie（与后端 web_drive 一致） */

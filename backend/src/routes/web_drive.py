@@ -20,6 +20,8 @@ class OpenSessionBody(PydanticModel):
     )
     headless: bool = False
     start_url: Optional[str] = None
+    use_mitm_proxy: bool = False
+    mitm_proxy_url: Optional[str] = None
 
 
 class CloseSessionBody(PydanticModel):
@@ -45,11 +47,20 @@ async def list_sessions():
 @router.post("/sessions/open")
 async def open_session(body: OpenSessionBody):
     try:
-        return {"success": True, "data": await get_web_drive_manager().open_session(
-            body.account_key,
-            headless=body.headless,
-            start_url=body.start_url,
-        )}
+        proxy = None
+        if body.use_mitm_proxy:
+            from ..ssl_mitm_proxy.runner import default_mitm_proxy_url
+
+            proxy = (body.mitm_proxy_url or "").strip() or default_mitm_proxy_url()
+        return {
+            "success": True,
+            "data": await get_web_drive_manager().open_session(
+                body.account_key,
+                headless=body.headless,
+                start_url=body.start_url,
+                proxy_server=proxy,
+            ),
+        }
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     except RuntimeError as exc:

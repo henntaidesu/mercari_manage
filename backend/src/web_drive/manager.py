@@ -77,6 +77,7 @@ class EdgeWebDriveManager:
         *,
         headless: bool = False,
         start_url: Optional[str] = None,
+        proxy_server: Optional[str] = None,
     ) -> Dict[str, Any]:
         key = validate_account_key(account_key)
         async with self._lock:
@@ -113,14 +114,18 @@ class EdgeWebDriveManager:
 
             pw = await self._ensure_playwright()
             udir = profile_dir_for(key)
+            launch_kw: Dict[str, Any] = {
+                "user_data_dir": udir,
+                "channel": "msedge",
+                "headless": headless,
+                "viewport": {"width": 1280, "height": 800},
+                "args": ["--disable-blink-features=AutomationControlled"],
+            }
+            ps = (proxy_server or "").strip()
+            if ps:
+                launch_kw["proxy"] = {"server": ps}
             try:
-                context = await pw.chromium.launch_persistent_context(
-                    user_data_dir=udir,
-                    channel="msedge",
-                    headless=headless,
-                    viewport={"width": 1280, "height": 800},
-                    args=["--disable-blink-features=AutomationControlled"],
-                )
+                context = await pw.chromium.launch_persistent_context(**launch_kw)
             except Exception as exc:
                 raise RuntimeError(
                     f"启动 Edge 失败（请确认已安装 Microsoft Edge，并已执行 playwright install msedge）: {exc}"
@@ -136,6 +141,7 @@ class EdgeWebDriveManager:
                 "already_running": False,
                 "profile_dir": udir,
                 "profiles_root": profiles_root(),
+                "proxy_server": ps or None,
             }
 
     async def close_session(self, account_key: str) -> Dict[str, Any]:

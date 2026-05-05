@@ -88,5 +88,6 @@ backend/imges/
 backend/mercariDB.db-wal
 backend/test_json/
 backend/data/web_drive_profiles/
+backend/ssl_mitm/
 1.json
 apk_code/

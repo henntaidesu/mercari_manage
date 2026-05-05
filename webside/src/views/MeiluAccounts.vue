@@ -27,7 +27,7 @@
                 {{ row.status === 'active' ? '启用' : '停用' }}
               </el-tag>
             </div>
-            <div class="card-item"><span>平台 / 版本：</span>{{ row.value?.x_platform || '-' }} / {{ row.value?.x_app_version || '-' }}</div>
+            <div class="card-item"><span>平台：</span>{{ row.value?.x_platform || '-' }}</div>
             <div class="card-item"><span>卖家ID：</span>{{ row.seller_id || '-' }}</div>
             <div class="card-item">
               <span>自动数据获取：</span>
@@ -43,6 +43,14 @@
                 :loading="browserLoadingKeys.has(browserKeyFor(row.id))"
                 @click="openBrowserForSavedAccount(row)"
               >打开浏览器</el-button>
+              <el-button
+                size="small"
+                type="warning"
+                plain
+                :loading="mitmAuthLoadingId === row.id"
+                :disabled="!row.seller_id"
+                @click="fetchAuthViaMitmForRow(row)"
+              >获取新的认证</el-button>
               <el-button
                 size="small"
                 type="success"
@@ -82,7 +90,7 @@
       destroy-on-close
       class="meilu-dialog"
     >
-      <el-form :model="form" :rules="rules" ref="formRef" label-width="132px" class="meilu-form">
+      <el-form :model="form" :rules="rules" ref="formRef" label-width="168px" class="meilu-form">
         <el-divider content-position="left">从 RAW 导入</el-divider>
         <el-form-item label="请求头 RAW">
           <div class="raw-row">
@@ -90,11 +98,15 @@
               v-model="rawHeaderPaste"
               type="textarea"
               :rows="6"
-              placeholder="粘贴 RAW（每行「名称: 值」）；支持 curl 的 -H 行。粘贴后会自动解析，也可点按钮再次解析"
+              placeholder="粘贴 RAW（每行「名称: 值」）、完整 URL 或 Chrome「Copy as cURL」；含 seller_id= 会自动填卖家ID与账号名称。失焦时也会尝试解析"
               class="raw-textarea"
               @paste="onRawPaste"
+              @blur="onRawBlur"
             />
-            <el-button type="primary" plain @click="applyRawHeaders(false)">解析并填入</el-button>
+            <div class="raw-actions">
+              <el-button type="primary" plain @click="applyRawHeaders(false)">解析并填入</el-button>
+              <el-button plain @click="readClipboardAndApply">从剪贴板导入</el-button>
+            </div>
           </div>
         </el-form-item>
 
@@ -103,7 +115,18 @@
           <el-input v-model="form.account_name" maxlength="60" clearable />
         </el-form-item>
         <el-form-item label="卖家ID" prop="seller_id">
-          <el-input v-model="form.seller_id" maxlength="30" clearable placeholder="请输入 Mercari 卖家ID（纯数字）" />
+          <el-input
+            v-model="form.seller_id"
+            maxlength="30"
+            clearable
+            placeholder="纯数字，与 items/get_items 请求 URL 中的 seller_id= 一致"
+          />
+          <p class="form-item-tip">
+            与监控煤炉列表接口时抓包得到的地址一致，例如
+            <span class="mono">GET …/items/get_items?sort_type=updated&amp;order_by=desc&amp;seller_id=908563766&amp;…&amp;status=trading</span>
+            中的查询参数 <span class="mono">seller_id</span>（出售中订单等场景也使用同一卖家 ID）。
+            将含该 URL 或 <span class="mono">:path:</span> 的 RAW 粘到上方时，会尝试自动填入本字段。
+          </p>
         </el-form-item>
         <el-form-item label="账号状态" prop="status">
           <el-select v-model="form.status" style="width: 100%">
@@ -126,61 +149,94 @@
           </el-select>
         </el-form-item>
 
-        <el-divider content-position="left">HTTP 请求头</el-divider>
-        <el-form-item label="Accept" prop="accept">
-          <el-input v-model="form.accept" clearable />
-        </el-form-item>
-        <el-form-item label="X-App-Type" prop="x_app_type">
-          <el-input v-model="form.x_app_type" clearable />
-        </el-form-item>
-        <el-form-item label="Authorization" prop="authorization">
-          <el-input v-model="form.authorization" type="textarea" :rows="2" clearable placeholder="含 Bearer 的完整值" />
-        </el-form-item>
-        <el-form-item label="DPoP_List" prop="dpop_list">
-          <el-input v-model="form.dpop_list" type="textarea" :rows="3" clearable placeholder="对应 HTTP 头 DPoP 的 JWT 等内容" />
-        </el-form-item>
-        <el-form-item label="DPoP_Info" prop="dpop_info">
-          <el-input v-model="form.dpop_info" type="textarea" :rows="2" clearable placeholder="GET transaction_evidences/get 等用的 DPoP JWT（与 DPoP_List 可不同）" />
-        </el-form-item>
-        <el-form-item label="DPoP_OnSale-List" prop="dpop_on_sale_list">
-          <el-input
-            v-model="form.dpop_on_sale_list"
-            type="textarea"
-            :rows="2"
-            clearable
-            placeholder="GET items/get_items 在售列表（status=on_sale,stop）完整 URL 对应的 DPoP；不填则无法从煤炉同步在售商品页"
-          />
-        </el-form-item>
-        <el-form-item label="DPoP_ItemGet-Info" prop="dpop_item_get_info">
-          <el-input
-            v-model="form.dpop_item_get_info"
-            type="textarea"
-            :rows="2"
-            clearable
-            placeholder="GET items/get?id=…&include_auction=… 单件详情完整 URL 对应的 DPoP（与订单用 DPoP_Info 分开）；不填则无法在售页「获取详情」"
-          />
-        </el-form-item>
-        <el-form-item label="Priority" prop="priority">
-          <el-input v-model="form.priority" clearable />
-        </el-form-item>
-        <el-form-item label="Accept-Language" prop="accept_language">
-          <el-input v-model="form.accept_language" clearable />
-        </el-form-item>
-        <el-form-item label="Accept-Encoding" prop="accept_encoding">
-          <el-input v-model="form.accept_encoding" clearable />
-        </el-form-item>
-        <el-form-item label="User-Agent" prop="user_agent">
-          <el-input v-model="form.user_agent" type="textarea" :rows="2" clearable />
-        </el-form-item>
-        <el-form-item label="X-App-Version" prop="x_app_version">
-          <el-input v-model="form.x_app_version" clearable />
-        </el-form-item>
-        <el-form-item label="X-Platform" prop="x_platform">
-          <el-input v-model="form.x_platform" clearable />
-        </el-form-item>
-        <el-form-item label="X-Mcc" prop="x_mcc">
-          <el-input v-model="form.x_mcc" type="textarea" :rows="2" clearable />
-        </el-form-item>
+        <div class="form-block form-block--auth">
+          <el-divider content-position="left">鉴权与 DPoP</el-divider>
+          <p class="form-block-hint">
+            与登录态、接口 URL 绑定的令牌；与下方「浏览器请求头」分开维护。
+            <strong>DPoP_Info</strong>（选填）、<strong>DPoP_OnSale-List</strong>、<strong>DPoP_ItemGet-Info</strong>
+            各自对应不同 API 的完整 URL，须从该请求的抓包里取 DPoP；具体 URL 与操作步骤你稍后补充即可。未填 DPoP_Info 时，保存账号不受影响，但拉取订单详情等接口会提示补全。
+          </p>
+          <el-form-item label="Authorization" prop="authorization">
+            <el-input v-model="form.authorization" type="textarea" :rows="2" clearable placeholder="浏览器里复制的完整 token（通常无 Bearer 前缀）" />
+          </el-form-item>
+          <el-form-item label="DPoP_List" prop="dpop_list">
+            <el-input v-model="form.dpop_list" type="textarea" :rows="3" clearable placeholder="HTTP 头 DPoP（与 items/get_items 等 URL 绑定）" />
+          </el-form-item>
+          <el-form-item label="DPoP_Info（选填）" prop="dpop_info">
+            <el-input
+              v-model="form.dpop_info"
+              type="textarea"
+              :rows="2"
+              clearable
+              placeholder="选填。绑定「订单/交易详情」等接口的 DPoP（须与该请求的完整 URL 一致）。不填则调用相关接口时会报错提示补全；需要时可暂用 DPoP_List 试通。"
+            />
+          </el-form-item>
+          <el-form-item label="DPoP_OnSale-List" prop="dpop_on_sale_list">
+            <el-input
+              v-model="form.dpop_on_sale_list"
+              type="textarea"
+              :rows="2"
+              clearable
+              placeholder="绑定「在售列表」对应请求的 DPoP；具体 URL 将另行说明。不填则无法从煤炉同步在售页。"
+            />
+          </el-form-item>
+          <el-form-item label="DPoP_ItemGet-Info" prop="dpop_item_get_info">
+            <el-input
+              v-model="form.dpop_item_get_info"
+              type="textarea"
+              :rows="2"
+              clearable
+              placeholder="绑定「单件商品详情」对应请求的 DPoP；具体 URL 将另行说明。不填则无法在售页「获取详情」。"
+            />
+          </el-form-item>
+        </div>
+
+        <div class="form-block form-block--headers">
+          <el-divider content-position="left">浏览器请求头（Web / jp.mercari.com）</el-divider>
+          <p class="form-block-hint">与浏览器环境一致的常规头；可从开发者工具或抓包中复制。</p>
+          <el-form-item label="X-Platform" prop="x_platform">
+            <el-input v-model="form.x_platform" clearable placeholder="如 web" />
+          </el-form-item>
+          <el-form-item label="Sec-CH-UA-Platform" prop="sec_ch_ua_platform">
+            <el-input v-model="form.sec_ch_ua_platform" clearable placeholder='如 "Windows"' />
+          </el-form-item>
+          <el-form-item label="Accept-Language" prop="accept_language">
+            <el-input v-model="form.accept_language" clearable placeholder="如 ja" />
+          </el-form-item>
+          <el-form-item label="Sec-CH-UA" prop="sec_ch_ua">
+            <el-input v-model="form.sec_ch_ua" type="textarea" :rows="2" clearable />
+          </el-form-item>
+          <el-form-item label="Sec-CH-UA-Mobile" prop="sec_ch_ua_mobile">
+            <el-input v-model="form.sec_ch_ua_mobile" clearable placeholder="如 ?0" />
+          </el-form-item>
+          <el-form-item label="User-Agent" prop="user_agent">
+            <el-input v-model="form.user_agent" type="textarea" :rows="2" clearable />
+          </el-form-item>
+          <el-form-item label="Accept" prop="accept">
+            <el-input v-model="form.accept" clearable placeholder="如 application/json, text/plain, */*" />
+          </el-form-item>
+          <el-form-item label="Origin" prop="origin">
+            <el-input v-model="form.origin" clearable placeholder="如 https://jp.mercari.com" />
+          </el-form-item>
+          <el-form-item label="Sec-Fetch-Site" prop="sec_fetch_site">
+            <el-input v-model="form.sec_fetch_site" clearable placeholder="如 cross-site" />
+          </el-form-item>
+          <el-form-item label="Sec-Fetch-Mode" prop="sec_fetch_mode">
+            <el-input v-model="form.sec_fetch_mode" clearable placeholder="如 cors" />
+          </el-form-item>
+          <el-form-item label="Sec-Fetch-Dest" prop="sec_fetch_dest">
+            <el-input v-model="form.sec_fetch_dest" clearable placeholder="如 empty" />
+          </el-form-item>
+          <el-form-item label="Referer" prop="referer">
+            <el-input v-model="form.referer" clearable placeholder="如 https://jp.mercari.com/" />
+          </el-form-item>
+          <el-form-item label="Accept-Encoding" prop="accept_encoding">
+            <el-input v-model="form.accept_encoding" clearable />
+          </el-form-item>
+          <el-form-item label="Priority" prop="priority">
+            <el-input v-model="form.priority" clearable placeholder="如 u=1, i" />
+          </el-form-item>
+        </div>
       </el-form>
       <template #footer>
         <el-button
@@ -197,6 +253,14 @@
           :loading="browserLoadingKeys.has(browserKeyFor(form.id))"
           @click="openBrowserFromDialog"
         >打开浏览器</el-button>
+        <el-button
+          v-if="form.id"
+          type="warning"
+          plain
+          :loading="mitmAuthLoadingId === form.id"
+          :disabled="!form.seller_id"
+          @click="fetchAuthViaMitmFromDialog"
+        >获取新的认证</el-button>
         <el-button @click="dialogVisible = false">取消</el-button>
         <el-button type="primary" :loading="submitting" @click="submit">保存</el-button>
       </template>
@@ -216,10 +280,9 @@ function browserKeyFor(accountId) {
   return `meilu_${accountId}`
 }
 
-/** 小写 HTTP 头名 -> 表单字段名 */
+/** 小写 HTTP 头名 -> 表单字段名（Web 抓包 / curl -H） */
 const HEADER_TO_FORM = {
   accept: 'accept',
-  'x-app-type': 'x_app_type',
   authorization: 'authorization',
   dpop: 'dpop_list',
   'dpop-list': 'dpop_list',
@@ -234,26 +297,37 @@ const HEADER_TO_FORM = {
   'accept-language': 'accept_language',
   'accept-encoding': 'accept_encoding',
   'user-agent': 'user_agent',
-  'x-app-version': 'x_app_version',
   'x-platform': 'x_platform',
-  'x-mcc': 'x_mcc',
+  'sec-ch-ua-platform': 'sec_ch_ua_platform',
+  'sec-ch-ua': 'sec_ch_ua',
+  'sec-ch-ua-mobile': 'sec_ch_ua_mobile',
+  origin: 'origin',
+  'sec-fetch-site': 'sec_fetch_site',
+  'sec-fetch-mode': 'sec_fetch_mode',
+  'sec-fetch-dest': 'sec_fetch_dest',
+  referer: 'referer',
 }
 
 const HEADER_LABELS = {
-  accept: 'Accept',
-  x_app_type: 'X-App-Type',
+  x_platform: 'X-Platform',
   authorization: 'Authorization',
+  sec_ch_ua_platform: 'Sec-CH-UA-Platform',
+  accept_language: 'Accept-Language',
+  sec_ch_ua: 'Sec-CH-UA',
+  sec_ch_ua_mobile: 'Sec-CH-UA-Mobile',
   dpop_list: 'DPoP_List',
   dpop_info: 'DPoP_Info',
   dpop_on_sale_list: 'DPoP_OnSale-List',
   dpop_item_get_info: 'DPoP_ItemGet-Info',
-  priority: 'Priority',
-  accept_language: 'Accept-Language',
-  accept_encoding: 'Accept-Encoding',
   user_agent: 'User-Agent',
-  x_app_version: 'X-App-Version',
-  x_platform: 'X-Platform',
-  x_mcc: 'X-Mcc',
+  accept: 'Accept',
+  origin: 'Origin',
+  sec_fetch_site: 'Sec-Fetch-Site',
+  sec_fetch_mode: 'Sec-Fetch-Mode',
+  sec_fetch_dest: 'Sec-Fetch-Dest',
+  referer: 'Referer',
+  accept_encoding: 'Accept-Encoding',
+  priority: 'Priority',
 }
 
 /** 与后端 value JSON 键一致 */
@@ -267,21 +341,29 @@ function buildValueFromForm(f) {
   return o
 }
 
-function normalizeHeaderLine(line) {
+/** 将单行转为可解析的「名称: 值」候选（支持行首带缩进、结尾反斜杠的 curl -H） */
+function lineToHeaderCandidate(line) {
   let s = String(line || '').trim()
+  if (!s) return ''
+  const curlH = s.match(/^\s*(?:-H|--header)\s+(['"])([\s\S]*?)\1\s*\\?\s*$/i)
+  if (curlH) return curlH[2].trim()
+  return s
+}
+
+function normalizeHeaderLine(line) {
+  let s = lineToHeaderCandidate(line)
   if (!s || s.startsWith('#')) return null
-  // curl -H "Name: Value" 或 -H 'Name: Value'
-  const curl = s.match(/^-H\s+(['"])([\s\S]*)\1\s*,?\s*$/i)
-  if (curl) s = curl[2].trim()
+  if (/^https?:\/\//i.test(s)) return null
+  if (/^curl\s/i.test(s)) return null
   const m = s.match(/^([^:]+?)\s*:\s*(.*)$/)
   if (!m) return null
   const name = m[1].trim().toLowerCase()
   const value = m[2].trim()
-  if (!name) return null
+  if (!name || name === 'http' || name === 'https') return null
   return { name, value }
 }
 
-/** 从 RAW 中取 HTTP/2 风格 :path:（Charles / Proxyman 等导出） */
+/** 从 RAW 中取请求 path+query（HTTP/2 :path: 或正文中的 https URL） */
 function extractPathFromRaw(raw) {
   const lines = String(raw || '').split(/\r?\n/)
   for (const line of lines) {
@@ -289,7 +371,23 @@ function extractPathFromRaw(raw) {
     const m = s.match(/^:path:\s*(.+)$/i)
     if (m) return m[1].trim()
   }
+  const text = String(raw || '')
+  const um = text.match(/https?:\/\/[^\s'"]+/i)
+  if (um) {
+    try {
+      const u = new URL(um[0].replace(/[,;\\]+$/, ''))
+      return `${u.pathname}${u.search}` || ''
+    } catch {
+      return ''
+    }
+  }
   return ''
+}
+
+/** 从 RAW / URL 文本中解析 items/get_items 等请求里的 seller_id=（纯数字） */
+function extractSellerIdFromRaw(raw) {
+  const m = String(raw || '').match(/[?&]seller_id=(\d+)/i)
+  return m ? m[1] : ''
 }
 
 /**
@@ -387,20 +485,25 @@ const createDefaultForm = () => ({
   remark: '',
   is_open: 0,
   fetch_interval: '',
-  accept: '',
-  x_app_type: '',
+  x_platform: '',
   authorization: '',
+  sec_ch_ua_platform: '',
+  accept_language: '',
+  sec_ch_ua: '',
+  sec_ch_ua_mobile: '',
   dpop_list: '',
   dpop_info: '',
   dpop_on_sale_list: '',
   dpop_item_get_info: '',
-  priority: '',
-  accept_language: '',
-  accept_encoding: '',
   user_agent: '',
-  x_app_version: '',
-  x_platform: '',
-  x_mcc: '',
+  accept: '',
+  origin: '',
+  sec_fetch_site: '',
+  sec_fetch_mode: '',
+  sec_fetch_dest: '',
+  referer: '',
+  accept_encoding: '',
+  priority: '',
 })
 
 const form = ref(createDefaultForm())
@@ -436,37 +539,80 @@ const rules = {
       trigger: 'change',
     },
   ],
-  accept: [reqBlur],
-  x_app_type: [reqBlur],
-  authorization: [reqBlur],
-  dpop_list: [reqBlur],
-  dpop_info: [reqBlur],
-  priority: [reqBlur],
-  accept_language: [reqBlur],
-  accept_encoding: [reqBlur],
-  user_agent: [reqBlur],
-  x_app_version: [reqBlur],
   x_platform: [reqBlur],
-  x_mcc: [reqBlur],
+  authorization: [reqBlur],
+  sec_ch_ua_platform: [reqBlur],
+  accept_language: [reqBlur],
+  sec_ch_ua: [reqBlur],
+  sec_ch_ua_mobile: [reqBlur],
+  dpop_list: [reqBlur],
+  user_agent: [reqBlur],
+  accept: [reqBlur],
+  origin: [reqBlur],
+  sec_fetch_site: [reqBlur],
+  sec_fetch_mode: [reqBlur],
+  sec_fetch_dest: [reqBlur],
+  referer: [reqBlur],
+  accept_encoding: [reqBlur],
+  priority: [reqBlur],
 }
 
+/** 粘贴后 v-model 往往尚未更新，延后到宏任务再解析 */
 function onRawPaste() {
-  nextTick(() => applyRawHeaders(true))
+  setTimeout(() => applyRawHeaders(true, false), 0)
 }
 
-/** @param {boolean} silent 为 true 时（如粘贴过程中）未识别到内容不弹警告 */
-function applyRawHeaders(silent = false) {
-  const parsed = parseRawHeaders(rawHeaderPaste.value)
+/** RAW 失焦时静默再解析一次（避免仅粘贴未触发完成等情况） */
+function onRawBlur() {
+  setTimeout(() => applyRawHeaders(true, true), 0)
+}
+
+/**
+ * @param silent 为 true 时：无匹配不弹警告
+ * @param quietSuccess 为 true 时：匹配成功也不弹成功提示（如失焦）
+ */
+function applyRawHeaders(silent = false, quietSuccess = false) {
+  const raw = rawHeaderPaste.value
+  const parsed = parseRawHeaders(raw)
   const keys = Object.keys(parsed)
-  if (!keys.length) {
-    if (!silent) ElMessage.warning('未识别到任何已知请求头，请确认格式为每行「名称: 值」')
+  const sid = extractSellerIdFromRaw(raw)
+  if (!keys.length && !sid) {
+    if (!silent) {
+      ElMessage.warning('未识别到任何已知请求头，也未在文本中找到 seller_id= 参数，请检查格式')
+    }
     return
   }
   const next = { ...form.value }
   for (const k of keys) next[k] = parsed[k]
+  let autoAccountName = false
+  if (sid) {
+    next.seller_id = sid
+    if (!String(next.account_name || '').trim()) {
+      next.account_name = `煤炉-${sid}`
+      autoAccountName = true
+    }
+  }
   form.value = next
-  const names = keys.map((k) => HEADER_LABELS[k] || k).join('、')
-  ElMessage.success(`已填入 ${keys.length} 项：${names}`)
+  if (quietSuccess) return
+  const parts = []
+  if (keys.length) parts.push(`请求头 ${keys.length} 项：${keys.map((k) => HEADER_LABELS[k] || k).join('、')}`)
+  if (sid) parts.push(`卖家ID ${sid}${autoAccountName ? '（已生成账号名称）' : ''}`)
+  ElMessage.success(parts.join('；'))
+}
+
+async function readClipboardAndApply() {
+  try {
+    const text = await navigator.clipboard.readText()
+    if (!String(text || '').trim()) {
+      ElMessage.warning('剪贴板为空')
+      return
+    }
+    rawHeaderPaste.value = text
+    await nextTick()
+    applyRawHeaders(false, false)
+  } catch {
+    ElMessage.warning('无法读取剪贴板，请检查浏览器权限，或直接在上方文本框粘贴')
+  }
 }
 
 watch(dialogVisible, (open) => {
@@ -503,9 +649,6 @@ function openEdit(row) {
   }
   if (!String(next.dpop_list || '').trim() && v.dpop != null && String(v.dpop).trim()) {
     next.dpop_list = String(v.dpop)
-  }
-  if (!String(next.dpop_info || '').trim() && String(next.dpop_list || '').trim()) {
-    next.dpop_info = next.dpop_list
   }
   next.is_open = row.is_open === 1 || row.is_open === true ? 1 : 0
   next.fetch_interval = row.fetch_interval != null && row.is_open === 1 ? String(row.fetch_interval) : ''
@@ -559,6 +702,45 @@ const syncingIds = ref(new Set())
 
 /** web_drive account_key → loading（含 meilu_prepare、meilu_<id>） */
 const browserLoadingKeys = ref(new Set())
+/** MITM 拉认证：当前正在处理的账号 id */
+const mitmAuthLoadingId = ref(null)
+
+async function fetchAuthViaMitmForRow(row) {
+  if (!row?.id) return
+  if (!(row.seller_id || '').toString().trim()) {
+    ElMessage.warning('请先填写卖家 ID')
+    return
+  }
+  try {
+    await ElMessageBox.confirm(
+      '将启动 MITM 并打开 Edge（请先将 MITM 根证书安装到「受信任的根证书」）。随后在浏览器进入会产生「取引中」列表的请求（与 items/get_items&status=trading 一致），最多等待约 2 分钟。',
+      '获取新的认证',
+      { type: 'info', confirmButtonText: '开始', cancelButtonText: '取消' }
+    )
+  } catch {
+    return
+  }
+  mitmAuthLoadingId.value = row.id
+  try {
+    await meiluAccountApi.fetchAuthViaMitm(row.id, { timeout: 0 })
+    ElMessage.success('已根据抓包更新账号中的 Authorization、DPoP_List 等字段')
+    await load()
+    if (dialogVisible.value && form.value.id === row.id) {
+      const refreshed = list.value.find((r) => r.id === row.id)
+      if (refreshed) openEdit(refreshed)
+    }
+  } finally {
+    mitmAuthLoadingId.value = null
+  }
+}
+
+async function fetchAuthViaMitmFromDialog() {
+  if (!form.value.id) return
+  await fetchAuthViaMitmForRow({
+    id: form.value.id,
+    seller_id: form.value.seller_id,
+  })
+}
 
 async function openBrowserByKey(accountKey, label) {
   if (browserLoadingKeys.value.has(accountKey)) return
@@ -739,10 +921,45 @@ onMounted(() => {
 .raw-row .el-button {
   align-self: flex-start;
 }
+.raw-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+}
 .meilu-form {
   max-height: 70vh;
   overflow-y: auto;
   padding-right: 8px;
+}
+.form-block {
+  margin: 12px 0 4px;
+  padding: 4px 12px 12px;
+  border-radius: 8px;
+  border: 1px solid rgba(64, 158, 255, 0.22);
+  background: rgba(19, 28, 47, 0.45);
+}
+.form-block--auth {
+  border-color: rgba(230, 162, 60, 0.35);
+  background: rgba(45, 35, 20, 0.25);
+}
+.form-block-hint {
+  margin: -4px 0 12px;
+  font-size: 12px;
+  line-height: 1.5;
+  color: #7d8da6;
+}
+.form-item-tip {
+  margin: 8px 0 0;
+  font-size: 12px;
+  line-height: 1.55;
+  color: #7d8da6;
+  word-break: break-word;
+}
+.form-item-tip .mono {
+  font-family: ui-monospace, 'Cascadia Code', 'Consolas', monospace;
+  font-size: 11px;
+  color: #a8b4c8;
 }
 </style>
 

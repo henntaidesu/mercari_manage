@@ -8,3 +8,4 @@ PyJWT==2.10.1
 cryptography>=42.0.0
 easyocr
 playwright>=1.48.0
+mitmproxy>=10.4.0

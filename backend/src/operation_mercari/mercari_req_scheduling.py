@@ -36,18 +36,23 @@ DPOP_FOR_ITEM_GET_INFO: Literal["item_get_info"] = "item_get_info"
 
 DpopFor = Literal["list", "info", "on_sale_list", "item_get_info"]
 
-# 数据库字段名 -> 标准 HTTP 请求头名 映射（DPoP 由 _dpop_header_value + dpop_for 单独注入）
+# 数据库字段名 -> 标准 HTTP 请求头名 映射（DPoP 由 _dpop_header_value + dpop_for 单独注入；与 Web 端抓包一致）
 _HEADER_FIELD_MAP: Dict[str, str] = {
-    "accept":          "Accept",
-    "x_app_type":      "X-App-Type",
-    "authorization":   "Authorization",
-    "priority":        "Priority",
-    "accept_language": "Accept-Language",
-    "accept_encoding": "Accept-Encoding",
-    "user_agent":      "User-Agent",
-    "x_app_version":   "X-App-Version",
-    "x_platform":      "X-Platform",
-    "x_mcc":           "X-Mcc",
+    "accept":             "Accept",
+    "authorization":      "Authorization",
+    "priority":           "Priority",
+    "accept_language":    "Accept-Language",
+    "accept_encoding":    "Accept-Encoding",
+    "user_agent":         "User-Agent",
+    "x_platform":         "X-Platform",
+    "sec_ch_ua_platform": "Sec-CH-UA-Platform",
+    "sec_ch_ua":          "Sec-CH-UA",
+    "sec_ch_ua_mobile":   "Sec-CH-UA-Mobile",
+    "origin":             "Origin",
+    "sec_fetch_site":     "Sec-Fetch-Site",
+    "sec_fetch_mode":     "Sec-Fetch-Mode",
+    "sec_fetch_dest":     "Sec-Fetch-Dest",
+    "referer":            "Referer",
 }
 
 

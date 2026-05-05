@@ -1,30 +1,47 @@
 # -*- coding: utf-8 -*-
+import asyncio
 import json
-from fastapi import APIRouter, HTTPException
-from pydantic import BaseModel as PydanticModel
-from typing import Optional, Dict, Any
+import time
+from typing import Any, Dict, Optional
+
+from fastapi import APIRouter, Body, HTTPException
+from pydantic import BaseModel as PydanticModel, Field
+
 from ..db_manage.models.meilu_account import MeiluAccountModel
+from ..ssl_mitm_proxy.capture_config import (
+    clear_session_marker,
+    read_capture_file,
+    write_session_marker_ms,
+)
+from ..ssl_mitm_proxy.runner import default_mitm_proxy_url, start_mitm_proxy
+from ..web_drive import get_web_drive_manager
 
 router = APIRouter(prefix="/api/meilu-accounts", tags=["meilu-accounts"])
 
 ALLOWED_STATUS = {"active", "disabled"}
 ALLOWED_FETCH_INTERVALS = frozenset({"10", "30", "60", "3h", "6h", "12h", "24h"})
 
+# 与 jp.mercari.com Web 抓包一致；可选：在售列表 / 单件详情专用 DPoP
 _HEADER_FIELD_LABELS = [
-    ("accept", "Accept"),
-    ("x_app_type", "X-App-Type"),
+    ("x_platform", "X-Platform"),
     ("authorization", "Authorization"),
+    ("sec_ch_ua_platform", "Sec-CH-UA-Platform"),
+    ("accept_language", "Accept-Language"),
+    ("sec_ch_ua", "Sec-CH-UA"),
+    ("sec_ch_ua_mobile", "Sec-CH-UA-Mobile"),
     ("dpop_list", "DPoP_List"),
     ("dpop_info", "DPoP_Info"),
     ("dpop_on_sale_list", "DPoP_OnSale-List"),
     ("dpop_item_get_info", "DPoP_ItemGet-Info"),
-    ("priority", "Priority"),
-    ("accept_language", "Accept-Language"),
-    ("accept_encoding", "Accept-Encoding"),
     ("user_agent", "User-Agent"),
-    ("x_app_version", "X-App-Version"),
-    ("x_platform", "X-Platform"),
-    ("x_mcc", "X-Mcc"),
+    ("accept", "Accept"),
+    ("origin", "Origin"),
+    ("sec_fetch_site", "Sec-Fetch-Site"),
+    ("sec_fetch_mode", "Sec-Fetch-Mode"),
+    ("sec_fetch_dest", "Sec-Fetch-Dest"),
+    ("referer", "Referer"),
+    ("accept_encoding", "Accept-Encoding"),
+    ("priority", "Priority"),
 ]
 
 
@@ -48,6 +65,13 @@ class MeiluAccountUpdate(PydanticModel):
     remark: Optional[str] = None
     is_open: Optional[int] = None
     fetch_interval: Optional[str] = None
+
+
+class FetchAuthViaMitmBody(PydanticModel):
+    """通过 MITM 抓取 items/get_items（trading）请求头并写回账号。"""
+
+    wait_seconds: int = Field(120, ge=30, le=300)
+    open_browser: bool = True
 
 
 def _validate_status(status: str):
@@ -99,20 +123,30 @@ def _norm_headers_dict(d: Optional[dict]) -> dict:
     d = dict(d)
     if not (str(d.get("dpop_list") or "").strip()) and (str(d.get("dpop") or "").strip()):
         d["dpop_list"] = str(d["dpop"]).strip()
-    if not (str(d.get("dpop_info") or "").strip()) and (str(d.get("dpop_list") or "").strip()):
-        d["dpop_info"] = str(d["dpop_list"]).strip()
     out = {}
     for key, label in _HEADER_FIELD_LABELS:
         raw = d.get(key)
         text = ("" if raw is None else str(raw)).strip()
-        # 在售列表专用 DPoP：可选；不填则同步在售页时再报错提示补全
-        if key in ("dpop_on_sale_list", "dpop_item_get_info"):
+        # 订单详情 / 在售列表 / 单件详情 等专用 DPoP：可选；不填则调用对应接口时再报错提示补全
+        if key in ("dpop_info", "dpop_on_sale_list", "dpop_item_get_info"):
             out[key] = text
             continue
         if not text:
             raise HTTPException(status_code=400, detail=f"{label}不能为空")
         out[key] = text
     return out
+
+
+def _apply_mitm_patch_to_account(item: MeiluAccountModel, patch: Dict[str, Any]) -> None:
+    """将 MITM 写入的 value_patch 合并进现有 value，再经 _norm_headers_dict 校验。"""
+    cur = MeiluAccountModel._parse_value_json(item.value)
+    for k, v in (patch or {}).items():
+        if v is not None and str(v).strip():
+            cur[str(k)] = str(v).strip()
+    if cur.get("dpop_list") and not (cur.get("dpop_info") or "").strip():
+        cur["dpop_info"] = cur["dpop_list"]
+    normalized = _norm_headers_dict(cur)
+    item.value = json.dumps(normalized, ensure_ascii=False)
 
 
 def _item_api_dict(item: MeiluAccountModel) -> dict:
@@ -194,6 +228,70 @@ def update_meilu_account(aid: int, data: MeiluAccountUpdate):
     if not item.save():
         raise HTTPException(status_code=500, detail="更新失败")
     return _item_api_dict(item)
+
+
+@router.post("/{aid}/fetch-auth-via-mitm")
+async def fetch_auth_via_mitm(
+    aid: int,
+    body: Optional[FetchAuthViaMitmBody] = Body(default=None),
+):
+    """
+    启动 MITM（若未运行）、可选带代理打开 Edge，等待捕获
+    ``api.mercari.jp/items/get_items?...&status=trading`` 后合并 Authorization、
+    DPoP→dpop_list 等到账号，并写入 ``ssl_mitm/items_get_items_capture.json``。
+    """
+    cfg = body or FetchAuthViaMitmBody()
+    r = start_mitm_proxy()
+    if r.get("error"):
+        raise HTTPException(status_code=500, detail=r["error"])
+
+    item = MeiluAccountModel.find_by_id(id=aid)
+    if not item:
+        raise HTTPException(status_code=404, detail="账号不存在")
+    sid = _norm_seller_id(item.seller_id)
+    if not sid:
+        raise HTTPException(status_code=400, detail="请先填写卖家 ID（须与请求中 seller_id 一致）")
+
+    t0 = int(time.time() * 1000)
+    write_session_marker_ms(aid, t0)
+    try:
+        if cfg.open_browser:
+            mgr = get_web_drive_manager()
+            await mgr.close_session(f"meilu_{aid}")
+            await mgr.open_session(
+                f"meilu_{aid}",
+                headless=False,
+                start_url="https://jp.mercari.com/mypage/listings",
+                proxy_server=default_mitm_proxy_url(),
+            )
+
+        deadline = time.monotonic() + cfg.wait_seconds
+        cap = None
+        while time.monotonic() < deadline:
+            data = read_capture_file()
+            if data and str(data.get("seller_id") or "").strip() == sid:
+                if int(data.get("ts") or 0) >= t0:
+                    cap = data
+                    break
+            await asyncio.sleep(0.9)
+
+        if not cap:
+            raise HTTPException(
+                status_code=408,
+                detail="超时未捕获到请求：请安装 MITM 根证书（/api/ssl-mitm/ca-cert），"
+                "开启本流程后请在浏览器打开会产生「取引中」列表的请求（items/get_items & status=trading）。",
+            )
+
+        patch = cap.get("value_patch") or {}
+        if not patch:
+            raise HTTPException(status_code=500, detail="捕获数据为空")
+
+        _apply_mitm_patch_to_account(item, patch)
+        if not item.save():
+            raise HTTPException(status_code=500, detail="保存失败")
+        return {"success": True, "data": _item_api_dict(item), "capture_meta": {"url": cap.get("url"), "ts": cap.get("ts")}}
+    finally:
+        clear_session_marker(aid)
 
 
 @router.delete("/{aid}")
