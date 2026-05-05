@@ -4,9 +4,11 @@ import os
 import time
 import base64
 from fastapi import APIRouter, HTTPException, UploadFile, File
+from fastapi import Depends
 from pydantic import BaseModel as PydanticModel, field_validator
 from typing import Optional
 from PIL import Image
+from ..auth import require_auth
 from ..db_manage.database import DatabaseManager
 from ..image_storage import is_base64_image, save_base64_image, delete_image_file, get_image_root
 from ..operation_mercari.get_order.description_mgmt_ids import (
@@ -138,6 +140,17 @@ def _warehouse_exists(wid: int) -> bool:
 
 def _user_exists(uid: int) -> bool:
     return bool(db.execute_query("SELECT 1 FROM [users] WHERE id = ? LIMIT 1", (uid,)))
+
+
+def _is_system_admin(claims: dict) -> bool:
+    username = (claims.get("username") or "").strip()
+    if username == "admin":
+        return True
+    rows = db.execute_query(
+        "SELECT 1 FROM [users] WHERE username = ? AND display_name = ? LIMIT 1",
+        (username, "系统管理员"),
+    )
+    return bool(rows)
 
 
 def _convert_image_payload(image_value: Optional[str], prefix: str) -> Optional[str]:
@@ -349,13 +362,15 @@ def get_product(pid: int):
 
 
 @router.post("")
-def create_product(data: ProductCreate):
+def create_product(data: ProductCreate, claims: dict = Depends(require_auth)):
     if not (data.barcode or "").strip():
         raise HTTPException(status_code=400, detail="条形码必填")
     if data.warehouse_id is None:
         raise HTTPException(status_code=400, detail="所属仓库必填")
     if not _warehouse_exists(data.warehouse_id):
         raise HTTPException(status_code=400, detail="所属仓库不存在")
+    if data.owner_user_id is not None and not _is_system_admin(claims):
+        raise HTTPException(status_code=403, detail="仅系统管理员可修改商品归属")
     if data.owner_user_id is not None and not _user_exists(data.owner_user_id):
         raise HTTPException(status_code=400, detail="商品归属用户不存在")
     image_front_path = _convert_image_payload(data.image_front, "product_front")
@@ -395,7 +410,7 @@ def create_product(data: ProductCreate):
 
 
 @router.put("/{pid}")
-def update_product(pid: int, data: ProductUpdate):
+def update_product(pid: int, data: ProductUpdate, claims: dict = Depends(require_auth)):
     if not _product_exists(pid):
         raise HTTPException(status_code=404, detail="商品不存在")
     update_data = data.model_dump(exclude_unset=True)
@@ -403,10 +418,14 @@ def update_product(pid: int, data: ProductUpdate):
         raise HTTPException(status_code=400, detail="条形码不能为空")
     if 'barcode' in update_data:
         update_data['barcode'] = update_data['barcode'].strip()
-    existing = db.execute_query("SELECT image_front, image_back, warehouse_id FROM [inventory] WHERE id = ? LIMIT 1", (pid,))
+    existing = db.execute_query(
+        "SELECT image_front, image_back, warehouse_id, owner_user_id FROM [inventory] WHERE id = ? LIMIT 1",
+        (pid,),
+    )
     old_front = existing[0][0] if existing else None
     old_back = existing[0][1] if existing else None
     old_warehouse_id = existing[0][2] if existing else None
+    old_owner_user_id = existing[0][3] if existing else None
 
     if 'image_front' in update_data:
         new_front = _convert_image_payload(update_data.get('image_front'), "product_front")
@@ -425,8 +444,11 @@ def update_product(pid: int, data: ProductUpdate):
     if 'warehouse_id' in update_data:
         if not _warehouse_exists(final_warehouse_id):
             raise HTTPException(status_code=400, detail="所属仓库不存在")
-    if 'owner_user_id' in update_data and update_data['owner_user_id'] is not None:
-        if not _user_exists(update_data['owner_user_id']):
+    if 'owner_user_id' in update_data:
+        new_owner_user_id = update_data['owner_user_id']
+        if new_owner_user_id != old_owner_user_id and not _is_system_admin(claims):
+            raise HTTPException(status_code=403, detail="仅系统管理员可修改商品归属")
+        if new_owner_user_id is not None and not _user_exists(new_owner_user_id):
             raise HTTPException(status_code=400, detail="商品归属用户不存在")
     allowed_fields = {
         "name", "barcode", "category_id", "product_type_id", "owner_user_id", "warehouse_id", "price", "quantity",

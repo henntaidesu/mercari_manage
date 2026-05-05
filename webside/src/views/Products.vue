@@ -148,12 +148,40 @@
         </el-table-column>
         <el-table-column label="商品类型" width="120" align="center" header-align="center">
           <template #default="{ row }">
-            <span>{{ row.product_type_name || '未设置' }}</span>
+            <el-select
+              v-if="editingProductTypeRowId === row.id"
+              :model-value="row.product_type_id"
+              :ref="(el) => setInlineSelectRef('productType', row.id, el)"
+              size="small"
+              class="inventory-inline-select"
+              placeholder="选择类型"
+              popper-class="inventory-inline-select-popper"
+              @change="saveProductTypeInline(row, $event)"
+              @visible-change="(v) => { if (!v) editingProductTypeRowId = null }"
+            >
+              <el-option label="" :value="null" />
+              <el-option v-for="t in productTypes" :key="t.id" :label="t.name" :value="t.id" />
+            </el-select>
+            <div v-else class="editable-cell" @click="openProductTypeInline(row)">{{ displayProductTypeName(row) }}</div>
           </template>
         </el-table-column>
         <el-table-column label="商品归属" width="120" align="center" header-align="center">
           <template #default="{ row }">
-            <span>{{ row.owner_user_name || '未设置' }}</span>
+            <el-select
+              v-if="editingOwnerRowId === row.id"
+              :model-value="row.owner_user_id"
+              :ref="(el) => setInlineSelectRef('owner', row.id, el)"
+              size="small"
+              class="inventory-inline-select"
+              placeholder="选择归属"
+              popper-class="inventory-inline-select-popper"
+              @change="saveOwnerInline(row, $event)"
+              @visible-change="(v) => { if (!v) editingOwnerRowId = null }"
+            >
+              <el-option label="" :value="null" />
+              <el-option v-for="u in ownerUsers" :key="u.id" :label="u.display_name || u.username" :value="u.id" />
+            </el-select>
+            <div v-else class="editable-cell" @click="openOwnerInline(row)">{{ displayOwnerName(row) }}</div>
           </template>
         </el-table-column>
         <el-table-column label="所属仓库" width="120" align="center" header-align="center">
@@ -687,6 +715,10 @@ const editingCell = ref('')
 const editingValue = ref('')
 const savingInlineCell = ref('')
 const editingCategoryRowId = ref(null)
+const editingProductTypeRowId = ref(null)
+const editingOwnerRowId = ref(null)
+const inlineProductTypeSelectMap = new Map()
+const inlineOwnerSelectMap = new Map()
 const newCategoryName = ref('')
 const newWarehouseName = ref('')
 const newProductTypeName = ref('')
@@ -1003,6 +1035,67 @@ function normalizeInlineValue(field, rawValue) {
   return value || null
 }
 
+function setInlineSelectRef(kind, rowId, el) {
+  const map = kind === 'productType' ? inlineProductTypeSelectMap : inlineOwnerSelectMap
+  if (!el) {
+    map.delete(rowId)
+    return
+  }
+  map.set(rowId, el)
+}
+
+function openSelectMenuByMap(map, rowId) {
+  nextTick(() => {
+    const selectRef = map.get(rowId)
+    if (!selectRef) return
+    if (typeof selectRef.focus === 'function') {
+      selectRef.focus()
+    }
+    if (typeof selectRef.toggleMenu === 'function') {
+      selectRef.toggleMenu()
+      setTimeout(() => {
+        if (selectRef.expanded !== true && typeof selectRef.toggleMenu === 'function') {
+          selectRef.toggleMenu()
+        }
+      }, 0)
+    }
+  })
+}
+
+function openProductTypeInline(row) {
+  editingProductTypeRowId.value = row.id
+  openSelectMenuByMap(inlineProductTypeSelectMap, row.id)
+}
+
+function openOwnerInline(row) {
+  editingOwnerRowId.value = row.id
+  openSelectMenuByMap(inlineOwnerSelectMap, row.id)
+}
+
+function displayProductTypeName(row) {
+  const typeId = row?.product_type_id ?? null
+  if (typeId != null) {
+    const matched = productTypes.value.find((t) => t.id === typeId)
+    if (matched?.name) return matched.name
+  }
+  const name = row?.product_type_name
+  if (name == null) return ''
+  const text = String(name).trim()
+  return text || ''
+}
+
+function displayOwnerName(row) {
+  const ownerId = row?.owner_user_id ?? null
+  if (ownerId != null) {
+    const matched = ownerUsers.value.find((u) => u.id === ownerId)
+    if (matched) return matched.display_name || matched.username || ''
+  }
+  const name = row?.owner_user_name
+  if (name == null) return ''
+  const text = String(name).trim()
+  return text || ''
+}
+
 async function saveInlineEdit(row, field) {
   const key = getCellKey(row, field)
   if (editingCell.value !== key || savingInlineCell.value === key) return
@@ -1048,6 +1141,40 @@ async function saveCategoryInline(row, categoryId) {
     ElMessage.success('游戏分类已更新')
   } finally {
     editingCategoryRowId.value = null
+  }
+}
+
+async function saveProductTypeInline(row, productTypeId) {
+  const normalized = productTypeId || null
+  if ((row.product_type_id || null) === normalized) {
+    editingProductTypeRowId.value = null
+    return
+  }
+  try {
+    await inventoryApi.update(row.id, { product_type_id: normalized })
+    row.product_type_id = normalized
+    const matched = productTypes.value.find((t) => t.id === normalized)
+    row.product_type_name = matched?.name || ''
+    ElMessage.success('商品类型已更新')
+  } finally {
+    editingProductTypeRowId.value = null
+  }
+}
+
+async function saveOwnerInline(row, ownerUserId) {
+  const normalized = ownerUserId || null
+  if ((row.owner_user_id || null) === normalized) {
+    editingOwnerRowId.value = null
+    return
+  }
+  try {
+    await inventoryApi.update(row.id, { owner_user_id: normalized })
+    row.owner_user_id = normalized
+    const matched = ownerUsers.value.find((u) => u.id === normalized)
+    row.owner_user_name = matched ? (matched.display_name || matched.username) : ''
+    ElMessage.success('商品归属已更新')
+  } finally {
+    editingOwnerRowId.value = null
   }
 }
 
@@ -1135,7 +1262,8 @@ function captureFrame(videoElRef = videoRef) {
   return new Promise((resolve) => canvas.toBlob(resolve, 'image/jpeg', 0.85))
 }
 
-async function load() {
+async function load(options = {}) {
+  const { resetPage = true } = options
   loading.value = true
   const params = {}
   if (keyword.value) params.keyword = keyword.value
@@ -1144,9 +1272,15 @@ async function load() {
   if (filterProductType.value) params.product_type_id = filterProductType.value
   if (filterOwnerUserId.value) params.owner_user_id = filterOwnerUserId.value
   list.value = await inventoryApi.list(params).finally(() => (loading.value = false))
-  inventorySortProp.value = ''
-  inventorySortOrder.value = ''
-  currentPage.value = 1
+  if (resetPage) {
+    inventorySortProp.value = ''
+    inventorySortOrder.value = ''
+    currentPage.value = 1
+    return
+  }
+  const totalPages = Math.max(1, Math.ceil(list.value.length / pageSize))
+  if (currentPage.value > totalPages) currentPage.value = totalPages
+  if (currentPage.value < 1) currentPage.value = 1
 }
 
 /** 与控制台相同：全库条目/总数量 + 接口返回的今日入出库（手机端不展示统计，一般不请求） */
@@ -1326,7 +1460,7 @@ async function submit() {
     else await inventoryApi.create(payload)
     ElMessage.success('保存成功')
     dialogVisible.value = false
-    load()
+    await load({ resetPage: false })
     loadInventoryStats()
   } finally {
     submitting.value = false
@@ -1336,7 +1470,7 @@ async function submit() {
 async function remove(id) {
   await inventoryApi.remove(id)
   ElMessage.success('删除成功')
-  load()
+  await load({ resetPage: false })
   loadInventoryStats()
 }
 
@@ -2068,5 +2202,13 @@ onBeforeUnmount(() => {
 .product-dialog .listing-field-fullwidth.el-input {
   width: 100% !important;
   max-width: 100%;
+}
+
+.inventory-inline-select {
+  width: 100% !important;
+}
+
+.inventory-inline-select-popper {
+  min-width: 120px !important;
 }
 </style>
