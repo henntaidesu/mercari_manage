@@ -128,6 +128,18 @@ class OrderModel(BaseModel):
                 'not_null': False,
                 'default': None,
             },
+            # 是否已执行过“刷新后同步库存扣减”：0=未同步，1=已同步（防重复扣减）
+            'inventory_synced': {
+                'type': 'INTEGER',
+                'not_null': True,
+                'default': 0,
+            },
+            # 本订单已同步扣减的库存总数量（首次同步写入）
+            'inventory_synced_quantity': {
+                'type': 'INTEGER',
+                'not_null': True,
+                'default': 0,
+            },
             # Mercari item.thumbnails：JSON 字符串，如 ["https://..."]
             'thumbnails': {
                 'type': 'TEXT',
@@ -278,7 +290,8 @@ class OrderModel(BaseModel):
             SELECT o.id, o.order_no, o.order_date, o.order_updated_at, o.purchase_time, o.customer_name, o.data_user,
                    o.status, o.amount,
                    o.service_fee, o.net_income, o.carrier_display_name, o.request_class_display_name,
-                   o.shipping_fee, o.tracking_no, o.transaction_evidence_id, o.remark, o.description, o.thumbnails
+                   o.shipping_fee, o.tracking_no, o.transaction_evidence_id, o.remark, o.description,
+                   o.inventory_synced, o.inventory_synced_quantity, o.thumbnails
             {base_sql}
             ORDER BY COALESCE(o.purchase_time, o.order_updated_at, o.order_date) DESC, o.id DESC
             LIMIT ? OFFSET ?
@@ -288,7 +301,8 @@ class OrderModel(BaseModel):
             'id', 'order_no', 'order_date', 'order_updated_at', 'purchase_time', 'customer_name', 'data_user', 'status',
             'amount',
             'service_fee', 'net_income', 'carrier_display_name', 'request_class_display_name',
-            'shipping_fee', 'tracking_no', 'transaction_evidence_id', 'remark', 'description', 'thumbnails',
+            'shipping_fee', 'tracking_no', 'transaction_evidence_id', 'remark', 'description',
+            'inventory_synced', 'inventory_synced_quantity', 'thumbnails',
         ]
         return {
             'total': total,

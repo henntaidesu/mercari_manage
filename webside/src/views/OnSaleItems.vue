@@ -50,10 +50,11 @@
 
     <el-card shadow="never" class="table-card">
       <el-table
-        :data="list"
+        :data="displayList"
         v-loading="loading"
         stripe
         row-key="item_id"
+        :row-class-name="onSaleRowClassName"
         @expand-change="onTableExpandChange"
       >
         <el-table-column type="expand" width="44">
@@ -305,6 +306,32 @@ const filters = ref({
 })
 
 const sellerFromAccounts = ref([])
+
+function isOnSaleZeroStockAlert(row) {
+  if (!row || typeof row !== 'object') return false
+  const status = String(row.status ?? '').trim()
+  if (status !== 'on_sale') return false
+  const q = Number(row.inventory_quantity)
+  if (!Number.isFinite(q)) return false
+  return q <= 0
+}
+
+const displayList = computed(() => {
+  const arr = Array.isArray(list.value) ? list.value.slice() : []
+  return arr
+    .map((row, idx) => ({ row, idx }))
+    .sort((a, b) => {
+      const aw = isOnSaleZeroStockAlert(a.row) ? 1 : 0
+      const bw = isOnSaleZeroStockAlert(b.row) ? 1 : 0
+      if (aw !== bw) return bw - aw
+      return a.idx - b.idx
+    })
+    .map((x) => x.row)
+})
+
+function onSaleRowClassName({ row }) {
+  return isOnSaleZeroStockAlert(row) ? 'on-sale-stock-alert-row' : ''
+}
 
 const sellerOptions = computed(() => {
   const m = new Map()
@@ -640,6 +667,19 @@ onMounted(() => {
   min-height: 38px;
   line-height: 38px;
   box-sizing: border-box;
+}
+:deep(.on-sale-stock-alert-row) {
+  --el-table-tr-bg-color: #3a1517;
+}
+:deep(.on-sale-stock-alert-row td) {
+  background-color: #3a1517 !important;
+}
+:deep(.on-sale-stock-alert-row:hover > td) {
+  background-color: #4a1a1d !important;
+}
+:deep(.on-sale-stock-alert-row td .cell) {
+  color: #ffd6d9;
+  font-weight: 600;
 }
 
 </style>

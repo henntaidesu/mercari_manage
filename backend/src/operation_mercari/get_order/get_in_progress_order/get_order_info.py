@@ -21,6 +21,7 @@ from typing import Any, Dict, Optional
 from urllib.parse import quote
 
 from ...mercari_req_scheduling import DPOP_FOR_ITEM_INFO, send_request
+from ....db_manage.database import DatabaseManager
 from ....db_manage.models.order import OrderModel
 
 _TRANSACTION_EVIDENCE_GET_PATH = "https://api.mercari.jp/transaction_evidences/get"
@@ -94,6 +95,76 @@ def _float_str_or_num(v: Any) -> Optional[float]:
         return float(v)
     except (TypeError, ValueError):
         return None
+
+
+def _to_int(v: Any, default: int = 0) -> int:
+    try:
+        return int(v)
+    except (TypeError, ValueError):
+        return int(default)
+
+
+def _sync_inventory_deduction_once(order_no: str) -> Optional[str]:
+    """
+    对订单执行一次性库存扣减：
+    - inventory_synced=1 时直接跳过（幂等）
+    - 按 order_outbound_lines 聚合 inventory_id 的 quantity 扣减 inventory.quantity
+    - 写回 inventory_synced=1 与 inventory_synced_quantity
+    """
+    ono = str(order_no or "").strip()
+    if not ono:
+        return "empty_order_no"
+    db = DatabaseManager()
+    try:
+        row = db.execute_query(
+            "SELECT [inventory_synced] FROM [orders] WHERE [order_no] = ? LIMIT 1",
+            (ono,),
+        )
+        if not row:
+            return "order_not_found"
+        if _to_int(row[0][0], 0) == 1:
+            return None
+
+        lines = db.execute_query(
+            """
+            SELECT [inventory_id], SUM(COALESCE([quantity], 1)) AS q
+            FROM [order_outbound_lines]
+            WHERE [order_no] = ? AND [inventory_id] IS NOT NULL
+            GROUP BY [inventory_id]
+            """,
+            (ono,),
+        )
+
+        total_qty = 0
+        for iid, q in lines:
+            inv_id = _to_int(iid, 0)
+            qty = max(0, _to_int(q, 0))
+            if inv_id <= 0 or qty <= 0:
+                continue
+            db.execute_update(
+                """
+                UPDATE [inventory]
+                SET [quantity] = CASE
+                    WHEN COALESCE([quantity], 0) >= ? THEN COALESCE([quantity], 0) - ?
+                    ELSE 0
+                END
+                WHERE [id] = ?
+                """,
+                (qty, qty, inv_id),
+            )
+            total_qty += qty
+
+        db.execute_update(
+            """
+            UPDATE [orders]
+            SET [inventory_synced] = 1, [inventory_synced_quantity] = ?
+            WHERE [order_no] = ?
+            """,
+            (int(total_qty), ono),
+        )
+        return None
+    except Exception as exc:
+        return f"inventory_sync_failed:{exc}"
 
 
 def fetch_item_info(item_id: str, account_id: Optional[int] = None) -> Dict[str, Any]:
@@ -262,4 +333,7 @@ def apply_item_info_to_order(
     from ..description_mgmt_ids import sync_outbound_lines_for_order
 
     sync_outbound_lines_for_order(item_id, o.description)
+    sync_err = _sync_inventory_deduction_once(item_id)
+    if sync_err:
+        return sync_err
     return None

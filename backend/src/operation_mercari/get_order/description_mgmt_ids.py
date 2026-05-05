@@ -24,19 +24,19 @@ _FW_DIGITS = str.maketrans("０１２３４５６７８９", "0123456789")
 
 # 捕获「管理ID」后的数字列表片段（不含前缀）
 _MGMT_ID_PATTERN = re.compile(
-    r"管理\s*ID\s*[:：]\s*([0-9０-９\s,，、]+)",
+    r"管理\s*ID\s*[:：]\s*([0-9０-９\s,，、*xX×]+)",
     re.IGNORECASE | re.MULTILINE,
 )
 
 # 「管理番号:59」—— 与管理 ID 相同语义，对应 inventory.id
 _MGMT_BANGO_PATTERN = re.compile(
-    r"管理\s*番号\s*[:：]\s*([0-9０-９\s,，、]+)",
+    r"管理\s*番号\s*[:：]\s*([0-9０-９\s,，、*xX×]+)",
     re.MULTILINE,
 )
 
 # バーコード：后为条码列表（逗号/空白分隔）；条码一般为数字，亦允许字母与常见符号
 _BARCODE_PATTERN = re.compile(
-    r"バーコード\s*[:：]\s*([0-9A-Za-z０-９\s,，、\-_]+)",
+    r"バーコード\s*[:：]\s*([0-9A-Za-z０-９\s,，、\-_*xX×]+)",
     re.MULTILINE,
 )
 
@@ -53,9 +53,33 @@ def _split_chunks(segment: str) -> List[str]:
     return parts
 
 
-def parse_order_description_outbound_tokens(text: Optional[str]) -> List[OutboundToken]:
+def _value_and_quantity(token: str) -> Tuple[str, int]:
     """
-    按说明文中出现顺序，解析出 (line_kind, value) 列表。
+    支持 token 尾部数量语法：6977850080862*10 / 6977850080862×10 / 6977850080862x10。
+    未携带数量时默认 1。
+    """
+    t = (token or "").translate(_FW_DIGITS).strip()
+    if not t:
+        return "", 1
+    m = re.match(r"^(.*?)(?:\s*[*xX×]\s*(\d+))?$", t)
+    if not m:
+        return t, 1
+    base = (m.group(1) or "").strip()
+    qraw = (m.group(2) or "").strip()
+    if not qraw:
+        return base, 1
+    try:
+        q = int(qraw)
+    except (TypeError, ValueError):
+        q = 1
+    return base, max(1, q)
+
+
+def parse_order_description_outbound_tokens_with_quantity(
+    text: Optional[str],
+) -> List[Tuple[str, Any, int]]:
+    """
+    按说明文中出现顺序，解析出 (line_kind, value, quantity) 列表。
     line_kind: ``mgmt_id`` | ``barcode``
     """
     if text is None:
@@ -73,21 +97,41 @@ def parse_order_description_outbound_tokens(text: Optional[str]) -> List[Outboun
         spans.append((m.start(), "barcode", m.group(1) or ""))
     spans.sort(key=lambda x: x[0])
 
-    out: List[OutboundToken] = []
+    out: List[Tuple[str, Any, int]] = []
     for _, kind, chunk in spans:
-        if kind == "mgmt":
-            for part in _split_chunks(chunk):
+        for part in _split_chunks(chunk):
+            base, qty = _value_and_quantity(part)
+            if not base:
+                continue
+            if kind == "mgmt":
                 try:
-                    n = int(part.translate(_FW_DIGITS))
+                    n = int(base)
                 except (TypeError, ValueError):
                     continue
-                out.append(("mgmt_id", n))
-        else:
-            for part in _split_chunks(chunk):
-                bc = part.translate(_FW_DIGITS).strip()
+                out.append(("mgmt_id", n, qty))
+            else:
+                bc = base.strip()
                 if not bc:
                     continue
-                out.append(("barcode", bc))
+                out.append(("barcode", bc, qty))
+    return out
+
+
+def parse_order_description_outbound_tokens(text: Optional[str]) -> List[OutboundToken]:
+    """
+    按说明文中出现顺序，解析出 (line_kind, value) 列表。
+    line_kind: ``mgmt_id`` | ``barcode``
+    """
+    if text is None:
+        return []
+    s = str(text).strip()
+    if not s:
+        return []
+
+    out: List[OutboundToken] = []
+    for kind, value, qty in parse_order_description_outbound_tokens_with_quantity(s):
+        repeat = max(1, int(qty or 1))
+        out.extend([(kind, value)] * repeat)
     return out
 
 
@@ -135,11 +179,11 @@ def sync_outbound_lines_for_order(order_no: str, description: Optional[str]) -> 
         return
 
     OrderOutboundLineModel.delete_all("[order_no] = ?", (ono,))
-    tokens = parse_order_description_outbound_tokens(description)
+    tokens = parse_order_description_outbound_tokens_with_quantity(description)
     if not tokens:
         return
 
-    for idx, (kind, val) in enumerate(tokens):
+    for idx, (kind, val, qty) in enumerate(tokens):
         if kind == "mgmt_id":
             mid = int(val)
             exists = _inventory_id_exists(mid)
@@ -148,7 +192,7 @@ def sync_outbound_lines_for_order(order_no: str, description: Optional[str]) -> 
                 inventory_id=mid if exists else None,
                 management_id=str(mid),
                 line_kind="mgmt_id",
-                quantity=1,
+                quantity=max(1, int(qty or 1)),
                 sort_index=idx,
             )
         else:
@@ -159,7 +203,7 @@ def sync_outbound_lines_for_order(order_no: str, description: Optional[str]) -> 
                 inventory_id=inv_id,
                 management_id=bc,
                 line_kind="barcode",
-                quantity=1,
+                quantity=max(1, int(qty or 1)),
                 sort_index=idx,
             )
         line.save()
