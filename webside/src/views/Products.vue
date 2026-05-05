@@ -516,10 +516,14 @@
           <el-tag type="info" size="small">当前库存 {{ contProduct.quantity ?? 0 }} 件</el-tag>
           <el-tag size="small" effect="plain">所属仓库 {{ contProduct.warehouse_name || '未设置' }}</el-tag>
         </div>
+        <div class="cont-quantity-row">
+          <span class="cont-quantity-label">本次数量</span>
+          <el-input-number v-model="contQuantity" :min="1" :max="9999" :step="1" controls-position="right" />
+        </div>
         <div class="cont-actions">
           <el-button @click="resumeContScan">继续扫码</el-button>
           <el-button type="primary" size="large" :loading="contConfirming" @click="confirmContAction">
-            {{ contAction === 'out' ? '确认出库 -1' : '确认入库 +1' }}
+            {{ contAction === 'out' ? `确认出库 -${contQuantity}` : `确认入库 +${contQuantity}` }}
           </el-button>
         </div>
       </div>
@@ -766,6 +770,7 @@ const contBarcode = ref('')
 const contProduct = ref(null)
 const contAction = ref('in') // 'in' | 'out'
 const contWarehouseId = ref(null)
+const contQuantity = ref(1)
 const contScanning = ref(false)
 const contConfirming = ref(false)
 const contVideoRef = ref()
@@ -1606,6 +1611,7 @@ async function submitManualOut() {
 async function openContScan(action = 'in') {
   stopContScan()
   contAction.value = action === 'out' ? 'out' : 'in'
+  contQuantity.value = 1
   contBarcode.value = ''
   contProduct.value = null
   const canStream = !!(navigator.mediaDevices?.getUserMedia) && !!window.isSecureContext
@@ -1663,6 +1669,7 @@ async function handleContBarcode(barcode) {
     const res = await inventoryApi.findByBarcode(barcode)
     if (res?.found) {
       contProduct.value = res.product
+      contQuantity.value = 1
       contState.value = 'found'
     } else {
       contState.value = 'notfound'
@@ -1694,10 +1701,11 @@ async function confirmContAction() {
   }
   contConfirming.value = true
   try {
+    const quantity = Math.max(1, Math.round(Number(contQuantity.value) || 1))
     const apiCall = contAction.value === 'out' ? inventoryApi.stockOut : inventoryApi.stockIn
     const res = await apiCall(contProduct.value.id, {
       warehouse_id: contProduct.value.warehouse_id,
-      quantity: 1,
+      quantity,
       remark: contAction.value === 'out' ? '连续扫码出库' : '连续扫码入库'
     })
     ElMessage.success(`${contAction.value === 'out' ? '出库' : '入库'}成功，当前库存：${res.new_quantity} 件`)
@@ -2105,6 +2113,14 @@ onBeforeUnmount(() => {
   margin-bottom: 4px;
 }
 .product-meta-name { font-size: 15px; font-weight: 600; color: #c8d8f0; }
+.cont-quantity-row {
+  margin-top: 8px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+}
+.cont-quantity-label { color: #8e9bb3; font-size: 13px; }
 .notfound-box {
   display: flex; flex-direction: column; align-items: center;
   padding: 24px 0; color: #e6a23c;

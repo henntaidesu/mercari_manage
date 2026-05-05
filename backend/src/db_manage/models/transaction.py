@@ -105,8 +105,8 @@ class TransactionModel(BaseModel):
         db = cls().db
         base_sql = """
             FROM [transactions] t
-            JOIN [inventory] p ON p.id = t.product_id
-            JOIN [warehouses] w ON w.id = t.warehouse_id
+            LEFT JOIN [inventory] p ON p.id = t.product_id
+            LEFT JOIN [warehouses] w ON w.id = t.warehouse_id
             LEFT JOIN [warehouses] tw ON tw.id = t.target_warehouse_id
             WHERE 1=1
         """
@@ -143,8 +143,9 @@ class TransactionModel(BaseModel):
         )
 
         select_sql = f"""
-            SELECT t.id, t.type, t.product_id, p.name as product_name,
-                   t.warehouse_id, w.name as warehouse_name,
+            SELECT t.id, t.type, t.product_id,
+                   COALESCE(NULLIF(p.name, ''), '[ID:' || t.product_id || '] 商品已删除') as product_name,
+                   t.warehouse_id, COALESCE(w.name, '-') as warehouse_name,
                    t.target_warehouse_id, tw.name as target_warehouse_name,
                    t.quantity, t.remark, t.operator, t.created_at
             {base_sql}

@@ -49,15 +49,16 @@
     </el-card>
 
     <el-card shadow="never" class="table-card">
-      <el-table :data="list" v-loading="loading" stripe row-key="item_id" @expand-change="onTableExpandChange">
+      <el-table
+        :data="list"
+        v-loading="loading"
+        stripe
+        row-key="item_id"
+        @expand-change="onTableExpandChange"
+      >
         <el-table-column type="expand" width="44">
           <template #default="props">
             <div v-loading="expandSlot(props.row.item_id)?.loading" class="os-expand-wrap">
-              <div class="os-expand-meta">
-                在售表记录（按商品 ID 查询）共
-                <strong>{{ expandSlot(props.row.item_id)?.total ?? '—' }}</strong>
-                条
-              </div>
               <el-table
                 :data="expandSlot(props.row.item_id)?.rows || []"
                 border
@@ -65,32 +66,43 @@
                 class="os-expand-table"
                 empty-text="暂无数据，展开后自动加载"
               >
-                <el-table-column label="商品名称" min-width="180" show-overflow-tooltip>
+                <el-table-column label="管理ID" width="120" align="center">
                   <template #default="{ row: r }">
-                    <span>{{ r.inventory_product_names_text || '-' }}</span>
-                  </template>
-                </el-table-column>
-                <el-table-column label="管理ID" min-width="120" show-overflow-tooltip>
-                  <template #default="{ row: r }">
-                    <span v-if="r.inventory_mgmt_ids_text">{{ r.inventory_mgmt_ids_text }}</span>
+                    <div v-if="inventoryLines(r).length" class="multi-line-cell">
+                      <div v-for="(ln, idx) in inventoryLines(r)" :key="`mgmt-${idx}`">{{ ln.management_id || '-' }}</div>
+                    </div>
                     <span v-else class="cell-muted">-</span>
                   </template>
                 </el-table-column>
                 <el-table-column label="条码" min-width="180" show-overflow-tooltip>
                   <template #default="{ row: r }">
-                    <span v-if="r.inventory_barcodes_text">{{ r.inventory_barcodes_text }}</span>
+                    <div v-if="inventoryLines(r).length" class="multi-line-cell">
+                      <div v-for="(ln, idx) in inventoryLines(r)" :key="`bc-${idx}`">{{ ln.barcode || '-' }}</div>
+                    </div>
+                    <span v-else class="cell-muted">-</span>
+                  </template>
+                </el-table-column>
+                <el-table-column label="商品名称" min-width="180" show-overflow-tooltip>
+                  <template #default="{ row: r }">
+                    <div v-if="inventoryLines(r).length" class="multi-line-cell">
+                      <div v-for="(ln, idx) in inventoryLines(r)" :key="`name-${idx}`">{{ ln.product_name || '-' }}</div>
+                    </div>
                     <span v-else class="cell-muted">-</span>
                   </template>
                 </el-table-column>
                 <el-table-column label="存储位置" min-width="180" show-overflow-tooltip>
                   <template #default="{ row: r }">
-                    <span v-if="r.inventory_locations_text">{{ r.inventory_locations_text }}</span>
+                    <div v-if="inventoryLines(r).length" class="multi-line-cell">
+                      <div v-for="(ln, idx) in inventoryLines(r)" :key="`loc-${idx}`">{{ ln.location || '-' }}</div>
+                    </div>
                     <span v-else class="cell-muted">-</span>
                   </template>
                 </el-table-column>
                 <el-table-column label="在售数" width="90" align="center">
                   <template #default="{ row: r }">
-                    <span v-if="r.inventory_on_sale_quantity != null">{{ r.inventory_on_sale_quantity }}</span>
+                    <div v-if="inventoryLines(r).length" class="multi-line-cell">
+                      <div v-for="(ln, idx) in inventoryLines(r)" :key="`qty-${idx}`">{{ ln.on_sale_quantity ?? 0 }}</div>
+                    </div>
                     <span v-else class="cell-muted">-</span>
                   </template>
                 </el-table-column>
@@ -178,7 +190,7 @@
               管理
             </el-button>
             <el-button
-              type="success"
+              :type="hasSecondaryData(row) ? 'success' : 'warning'"
               link
               size="small"
               :loading="detailLoadingIds.has(String(row.item_id || '').trim())"
@@ -324,6 +336,19 @@ function expandKey(itemId) {
 function expandSlot(itemId) {
   const k = expandKey(itemId)
   return k ? expandByItemId[k] : null
+}
+
+function hasSecondaryData(row) {
+  if (!row || typeof row !== 'object') return false
+  const mgmt = String(row.inventory_mgmt_ids_text || '').trim()
+  const barcodes = String(row.inventory_barcodes_text || '').trim()
+  const matched = Number(row.inventory_match_count || 0)
+  return Boolean(mgmt || barcodes || matched > 0)
+}
+
+function inventoryLines(row) {
+  if (!row || !Array.isArray(row.inventory_lines)) return []
+  return row.inventory_lines
 }
 
 async function ensureExpandLoaded(row) {
@@ -604,12 +629,17 @@ onMounted(() => {
   padding: 8px 12px 12px 36px;
   max-width: 100%;
 }
-.os-expand-meta {
-  font-size: 12px;
-  color: #606266;
-  margin-bottom: 8px;
-}
 .os-expand-table {
   width: 100%;
 }
+.multi-line-cell {
+  display: flex;
+  flex-direction: column;
+}
+.multi-line-cell > div {
+  min-height: 38px;
+  line-height: 38px;
+  box-sizing: border-box;
+}
+
 </style>

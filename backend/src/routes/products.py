@@ -290,6 +290,8 @@ def stock_in_product(pid: int, data: StockInRequest):
     """连续扫码入库：库存 +N；若提供 warehouse_id 则同时写入事务记录"""
     if not _product_exists(pid):
         raise HTTPException(status_code=404, detail="商品不存在")
+    if data.quantity <= 0:
+        raise HTTPException(status_code=400, detail="入库数量必须大于0")
     affected = db.execute_update(
         "UPDATE [inventory] SET quantity = COALESCE(quantity, 0) + ? WHERE id = ?",
         (data.quantity, pid),
