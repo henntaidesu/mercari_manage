@@ -19,7 +19,7 @@
 
     <el-card shadow="never" class="search-card">
       <el-row :gutter="0" align="middle" class="search-row">
-        <el-col :xs="24" :md="16" class="search-left-group">
+        <el-col :xs="24" :md="14" class="search-left-group">
           <el-input v-model="keyword" class="search-input-control" placeholder="搜索商品名称" clearable @change="load" prefix-icon="Search" />
           <div class="search-filters-row">
             <el-select v-model="filterCat" class="search-select-control" placeholder="所有分类" clearable @change="load">
@@ -36,7 +36,7 @@
             </el-select>
           </div>
         </el-col>
-        <el-col :xs="24" :md="8" class="search-actions" :class="{ 'search-actions--ios': isIOS }">
+        <el-col :xs="24" :md="10" class="search-actions" :class="{ 'search-actions--ios': isIOS }">
           <template v-if="isIOS">
             <div class="search-actions-ios-row">
               <el-button type="success" @click="openContScan('in')">条码入库</el-button>
@@ -47,8 +47,9 @@
             <div class="search-actions-ios-row">
               <el-button type="info" @click="openImageFind">拍照寻找</el-button>
               <el-button type="warning" @click="openNoBarcodeEntry">无码录入</el-button>
-              <el-button @click="listProductStub">出品</el-button>
+              <el-button @click="listProductStub">组合出品</el-button>
             </div>
+
           </template>
           <template v-else>
             <el-button type="success" @click="openContScan('in')">条码入库</el-button>
@@ -57,7 +58,7 @@
             <el-button type="primary" @click="openLookupScan">条码寻找</el-button>
             <el-button type="info" @click="openImageFind">拍照寻找</el-button>
             <el-button type="warning" @click="openNoBarcodeEntry">无码录入</el-button>
-            <el-button @click="listProductStub">出品</el-button>
+            <el-button @click="listProductStub">组合出品</el-button>
           </template>
         </el-col>
       </el-row>
@@ -242,16 +243,11 @@
         <el-table-column label="在售数量" prop="on_sale_quantity" width="88" align="center" header-align="center">
           <template #default="{ row }">{{ Number(row.on_sale_quantity ?? 0) }}</template>
         </el-table-column>
-        <el-table-column label="操作" :width="isMobile ? 180 : 240" align="center" header-align="center" :fixed="isMobile ? false : 'right'">
+        <el-table-column label="操作" :width="isMobile ? 140 : 160" align="center" header-align="center" :fixed="isMobile ? false : 'right'">
           <template #default="{ row }">
             <div class="row-actions">
-              <el-button size="small" type="success" @click="openOcrForRow(row)">OCR</el-button>
+              <el-button size="small" type="warning" @click="listProductStub">出品</el-button>
               <el-button size="small" @click="openDialog(row)">编辑</el-button>
-              <el-popconfirm title="确认删除该商品？" @confirm="remove(row.id)">
-                <template #reference>
-                  <el-button size="small" type="danger">删除</el-button>
-                </template>
-              </el-popconfirm>
             </div>
           </template>
         </el-table-column>
@@ -471,8 +467,20 @@
       </el-form>
       <template #footer>
         <div class="dialog-footer">
-        <el-button @click="dialogVisible = false">取消</el-button>
-        <el-button type="primary" @click="submit" :loading="submitting">保存</el-button>
+          <div class="dialog-footer-left">
+            <template v-if="form.id">
+              <el-button type="success" @click="openOcrForRow(form)">OCR</el-button>
+              <el-popconfirm title="确认删除该商品？" @confirm="remove(form.id); dialogVisible = false">
+                <template #reference>
+                  <el-button type="danger">删除</el-button>
+                </template>
+              </el-popconfirm>
+            </template>
+          </div>
+          <div class="dialog-footer-right">
+            <el-button @click="dialogVisible = false">取消</el-button>
+            <el-button type="primary" @click="submit" :loading="submitting">保存</el-button>
+          </div>
         </div>
       </template>
     </el-dialog>
@@ -2333,7 +2341,16 @@ onBeforeUnmount(() => {
   }
   .dialog-footer {
     display: flex;
-    justify-content: flex-end;
+    justify-content: space-between;
+    align-items: center;
+    gap: 8px;
+  }
+  .dialog-footer-left {
+    display: flex;
+    gap: 8px;
+  }
+  .dialog-footer-right {
+    display: flex;
     gap: 8px;
   }
   :deep(.product-dialog .el-dialog),
