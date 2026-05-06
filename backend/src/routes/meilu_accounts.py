@@ -546,6 +546,13 @@ async def fetch_auth_via_mitm(
             print(f"[MITM]{line}", flush=True)
         print("==========================================\n", flush=True)
 
+        # 认证抓取流程已完成：自动关闭该账号浏览器会话，避免残留窗口。
+        if cfg.open_browser and mgr is not None:
+            try:
+                await mgr.close_session(f"meilu_{aid}")
+            except Exception as exc:
+                log.warning("[MITM] 认证完成后自动关闭浏览器失败 id=%s: %s", aid, exc)
+
         return {
             "success": True,
             "data": _item_api_dict(item),

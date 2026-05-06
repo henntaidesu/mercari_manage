@@ -1,26 +1,25 @@
 <template>
   <div>
-    <el-card shadow="hover" class="overview-card">
-      <div class="overview-grid">
-        <div class="overview-item">
-          <div class="overview-value">{{ mergedWarehouse.shelf_count }}</div>
-          <div class="overview-label">货架数量</div>
-        </div>
-        <div class="overview-item">
-          <div class="overview-value">{{ mergedWarehouse.product_types }}</div>
-          <div class="overview-label">商品种类</div>
-        </div>
-        <div class="overview-item">
-          <div class="overview-value">{{ mergedWarehouse.total_quantity }}</div>
-          <div class="overview-label">总库存量</div>
-        </div>
-      </div>
-    </el-card>
-
     <el-card shadow="never" class="warehouse-list-card">
       <template #header>
         <div class="list-card-header">
-          <span class="list-card-title">仓库列表</span>
+          <div class="list-card-header-start">
+            <span class="list-card-title">仓库列表</span>
+            <div class="header-overview-grid">
+              <div class="header-overview-item">
+                <div class="header-overview-value">{{ mergedWarehouse.shelf_count }}</div>
+                <div class="header-overview-label">货架数量</div>
+              </div>
+              <div class="header-overview-item">
+                <div class="header-overview-value">{{ mergedWarehouse.product_types }}</div>
+                <div class="header-overview-label">商品种类</div>
+              </div>
+              <div class="header-overview-item">
+                <div class="header-overview-value">{{ mergedWarehouse.total_quantity }}</div>
+                <div class="header-overview-label">总库存量</div>
+              </div>
+            </div>
+          </div>
           <el-tooltip content="新建仓库" placement="top">
             <el-button type="primary" class="add-warehouse-btn" @click="openWarehouseDialog">
               <el-icon><Plus /></el-icon>
@@ -39,10 +38,25 @@
               <div class="collapse-title-start">
                 <span class="collapse-wh-name" :title="grp.warehouse">{{ grp.warehouse }}</span>
               </div>
-              <div class="collapse-title-center">
-                <span class="collapse-wh-meta">
-                  货架名称 {{ grp.shelfNameGroups.length }} 组 · 货架号 {{ grp.shelfCount }} · 商品种类 {{ grp.productTypes }} · 总库存 {{ grp.totalQuantity }}
-                </span>
+              <div class="collapse-title-stats">
+                <div class="collapse-stat-grid collapse-stat-grid--primary">
+                  <div class="collapse-stat-item">
+                    <div class="collapse-stat-value">{{ grp.shelfNameGroups.length }}</div>
+                    <div class="collapse-stat-label">名称分组</div>
+                  </div>
+                  <div class="collapse-stat-item">
+                    <div class="collapse-stat-value">{{ grp.shelfCount }}</div>
+                    <div class="collapse-stat-label">货架号</div>
+                  </div>
+                  <div class="collapse-stat-item">
+                    <div class="collapse-stat-value">{{ grp.productTypes }}</div>
+                    <div class="collapse-stat-label">商品种类</div>
+                  </div>
+                  <div class="collapse-stat-item">
+                    <div class="collapse-stat-value">{{ grp.totalQuantity }}</div>
+                    <div class="collapse-stat-label">总库存</div>
+                  </div>
+                </div>
               </div>
               <div class="collapse-title-end">
                 <el-button
@@ -71,10 +85,21 @@
                   <div class="shelf-name-title-start">
                     <span class="shelf-name-title-text" :title="sub.label">{{ sub.label }}</span>
                   </div>
-                  <div class="shelf-name-title-center">
-                    <span class="shelf-name-title-meta">
-                      货架号 {{ sub.shelfCount }} · 商品种类 {{ sub.productTypes }} · 总库存 {{ sub.totalQuantity }}
-                    </span>
+                  <div class="shelf-name-title-stats">
+                    <div class="collapse-stat-grid collapse-stat-grid--secondary">
+                      <div class="collapse-stat-item collapse-stat-item--compact">
+                        <div class="collapse-stat-value">{{ sub.shelfCount }}</div>
+                        <div class="collapse-stat-label">货架号</div>
+                      </div>
+                      <div class="collapse-stat-item collapse-stat-item--compact">
+                        <div class="collapse-stat-value">{{ sub.productTypes }}</div>
+                        <div class="collapse-stat-label">商品种类</div>
+                      </div>
+                      <div class="collapse-stat-item collapse-stat-item--compact">
+                        <div class="collapse-stat-value">{{ sub.totalQuantity }}</div>
+                        <div class="collapse-stat-label">总库存</div>
+                      </div>
+                    </div>
                   </div>
                   <div class="shelf-name-title-end">
                     <el-button
@@ -124,28 +149,8 @@
         <el-form-item v-if="form.id" label="货架号" prop="name">
           <el-input v-model="form.name" placeholder="请输入货架号" clearable />
         </el-form-item>
-        <el-form-item v-else-if="createDialogKind === 'shelfNo'" label="货架号" prop="name">
+        <el-form-item v-else label="货架号" prop="name">
           <el-input v-model="form.name" placeholder="请输入货架号" clearable />
-        </el-form-item>
-        <el-form-item v-else label="货架号" prop="names">
-          <el-select
-            v-model="form.names"
-            multiple
-            filterable
-            allow-create
-            default-first-option
-            placeholder="请选择或输入货架号（可多选）"
-          >
-            <el-option
-              v-for="code in shelfNoOptionsForCreate"
-              :key="code"
-              :label="code"
-              :value="code"
-            />
-          </el-select>
-        </el-form-item>
-        <el-form-item v-if="!form.id && createDialogKind === 'shelf' && (form.names || []).length > 1" class="form-hint-item">
-          <span class="form-hint">批量新增多个货架号时，下方「货架名称」仅保存后可在各行单独编辑生效。</span>
         </el-form-item>
         <el-form-item label="位置">
           <el-input v-model="form.location" placeholder="如：1号仓库1排左侧" />
@@ -236,7 +241,6 @@ const form = ref({
   warehouse: '默认仓库',
   shelf_name: '',
   name: '',
-  names: [],
   location: '',
   description: ''
 })
@@ -249,16 +253,6 @@ const addDialogTitle = computed(() =>
 const rules = {
   warehouse: [{ required: true, message: '请输入仓库名称', trigger: 'blur' }],
   name: [{ required: true, message: '请输入货架号', trigger: 'blur' }],
-  names: [{
-    validator: (_, value, callback) => {
-      if (!Array.isArray(value) || value.length === 0) {
-        callback(new Error('请选择至少一个货架号'))
-        return
-      }
-      callback()
-    },
-    trigger: 'change'
-  }]
 }
 
 /** 一级：仓库 → 二级：货架名称分组 → 三级：货架号表格 */
@@ -304,33 +298,6 @@ watch(
   { immediate: true },
 )
 
-const shelfNoOptionsForCreate = computed(() => {
-  const targetWh = form.value.warehouse || DEFAULT_WAREHOUSE
-  const selectedNames = new Set((form.value.names || []).map((v) => String(v).trim()).filter(Boolean))
-
-  const normWh = (w) => w || DEFAULT_WAREHOUSE
-
-  const namesFromDefault = list.value
-    .filter((item) => normWh(item.warehouse) === DEFAULT_WAREHOUSE)
-    .map((item) => item.name)
-    .filter(Boolean)
-
-  const namesInTarget = list.value
-    .filter((item) => normWh(item.warehouse) === targetWh)
-    .map((item) => item.name)
-    .filter(Boolean)
-
-  const pool = new Set([...namesFromDefault, ...namesInTarget])
-  let options = [...pool].filter((name) => !selectedNames.has(name))
-
-  if (targetWh !== DEFAULT_WAREHOUSE) {
-    const existingInTarget = new Set(namesInTarget)
-    options = options.filter((name) => !existingInTarget.has(name))
-  }
-
-  return [...new Set(options)]
-})
-
 const mergedWarehouse = computed(() => {
   const productTypes = list.value.reduce((sum, item) => sum + Number(item.product_types || 0), 0)
   const totalQuantity = list.value.reduce((sum, item) => sum + Number(item.total_quantity || 0), 0)
@@ -348,7 +315,7 @@ async function load() {
 
 function openDialog(row = null) {
   if (row) {
-    form.value = { ...row, warehouse: normalizeWarehouseName(row.warehouse), names: [], shelf_name: row.shelf_name || '' }
+    form.value = { ...row, warehouse: normalizeWarehouseName(row.warehouse), shelf_name: row.shelf_name || '' }
   } else {
     createDialogKind.value = 'shelf'
     form.value = {
@@ -356,7 +323,6 @@ function openDialog(row = null) {
       warehouse: DEFAULT_WAREHOUSE,
       shelf_name: '',
       name: '',
-      names: [],
       location: '',
       description: ''
     }
@@ -372,7 +338,6 @@ function openDialogForWarehouse(warehouseName) {
     warehouse: normalizeWarehouseName(warehouseName),
     shelf_name: '',
     name: '',
-    names: [],
     location: '',
     description: '',
   }
@@ -387,7 +352,6 @@ function openDialogForShelfGroup(warehouseName, rawShelfName) {
     warehouse: normalizeWarehouseName(warehouseName),
     shelf_name: rawShelfName ? String(rawShelfName).trim() : '',
     name: '',
-    names: [],
     location: '',
     description: '',
   }
@@ -422,7 +386,7 @@ async function submit() {
         location: form.value.location,
         description: form.value.description
       })
-    } else if (createDialogKind.value === 'shelfNo') {
+    } else {
       const code = (form.value.name || '').trim()
       await warehouseApi.create({
         warehouse: form.value.warehouse,
@@ -431,19 +395,6 @@ async function submit() {
         location: form.value.location,
         description: form.value.description
       })
-    } else {
-      const codes = [...new Set((form.value.names || []).map((v) => String(v).trim()).filter(Boolean))]
-      const batch = codes.length > 1
-      const sn = (form.value.shelf_name || '').trim()
-      for (const code of codes) {
-        await warehouseApi.create({
-          warehouse: form.value.warehouse,
-          name: code,
-          shelf_name: batch ? null : (sn || null),
-          location: form.value.location,
-          description: form.value.description
-        })
-      }
     }
     ElMessage.success('保存成功')
     dialogVisible.value = false
@@ -468,37 +419,57 @@ onMounted(load)
   align-items: center;
   justify-content: space-between;
   gap: 12px;
+  flex-wrap: wrap;
+}
+.list-card-header-start {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 12px;
+  min-width: 0;
+  flex: 1;
+}
+.header-overview-grid {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: stretch;
+  gap: 8px;
+  justify-content: flex-start;
+}
+.header-overview-item {
+  background: #161f33;
+  border-radius: 8px;
+  text-align: center;
+  padding: 8px 14px;
+  min-width: 88px;
+  border: 1px solid #2a3446;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.25);
+}
+.header-overview-value {
+  font-size: 20px;
+  font-weight: 700;
+  color: #409eff;
+  line-height: 1.2;
+}
+.header-overview-label {
+  font-size: 11px;
+  color: #9ba8bf;
+  margin-top: 2px;
 }
 .add-warehouse-btn {
   padding: 8px 14px;
   border-radius: 6px;
+  flex-shrink: 0;
 }
-.overview-card {
-  border-radius: 10px;
-  margin-bottom: 16px;
-  background: #131c2f !important;
-  border: 1px solid #28354a !important;
-}
-.overview-card :deep(.el-card__body) {
-  padding: 16px;
-  background: transparent !important;
-}
-.overview-grid { display: grid; grid-template-columns: repeat(3, minmax(100px, 1fr)); gap: 12px; }
-.overview-item {
-  background: #161f33;
-  border-radius: 8px;
-  text-align: center;
-  padding: 14px 10px;
-  border: 1px solid #2a3446;
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.25);
-}
-.overview-value { font-size: 24px; font-weight: 700; color: #409eff; line-height: 1.2; }
-.overview-label { font-size: 12px; color: #9ba8bf; margin-top: 4px; }
-
 .list-card-title {
   font-size: 15px;
   font-weight: 600;
   color: #e6edf7;
+  flex-shrink: 0;
+}
+.warehouse-list-card :deep(.el-card__header) {
+  background: #131c2f;
+  border-bottom: 1px solid #28354a;
 }
 .warehouse-list-card :deep(.el-card__body) {
   padding-top: 12px;
@@ -522,6 +493,14 @@ onMounted(load)
   border-bottom: 1px solid #28354a;
   flex-wrap: nowrap;
   align-items: center;
+  height: auto;
+  line-height: 1.35;
+}
+/* 插槽根节点占满箭头左侧区域，避免内部 grid 仅随内容宽度被摆在视觉中间 */
+.warehouse-collapse :deep(.el-collapse-item__header > :first-child) {
+  flex: 1;
+  min-width: 0;
+  text-align: left;
 }
 .warehouse-collapse :deep(.el-collapse-item__wrap) {
   border-bottom: none;
@@ -530,12 +509,12 @@ onMounted(load)
 .warehouse-collapse :deep(.el-collapse-item__content) {
   padding: 12px;
 }
-/* 一行：左仓库名 | 中统计（红框区域/视觉中心）| 右按钮 */
+/* 标题列随内容宽度，统计紧跟标题，避免 1fr 把标题撑开导致卡片视觉上居中 */
 .collapse-title {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
+  grid-template-columns: auto minmax(0, 1fr) auto;
   align-items: center;
-  column-gap: 10px;
+  column-gap: 12px;
   width: 100%;
   min-width: 0;
   padding-right: 4px;
@@ -543,11 +522,12 @@ onMounted(load)
 .collapse-title-start {
   justify-self: start;
   min-width: 0;
+  max-width: min(320px, 42vw);
   overflow: hidden;
 }
-.collapse-title-center {
-  justify-self: center;
-  text-align: center;
+.collapse-title-stats {
+  justify-self: start;
+  min-width: 0;
   max-width: 100%;
 }
 .collapse-title-end {
@@ -562,12 +542,51 @@ onMounted(load)
   overflow: hidden;
   text-overflow: ellipsis;
 }
-.collapse-wh-meta {
-  display: inline-block;
-  font-size: 12px;
-  font-weight: 500;
+.collapse-stat-grid {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: stretch;
+  justify-content: flex-start;
+  gap: 8px;
+}
+.collapse-stat-grid--primary .collapse-stat-item {
+  min-width: 76px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.25);
+}
+.collapse-stat-grid--secondary {
+  gap: 6px;
+}
+.collapse-stat-item {
+  background: #161f33;
+  border-radius: 8px;
+  text-align: center;
+  padding: 10px 12px;
+  border: 1px solid #2a3446;
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.22);
+}
+.collapse-stat-item--compact {
+  padding: 7px 10px;
+  min-width: 68px;
+  border-radius: 6px;
+}
+.collapse-stat-value {
+  font-size: 18px;
+  font-weight: 700;
+  color: #409eff;
+  line-height: 1.15;
+}
+.collapse-stat-item--compact .collapse-stat-value {
+  font-size: 16px;
+}
+.collapse-stat-label {
+  font-size: 11px;
   color: #9ba8bf;
-  white-space: nowrap;
+  margin-top: 3px;
+  line-height: 1.2;
+}
+.shelf-name-collapse .collapse-stat-item {
+  background: #121a2b;
+  border-color: #2a3446;
 }
 .collapse-add-btn {
   flex-shrink: 0;
@@ -593,6 +612,13 @@ onMounted(load)
   flex-wrap: nowrap;
   align-items: center;
   border-bottom: 1px solid #28354a;
+  height: auto;
+  line-height: 1.35;
+}
+.shelf-name-collapse :deep(.el-collapse-item__header > :first-child) {
+  flex: 1;
+  min-width: 0;
+  text-align: left;
 }
 .shelf-name-collapse :deep(.el-collapse-item__wrap) {
   background: #0a0f1a;
@@ -602,9 +628,9 @@ onMounted(load)
 }
 .shelf-name-title-row {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
+  grid-template-columns: auto minmax(0, 1fr) auto;
   align-items: center;
-  column-gap: 8px;
+  column-gap: 10px;
   width: 100%;
   min-width: 0;
   padding-right: 4px;
@@ -612,11 +638,12 @@ onMounted(load)
 .shelf-name-title-start {
   justify-self: start;
   min-width: 0;
+  max-width: min(280px, 38vw);
   overflow: hidden;
 }
-.shelf-name-title-center {
-  justify-self: center;
-  text-align: center;
+.shelf-name-title-stats {
+  justify-self: start;
+  min-width: 0;
   max-width: 100%;
 }
 .shelf-name-title-end {
@@ -629,24 +656,10 @@ onMounted(load)
   overflow: hidden;
   text-overflow: ellipsis;
 }
-.shelf-name-title-meta {
-  font-size: 12px;
-  font-weight: 500;
-  color: #8b9ab5;
-  white-space: nowrap;
-}
 .shelf-subtable {
   width: 100%;
 }
 .shelf-no-table {
   margin-top: 0;
-}
-.form-hint-item {
-  margin-bottom: 0 !important;
-}
-.form-hint {
-  font-size: 12px;
-  color: #8b9ab5;
-  line-height: 1.45;
 }
 </style>

@@ -108,7 +108,16 @@ class ProductUpdate(PydanticModel):
 
 
 def _row_to_product_detail(row: tuple) -> dict:
-    keys = PRODUCT_COLUMNS + ["category_name", "warehouse_name", "product_type_name", "owner_user_name", "pending_outbound_qty"]
+    keys = PRODUCT_COLUMNS + [
+        "category_name",
+        "warehouse_name",
+        "inv_wh_name",
+        "inv_shelf_name",
+        "inv_shelf_code",
+        "product_type_name",
+        "owner_user_name",
+        "pending_outbound_qty",
+    ]
     return dict(zip(keys, row))
 
 
@@ -118,8 +127,12 @@ def _query_product_with_joins(where_sql: str = "", params: tuple = ()) -> list[d
     select_cols = ", ".join([f"p.[{c}]" for c in PRODUCT_COLUMNS])
     pend_sql = sql_pending_outbound_subquery("p")
     wh_l = WarehouseModel.sql_display_label("w")
+    wh_store = "COALESCE(NULLIF(TRIM(w.warehouse), ''), '默认仓库')"
     sql = f"""
         SELECT {select_cols}, c.name AS category_name, {wh_l} AS warehouse_name,
+               {wh_store} AS inv_wh_name,
+               NULLIF(TRIM(w.shelf_name), '') AS inv_shelf_name,
+               w.name AS inv_shelf_code,
                pt.name AS product_type_name,
                COALESCE(u.display_name, u.username) AS owner_user_name,
                ({pend_sql}) AS pending_outbound_qty

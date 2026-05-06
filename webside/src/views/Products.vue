@@ -202,8 +202,14 @@
             <div v-else class="editable-cell" @click="openOwnerInline(row)">{{ displayOwnerName(row) }}</div>
           </template>
         </el-table-column>
-        <el-table-column label="所属仓库" width="120" align="center" header-align="center">
-          <template #default="{ row }">{{ row.warehouse_name || '-' }}</template>
+        <el-table-column label="所属仓库" min-width="100" align="center" header-align="center" show-overflow-tooltip>
+          <template #default="{ row }">{{ row.inv_wh_name || '-' }}</template>
+        </el-table-column>
+        <el-table-column label="所属货架" min-width="100" align="center" header-align="center" show-overflow-tooltip>
+          <template #default="{ row }">{{ row.inv_shelf_name || '-' }}</template>
+        </el-table-column>
+        <el-table-column label="货架号码" min-width="100" align="center" header-align="center" show-overflow-tooltip>
+          <template #default="{ row }">{{ row.inv_shelf_code || '-' }}</template>
         </el-table-column>
         <el-table-column label="单价" prop="price" width="120" align="center" header-align="center" sortable="custom">
           <template #default="{ row }">

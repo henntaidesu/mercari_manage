@@ -716,14 +716,9 @@ async function fetchAuthViaMitmForRow(row) {
   mitmAuthLoadingId.value = row.id
   try {
     const res = await meiluAccountApi.fetchAuthViaMitm(row.id, { timeout: 0 })
-    const keys = Array.isArray(res?.captured_field_keys) ? res.captured_field_keys : []
     const capSid = res?.capture_meta?.seller_id
-    const sidPart = capSid != null && String(capSid).trim() ? `卖家 ID：${capSid}。` : ''
-    ElMessage.success(
-      keys.length
-        ? `${sidPart}已合并请求头（${keys.length} 项）：${keys.join('、')}`
-        : `${sidPart}已根据抓包更新账号`
-    )
+    const sidPart = capSid != null && String(capSid).trim() ? ` 卖家 ID：${capSid}` : ''
+    ElMessage.success(`获取完成${sidPart}`)
     await load()
     if (dialogVisible.value && form.value.id === row.id) {
       const refreshed = list.value.find((r) => r.id === row.id)
