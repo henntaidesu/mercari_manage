@@ -204,11 +204,15 @@ class OrderModel(BaseModel):
     ) -> Dict[str, Any]:
         """
         与列表相同的筛选条件下，对全量匹配行求和（非当前页）。
+
+        统计口径：status=cancelled 的订单不计入 total_count / sum_amount /
+        sum_service_fee / sum_shipping_fee / sum_net_income（与列表筛选无关，列表仍可只看已取消）。
         """
         db = cls().db
         base_sql, params = cls._build_list_filter(
             keyword=keyword, status=status, start_ts=start_ts, end_ts=end_ts
         )
+        base_sql += " AND o.status != 'cancelled'"
         sql = f"""
             SELECT
                 COUNT(*),

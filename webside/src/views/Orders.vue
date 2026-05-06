@@ -398,7 +398,7 @@ const stats = ref({
   today_sum_net_income: 0,
 })
 
-/** 与列表相同条件：keyword、状态（见下方筛选项）、购入时间区间；今日新增为购入时间落在本地当日且仍满足相同 keyword/状态 */
+/** 与列表相同条件：keyword、状态、购入时间区间；今日新增为本地当日购入且仍满足相同 keyword/状态。汇总不含 status=cancelled（后端 stats 排除已取消）。 */
 const orderStatCards = computed(() => {
   const o = stats.value
   return [

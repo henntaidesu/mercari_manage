@@ -1,26 +1,5 @@
 <template>
   <div>
-    <el-card shadow="never" class="search-card">
-      <div class="warehouse-head">
-        <div>
-          <div class="warehouse-title">仓库管理（按仓库区分货架）</div>
-          <div class="warehouse-subtitle">支持按仓库筛选，历史空值默认归入“默认仓库”</div>
-        </div>
-        <div class="warehouse-actions">
-          <el-select v-model="selectedWarehouse" placeholder="选择仓库" style="width: 180px">
-            <el-option label="全部仓库" value="" />
-            <el-option
-              v-for="w in warehouseOptions"
-              :key="w"
-              :label="w"
-              :value="w"
-            />
-          </el-select>
-          <el-button @click="openWarehouseDialog">新建仓库</el-button>
-        </div>
-      </div>
-    </el-card>
-
     <el-card shadow="hover" class="overview-card">
       <div class="overview-grid">
         <div class="overview-item">
@@ -40,7 +19,14 @@
 
     <el-card shadow="never" class="warehouse-list-card">
       <template #header>
-        <span class="list-card-title">仓库列表</span>
+        <div class="list-card-header">
+          <span class="list-card-title">仓库列表</span>
+          <el-tooltip content="新建仓库" placement="top">
+            <el-button type="primary" class="add-warehouse-btn" @click="openWarehouseDialog">
+              <el-icon><Plus /></el-icon>
+            </el-button>
+          </el-tooltip>
+        </div>
       </template>
       <el-collapse v-if="groupedByWarehouse.length" v-model="activeCollapse" class="warehouse-collapse">
         <el-collapse-item
@@ -66,7 +52,7 @@
                   @click.stop="openDialogForWarehouse(grp.warehouse)"
                 >
                   <el-icon><Plus /></el-icon>
-                  新增货架
+                  添加货架
                 </el-button>
               </div>
             </div>
@@ -98,7 +84,7 @@
                       @click.stop="openDialogForShelfGroup(grp.warehouse, sub.rawShelfName)"
                     >
                       <el-icon><Plus /></el-icon>
-                      新增货架
+                      添加货架号
                     </el-button>
                   </div>
                 </div>
@@ -127,7 +113,7 @@
       <el-empty v-else description="暂无货架数据" />
     </el-card>
 
-    <el-dialog v-model="dialogVisible" :title="form.id ? '编辑货架' : '新增货架'" width="440px" destroy-on-close>
+    <el-dialog v-model="dialogVisible" :title="form.id ? '编辑货架' : addDialogTitle" width="440px" destroy-on-close>
       <el-form :model="form" :rules="rules" ref="formRef" label-width="80px">
         <el-form-item label="仓库" prop="warehouse">
           <el-input v-model="form.warehouse" placeholder="请输入仓库名称（如 1号仓）" />
@@ -136,14 +122,10 @@
           <el-input v-model="form.shelf_name" placeholder="可选，如：一层左、展示名" clearable />
         </el-form-item>
         <el-form-item v-if="form.id" label="货架号" prop="name">
-          <el-select v-model="form.name" filterable allow-create default-first-option placeholder="请选择或输入货架号">
-            <el-option
-              v-for="code in shelfNoOptionsForEdit"
-              :key="code"
-              :label="code"
-              :value="code"
-            />
-          </el-select>
+          <el-input v-model="form.name" placeholder="请输入货架号" clearable />
+        </el-form-item>
+        <el-form-item v-else-if="createDialogKind === 'shelfNo'" label="货架号" prop="name">
+          <el-input v-model="form.name" placeholder="请输入货架号" clearable />
         </el-form-item>
         <el-form-item v-else label="货架号" prop="names">
           <el-select
@@ -162,7 +144,7 @@
             />
           </el-select>
         </el-form-item>
-        <el-form-item v-if="!form.id && (form.names || []).length > 1" class="form-hint-item">
+        <el-form-item v-if="!form.id && createDialogKind === 'shelf' && (form.names || []).length > 1" class="form-hint-item">
           <span class="form-hint">批量新增多个货架号时，下方「货架名称」仅保存后可在各行单独编辑生效。</span>
         </el-form-item>
         <el-form-item label="位置">
@@ -241,7 +223,6 @@ function buildShelfNameGroups(shelves) {
 }
 
 const list = ref([])
-const selectedWarehouse = ref('')
 const activeCollapse = ref([])
 /** 二级折叠（货架名称）每组展开的 name，按仓库分 key */
 const activeShelfNameByWh = ref({})
@@ -259,6 +240,12 @@ const form = ref({
   location: '',
   description: ''
 })
+/** 新建弹窗标题：仓库表头 → 添加货架；三级（货架名称行）→ 添加货架号 */
+const createDialogKind = ref('shelf')
+const addDialogTitle = computed(() =>
+  createDialogKind.value === 'shelfNo' ? '添加货架号' : '添加货架'
+)
+
 const rules = {
   warehouse: [{ required: true, message: '请输入仓库名称', trigger: 'blur' }],
   name: [{ required: true, message: '请输入货架号', trigger: 'blur' }],
@@ -274,21 +261,9 @@ const rules = {
   }]
 }
 
-const warehouseOptions = computed(() => {
-  const all = list.value.map((item) => normalizeWarehouseName(item.warehouse))
-  return [...new Set(all)]
-})
-
-const filteredList = computed(() => {
-  if (!selectedWarehouse.value) {
-    return list.value
-  }
-  return list.value.filter((item) => normalizeWarehouseName(item.warehouse) === selectedWarehouse.value)
-})
-
 /** 一级：仓库 → 二级：货架名称分组 → 三级：货架号表格 */
 const groupedByWarehouse = computed(() => {
-  const rows = filteredList.value
+  const rows = list.value
   const map = new Map()
   for (const row of rows) {
     const key = normalizeWarehouseName(row.warehouse)
@@ -329,14 +304,6 @@ watch(
   { immediate: true },
 )
 
-const shelfNoOptionsForEdit = computed(() => {
-  const warehouseName = normalizeWarehouseName(form.value.warehouse)
-  const codes = list.value
-    .filter((item) => normalizeWarehouseName(item.warehouse) === warehouseName)
-    .map((item) => item.name)
-  return [...new Set(codes)]
-})
-
 const shelfNoOptionsForCreate = computed(() => {
   const targetWh = form.value.warehouse || DEFAULT_WAREHOUSE
   const selectedNames = new Set((form.value.names || []).map((v) => String(v).trim()).filter(Boolean))
@@ -365,10 +332,10 @@ const shelfNoOptionsForCreate = computed(() => {
 })
 
 const mergedWarehouse = computed(() => {
-  const productTypes = filteredList.value.reduce((sum, item) => sum + Number(item.product_types || 0), 0)
-  const totalQuantity = filteredList.value.reduce((sum, item) => sum + Number(item.total_quantity || 0), 0)
+  const productTypes = list.value.reduce((sum, item) => sum + Number(item.product_types || 0), 0)
+  const totalQuantity = list.value.reduce((sum, item) => sum + Number(item.total_quantity || 0), 0)
   return {
-    shelf_count: filteredList.value.length,
+    shelf_count: list.value.length,
     product_types: productTypes,
     total_quantity: totalQuantity
   }
@@ -380,22 +347,26 @@ async function load() {
 }
 
 function openDialog(row = null) {
-  form.value = row
-    ? { ...row, warehouse: normalizeWarehouseName(row.warehouse), names: [], shelf_name: row.shelf_name || '' }
-    : {
-        id: null,
-        warehouse: selectedWarehouse.value || DEFAULT_WAREHOUSE,
-        shelf_name: '',
-        name: '',
-        names: [],
-        location: '',
-        description: ''
-      }
+  if (row) {
+    form.value = { ...row, warehouse: normalizeWarehouseName(row.warehouse), names: [], shelf_name: row.shelf_name || '' }
+  } else {
+    createDialogKind.value = 'shelf'
+    form.value = {
+      id: null,
+      warehouse: DEFAULT_WAREHOUSE,
+      shelf_name: '',
+      name: '',
+      names: [],
+      location: '',
+      description: ''
+    }
+  }
   dialogVisible.value = true
 }
 
-/** 在某个仓库分组下新增货架（预填该仓库名称） */
+/** 在仓库表头添加货架（预填仓库） */
 function openDialogForWarehouse(warehouseName) {
+  createDialogKind.value = 'shelf'
   form.value = {
     id: null,
     warehouse: normalizeWarehouseName(warehouseName),
@@ -408,8 +379,9 @@ function openDialogForWarehouse(warehouseName) {
   dialogVisible.value = true
 }
 
-/** 在某货架名称分组下新增（预填仓库 + 货架名称） */
+/** 在三级列表添加货架号（预填仓库 + 货架名称） */
 function openDialogForShelfGroup(warehouseName, rawShelfName) {
+  createDialogKind.value = 'shelfNo'
   form.value = {
     id: null,
     warehouse: normalizeWarehouseName(warehouseName),
@@ -433,7 +405,6 @@ function confirmCreateWarehouse() {
     ElMessage.warning('请输入仓库名称')
     return
   }
-  selectedWarehouse.value = name
   warehouseDialogVisible.value = false
   openDialogForWarehouse(name)
   ElMessage.success('已创建仓库名，请继续新增该仓库下的货架')
@@ -448,6 +419,15 @@ async function submit() {
         warehouse: form.value.warehouse,
         name: form.value.name,
         shelf_name: form.value.shelf_name || null,
+        location: form.value.location,
+        description: form.value.description
+      })
+    } else if (createDialogKind.value === 'shelfNo') {
+      const code = (form.value.name || '').trim()
+      await warehouseApi.create({
+        warehouse: form.value.warehouse,
+        name: code,
+        shelf_name: (form.value.shelf_name || '').trim() || null,
         location: form.value.location,
         description: form.value.description
       })
@@ -483,11 +463,16 @@ onMounted(load)
 </script>
 
 <style scoped>
-.search-card { margin-bottom: 16px; border-radius: 8px; }
-.warehouse-head { display: flex; justify-content: space-between; gap: 16px; align-items: center; }
-.warehouse-actions { display: flex; align-items: center; gap: 10px; }
-.warehouse-title { font-size: 18px; font-weight: 600; color: #e6edf7; }
-.warehouse-subtitle { font-size: 12px; color: #9ba8bf; margin-top: 4px; }
+.list-card-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+.add-warehouse-btn {
+  padding: 8px 14px;
+  border-radius: 6px;
+}
 .overview-card {
   border-radius: 10px;
   margin-bottom: 16px;
