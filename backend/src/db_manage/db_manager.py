@@ -28,6 +28,82 @@ class DBManager:
         self.db = DatabaseManager()
         self.models: List[Type[BaseModel]] = self._get_all_models()
 
+    def _migrate_warehouses_composite_unique(self) -> bool:
+        """
+        历史表在 [name] 上有全局 UNIQUE，导致不同仓库不能建同名货架。
+        重建表为 (warehouse, name) 组合唯一，并保留 id 以维护外键。
+        """
+        db = self.db
+        if not db.table_exists("warehouses"):
+            return True
+        if db.execute_query(
+            "SELECT 1 FROM sqlite_master WHERE type='index' AND name='idx_warehouses_warehouse_name'"
+        ):
+            return True
+        print("正在迁移 warehouses：货架名称改为「仓库+货架」组合唯一 ...")
+        col_names = [c["name"] for c in db.get_table_columns("warehouses")]
+        if "id" not in col_names or "name" not in col_names:
+            print("[WARN] warehouses 表缺少 id/name，跳过组合唯一迁移")
+            return True
+        if "warehouse" not in col_names:
+            print("[WARN] warehouses 表缺少 warehouse 列，跳过组合唯一迁移")
+            return True
+        ordered = ["id", "name", "warehouse", "location", "description", "created_at"]
+        present = [c for c in ordered if c in col_names]
+        if not present:
+            print("[WARN] warehouses 无可用列，跳过组合唯一迁移")
+            return True
+        insert_cols = ", ".join(f"[{c}]" for c in present)
+        select_parts = []
+        for c in present:
+            if c == "warehouse":
+                select_parts.append(
+                    "COALESCE(NULLIF(TRIM([warehouse]), ''), '默认仓库')"
+                )
+            else:
+                select_parts.append(f"[{c}]")
+        select_sql = ", ".join(select_parts)
+        try:
+            with db.get_connection() as conn:
+                cur = conn.cursor()
+                cur.execute("PRAGMA foreign_keys=OFF")
+                cur.execute("BEGIN IMMEDIATE")
+                cur.execute(
+                    """
+                    CREATE TABLE [warehouses__mig] (
+                        [id] INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT,
+                        [name] TEXT NOT NULL,
+                        [warehouse] TEXT DEFAULT '默认仓库',
+                        [location] TEXT,
+                        [description] TEXT,
+                        [created_at] DATETIME DEFAULT CURRENT_TIMESTAMP
+                    )
+                    """
+                )
+                cur.execute(
+                    f"INSERT INTO [warehouses__mig] ({insert_cols}) "
+                    f"SELECT {select_sql} FROM [warehouses]"
+                )
+                cur.execute("DROP TABLE [warehouses]")
+                cur.execute("ALTER TABLE [warehouses__mig] RENAME TO [warehouses]")
+                cur.execute(
+                    "CREATE UNIQUE INDEX IF NOT EXISTS idx_warehouses_warehouse_name "
+                    "ON [warehouses]([warehouse], [name])"
+                )
+                conn.commit()
+                cur.execute("PRAGMA foreign_keys=ON")
+        except Exception as e:
+            print(f"[错误] warehouses 组合唯一迁移失败: {e}")
+            return False
+        cache_attr = "_cached_table_columns"
+        if hasattr(WarehouseModel, cache_attr):
+            try:
+                delattr(WarehouseModel, cache_attr)
+            except Exception:
+                pass
+        print("[OK] warehouses 组合唯一迁移完成")
+        return True
+
     def _get_all_models(self) -> List[Type[BaseModel]]:
         """按依赖顺序返回所有模型类"""
         return [
@@ -79,6 +155,9 @@ class DBManager:
             print(f"[OK] 数据库初始化成功: {success}/{total} 个表")
         else:
             print(f"[WARN] 数据库初始化完成: {success}/{total}，失败: {', '.join(failed)}")
+            return False
+
+        if not self._migrate_warehouses_composite_unique():
             return False
 
         return True

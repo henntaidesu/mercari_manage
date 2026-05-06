@@ -4,6 +4,7 @@
 """
 
 from typing import Dict, Any, List, Optional
+from datetime import datetime, timezone
 from ..base_model import BaseModel
 
 
@@ -24,7 +25,7 @@ class CostRecordModel(BaseModel):
                 'not_null': True,
             },
             'cost_date': {
-                'type': 'TEXT',
+                'type': 'INTEGER',
                 'not_null': True,
                 'default': None,
             },
@@ -44,7 +45,7 @@ class CostRecordModel(BaseModel):
                 'default': None,
             },
             'amount': {
-                'type': 'REAL',
+                'type': 'INTEGER',
                 'not_null': True,
                 'default': 0,
             },
@@ -108,11 +109,17 @@ class CostRecordModel(BaseModel):
             base_sql += " AND c.warehouse_id = ?"
             params.append(warehouse_id)
         if start_date:
+            dt_start = datetime.strptime(start_date, "%Y-%m-%d").replace(
+                hour=0, minute=0, second=0, tzinfo=timezone.utc
+            )
             base_sql += " AND c.cost_date >= ?"
-            params.append(start_date)
+            params.append(int(dt_start.timestamp()))
         if end_date:
+            dt_end = datetime.strptime(end_date, "%Y-%m-%d").replace(
+                hour=23, minute=59, second=59, tzinfo=timezone.utc
+            )
             base_sql += " AND c.cost_date <= ?"
-            params.append(end_date)
+            params.append(int(dt_end.timestamp()))
 
         total = db.execute_query(f"SELECT COUNT(*) {base_sql}", tuple(params))[0][0]
 

@@ -52,12 +52,17 @@
         <el-table-column label="物品名称" prop="item_name" min-width="140" />
         <el-table-column label="金额" width="120" align="right">
           <template #default="{ row }">
-            <span class="amount">¥{{ Number(row.amount || 0).toFixed(2) }}</span>
+            <span class="amount">¥{{ Math.round(row.amount || 0) }}</span>
           </template>
         </el-table-column>
         <el-table-column label="数量" width="100" align="center">
           <template #default="{ row }">
             {{ row.quantity || 0 }}
+          </template>
+        </el-table-column>
+        <el-table-column label="总价" width="120" align="right">
+          <template #default="{ row }">
+            <span class="amount">¥{{ Math.round((row.amount || 0) * (row.quantity || 0)) }}</span>
           </template>
         </el-table-column>
         <el-table-column label="仓库" prop="warehouse_name" width="140">
@@ -67,7 +72,11 @@
         </el-table-column>
         <el-table-column label="备注" prop="remark" min-width="180" show-overflow-tooltip />
         <el-table-column label="操作人" prop="operator" width="100" />
-        <el-table-column label="日期" prop="cost_date" width="120" />
+        <el-table-column label="记录时间" width="175">
+          <template #default="{ row }">
+            {{ formatTs(row.cost_date) }}
+          </template>
+        </el-table-column>
         <el-table-column label="操作" width="150" fixed="right">
           <template #default="{ row }">
             <el-button size="small" @click="openEdit(row)">编辑</el-button>
@@ -101,8 +110,14 @@
       destroy-on-close
     >
       <el-form :model="form" :rules="rules" ref="formRef" label-width="78px">
-        <el-form-item label="日期" prop="cost_date">
-          <el-date-picker v-model="form.cost_date" type="date" value-format="YYYY-MM-DD" />
+        <el-form-item label="记录时间" prop="cost_date">
+          <el-date-picker
+            v-model="form.cost_date"
+            type="datetime"
+            value-format="x"
+            placeholder="请选择记录时间"
+            style="width: 100%"
+          />
         </el-form-item>
         <el-form-item label="类型" prop="type">
           <el-select v-model="form.type" placeholder="请选择类型" style="width: 100%">
@@ -130,8 +145,8 @@
             <el-form-item label="单价" prop="amount">
               <el-input-number
                 v-model="form.amount"
-                :min="0.01"
-                :precision="2"
+                :min="1"
+                :precision="0"
                 :controls="false"
                 placeholder="请输入单价"
                 style="width: 100%"
@@ -209,7 +224,7 @@ const typeMap = {
 
 const createDefaultForm = () => ({
   id: null,
-  cost_date: new Date().toISOString().slice(0, 10),
+  cost_date: Date.now(),
   type: 'purchase',
   item_name: '',
   item_image: '',
@@ -221,8 +236,13 @@ const createDefaultForm = () => ({
 
 const form = ref(createDefaultForm())
 
+function formatTs(ts) {
+  if (!ts) return '-'
+  return new Date(ts * 1000).toLocaleString()
+}
+
 const rules = {
-  cost_date: [{ required: true, message: '请选择日期', trigger: 'change' }],
+  cost_date: [{ required: true, message: '请选择记录时间', trigger: 'change' }],
   type: [{ required: true, message: '请选择类型', trigger: 'change' }],
   item_name: [{ required: true, message: '请输入物品名称', trigger: 'blur' }],
   amount: [{ required: true, message: '请输入金额', trigger: 'blur' }],
@@ -268,7 +288,7 @@ function openCreate() {
 function openEdit(row) {
   form.value = {
     id: row.id,
-    cost_date: row.cost_date,
+    cost_date: (row.cost_date || 0) * 1000,
     type: row.type,
     item_name: row.item_name || '',
     item_image: row.item_image || '',
@@ -284,7 +304,7 @@ async function submit() {
   await formRef.value?.validate()
   submitting.value = true
   const payload = {
-    cost_date: form.value.cost_date,
+    cost_date: Math.floor((form.value.cost_date || Date.now()) / 1000),
     type: form.value.type,
     item_name: String(form.value.item_name || '').trim(),
     item_image: form.value.item_image || null,

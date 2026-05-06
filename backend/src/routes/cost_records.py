@@ -2,6 +2,7 @@
 from fastapi import APIRouter, HTTPException, UploadFile, File
 from pydantic import BaseModel as PydanticModel
 from typing import Optional
+from datetime import datetime, timezone
 from ..db_manage.models.cost_record import CostRecordModel
 from ..image_storage import save_upload_image, delete_image_file
 
@@ -11,11 +12,11 @@ ALLOWED_TYPES = {"purchase", "shipping", "packaging", "operation", "other"}
 
 
 class CostRecordCreate(PydanticModel):
-    cost_date: str
+    cost_date: Optional[int] = None
     type: str
     item_name: str
     item_image: Optional[str] = None
-    amount: float
+    amount: int
     quantity: int
     warehouse_id: Optional[int] = None
     remark: Optional[str] = None
@@ -23,11 +24,11 @@ class CostRecordCreate(PydanticModel):
 
 
 class CostRecordUpdate(PydanticModel):
-    cost_date: Optional[str] = None
+    cost_date: Optional[int] = None
     type: Optional[str] = None
     item_name: Optional[str] = None
     item_image: Optional[str] = None
-    amount: Optional[float] = None
+    amount: Optional[int] = None
     quantity: Optional[int] = None
     warehouse_id: Optional[int] = None
     remark: Optional[str] = None
@@ -86,8 +87,9 @@ def create_cost_record(data: CostRecordCreate):
         raise HTTPException(status_code=400, detail="金额必须大于0")
     if data.quantity <= 0:
         raise HTTPException(status_code=400, detail="数量必须大于0")
+    cost_ts = data.cost_date if data.cost_date else int(datetime.now(timezone.utc).timestamp())
     item = CostRecordModel(
-        cost_date=data.cost_date,
+        cost_date=cost_ts,
         type=data.type,
         item_name=data.item_name.strip(),
         item_image=_validate_image_path(data.item_image),

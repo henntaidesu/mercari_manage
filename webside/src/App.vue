@@ -16,6 +16,15 @@
   color-scheme: dark;
 }
 
+/* 与暗色主题对齐：避免统计卡片、表格卡片出现浅色底 / 白屏 loading */
+html.dark {
+  --el-bg-color: #0b1220;
+  --el-bg-color-page: #0b1220;
+  --el-fill-color-blank: #131c2f;
+  --el-fill-color-light: #18233a;
+  --el-mask-color: rgba(11, 18, 32, 0.78);
+}
+
 html, body, #app {
   height: 100%;
   font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'PingFang SC', 'Hiragino Sans GB', 'Microsoft YaHei', sans-serif;
@@ -50,6 +59,26 @@ html, body, #app {
 
 .el-card {
   background: #131c2f !important;
+  color: #e6edf7;
+}
+
+.el-card__header {
+  background: #161f33 !important;
+  border-bottom: 1px solid #28354a !important;
+  color: #e6edf7 !important;
+}
+
+.el-card__body {
+  background: transparent !important;
+  color: #e6edf7;
+}
+
+.el-loading-mask {
+  background-color: var(--el-mask-color) !important;
+}
+
+.el-loading-mask .el-loading-spinner .path {
+  stroke: #8fb8ff;
 }
 
 .el-table {

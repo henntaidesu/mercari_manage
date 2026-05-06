@@ -26,8 +26,12 @@ class WarehouseModel(BaseModel):
             'name': {
                 'type': 'TEXT',
                 'not_null': True,
-                'unique': True,
                 'default': None,
+            },
+            'warehouse': {
+                'type': 'TEXT',
+                'not_null': False,
+                'default': '默认仓库',
             },
             'location': {
                 'type': 'TEXT',
@@ -48,12 +52,36 @@ class WarehouseModel(BaseModel):
 
     @classmethod
     def get_indexes(cls) -> List[Dict[str, Any]]:
-        return []
+        return [
+            {
+                'name': 'idx_warehouses_warehouse_name',
+                'columns': ['warehouse', 'name'],
+                'unique': True,
+            },
+        ]
+
+    @classmethod
+    def normalize_warehouse_key(cls, warehouse: Any) -> str:
+        if warehouse is None:
+            return '默认仓库'
+        t = str(warehouse).strip()
+        return t if t else '默认仓库'
 
     @classmethod
     def find_by_name(cls, name: str):
-        """根据名称查找仓库"""
+        """根据货架名称查找（仍可能有同名跨仓库，谨慎使用）"""
         result = cls.find_all("name = ?", (name,), limit=1)
+        return result[0] if result else None
+
+    @classmethod
+    def find_by_warehouse_and_name(cls, warehouse: Any, name: str):
+        """同一仓库下货架名称唯一"""
+        wh = cls.normalize_warehouse_key(warehouse)
+        result = cls.find_all(
+            "COALESCE(NULLIF(TRIM([warehouse]), ''), '默认仓库') = ? AND [name] = ?",
+            (wh, name),
+            limit=1,
+        )
         return result[0] if result else None
 
     @classmethod
