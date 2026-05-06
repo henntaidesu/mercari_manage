@@ -5,6 +5,7 @@
 
 from typing import Dict, Any, List, Optional
 from ..base_model import BaseModel
+from .warehouse import WarehouseModel
 
 
 class ProductModel(BaseModel):
@@ -229,8 +230,9 @@ class ProductModel(BaseModel):
         db = cls().db
         product_fields = list(cls.get_fields().keys())
         product_select = ", ".join([f"p.[{f}] AS [{f}]" for f in product_fields])
+        wh_label = WarehouseModel.sql_display_label("w")
         sql = f"""
-            SELECT {product_select}, c.name as category_name, w.name as warehouse_name, pt.name as product_type_name,
+            SELECT {product_select}, c.name as category_name, {wh_label} as warehouse_name, pt.name as product_type_name,
                    COALESCE(u.display_name, u.username) as owner_user_name
             FROM [inventory] p
             LEFT JOIN [categories] c ON c.id = p.category_id

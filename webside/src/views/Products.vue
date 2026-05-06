@@ -26,7 +26,7 @@
               <el-option v-for="c in categories" :key="c.id" :label="c.name" :value="c.id" />
             </el-select>
             <el-select v-model="filterWarehouse" class="search-select-control" placeholder="所有仓库" clearable @change="load">
-              <el-option v-for="w in warehouses" :key="w.id" :label="w.name" :value="w.id" />
+              <el-option v-for="w in warehouses" :key="w.id" :label="warehouseShelfLabel(w)" :value="w.id" />
             </el-select>
             <el-select v-model="filterProductType" class="search-select-control" placeholder="所有商品类型" clearable @change="load">
               <el-option v-for="t in productTypes" :key="t.id" :label="t.name" :value="t.id" />
@@ -363,7 +363,7 @@
                     placeholder="请选择仓库"
                     class="product-field-inline__main"
                   >
-                    <el-option v-for="w in warehouses" :key="w.id" :label="w.name" :value="w.id" />
+                    <el-option v-for="w in warehouses" :key="w.id" :label="warehouseShelfLabel(w)" :value="w.id" />
                   </el-select>
                   <el-button type="primary" plain @click="startCreateWarehouse">新建仓库</el-button>
                 </template>
@@ -711,6 +711,7 @@
 import { ref, computed, watch, onMounted, onBeforeUnmount, nextTick } from 'vue'
 import { ElMessage } from 'element-plus'
 import { inventoryApi, categoryApi, warehouseApi, productTypeApi, authApi, scanApi, ocrApi, transactionApi } from '@/api/index.js'
+import { warehouseShelfLabel } from '@/utils/warehouseLabel.js'
 
 const list = ref([])
 const loading = ref(false)

@@ -10,7 +10,7 @@
             <el-option label="调拨" value="transfer" />
           </el-select>
           <el-select v-model="filters.warehouse_id" placeholder="选择仓库" clearable @change="load" style="width:100%">
-            <el-option v-for="w in warehouses" :key="w.id" :label="w.name" :value="w.id" />
+            <el-option v-for="w in warehouses" :key="w.id" :label="warehouseShelfLabel(w)" :value="w.id" />
           </el-select>
         </el-col>
         <el-col :xs="24" :md="8" class="search-actions">
@@ -68,6 +68,7 @@
 <script setup>
 import { ref, onMounted } from 'vue'
 import { transactionApi, warehouseApi } from '@/api/index.js'
+import { warehouseShelfLabel } from '@/utils/warehouseLabel.js'
 import { formatUnixSecLocal } from '@/utils/timeDisplay.js'
 
 const list = ref([])

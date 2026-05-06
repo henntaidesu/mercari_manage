@@ -6,6 +6,7 @@
 from typing import Dict, Any, List, Optional
 from datetime import datetime, timezone
 from ..base_model import BaseModel
+from .warehouse import WarehouseModel
 
 
 class CostRecordModel(BaseModel):
@@ -123,8 +124,9 @@ class CostRecordModel(BaseModel):
 
         total = db.execute_query(f"SELECT COUNT(*) {base_sql}", tuple(params))[0][0]
 
+        wh_l = WarehouseModel.sql_display_label("w")
         select_sql = f"""
-            SELECT c.id, c.cost_date, c.type, c.item_name, c.item_image, c.amount, c.quantity, c.warehouse_id, w.name as warehouse_name,
+            SELECT c.id, c.cost_date, c.type, c.item_name, c.item_image, c.amount, c.quantity, c.warehouse_id, {wh_l} as warehouse_name,
                    c.remark, c.operator, c.created_at
             {base_sql}
             ORDER BY c.cost_date DESC, c.id DESC

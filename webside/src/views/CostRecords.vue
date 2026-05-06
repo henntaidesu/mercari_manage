@@ -7,7 +7,7 @@
             <el-option v-for="item in typeOptions" :key="item.value" :label="item.label" :value="item.value" />
           </el-select>
           <el-select v-model="filters.warehouse_id" placeholder="选择仓库" clearable @change="onFilterChange" style="width: 100%">
-            <el-option v-for="w in warehouses" :key="w.id" :label="w.name" :value="w.id" />
+            <el-option v-for="w in warehouses" :key="w.id" :label="warehouseShelfLabel(w)" :value="w.id" />
           </el-select>
           <el-date-picker
             v-model="dateRange"
@@ -168,7 +168,7 @@
         </el-row>
         <el-form-item label="仓库">
           <el-select v-model="form.warehouse_id" clearable placeholder="可不选" style="width: 100%">
-            <el-option v-for="w in warehouses" :key="w.id" :label="w.name" :value="w.id" />
+            <el-option v-for="w in warehouses" :key="w.id" :label="warehouseShelfLabel(w)" :value="w.id" />
           </el-select>
         </el-form-item>
         <el-form-item label="备注">
@@ -187,6 +187,7 @@
 import { ref, onMounted } from 'vue'
 import { ElMessage } from 'element-plus'
 import { costRecordApi, warehouseApi } from '@/api/index.js'
+import { warehouseShelfLabel } from '@/utils/warehouseLabel.js'
 
 const loading = ref(false)
 const submitting = ref(false)

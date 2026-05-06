@@ -7,6 +7,7 @@ from pydantic import BaseModel as PydanticModel
 
 from ..db_manage.database import DatabaseManager
 from ..db_manage.models.on_sale_item import OnSaleItemModel
+from ..db_manage.models.warehouse import WarehouseModel
 from ..operation_mercari.on_sale_item_detail_sync import fetch_detail_and_sync_inventory
 from ..operation_mercari.on_sale_items_sync import sync_on_sale_items_from_mercari
 from ..operation_mercari.sync_data import resolve_account_id_by_seller_id
@@ -82,7 +83,8 @@ def _attach_inventory_by_item_id(items: list) -> None:
     if not raw:
         return
     db = DatabaseManager()
-    sql = """
+    _wh_w = WarehouseModel.sql_display_label("w")
+    sql = f"""
         SELECT
             i.[mercari_item_id],
             i.[id],
@@ -90,7 +92,7 @@ def _attach_inventory_by_item_id(items: list) -> None:
             i.[quantity],
             i.[on_sale_quantity],
             TRIM(IFNULL(i.[barcode], '')),
-            IFNULL(w.[name], ''),
+            {_wh_w},
             IFNULL(w.[location], '')
         FROM [inventory] i
         LEFT JOIN [warehouses] w ON w.[id] = i.[warehouse_id]

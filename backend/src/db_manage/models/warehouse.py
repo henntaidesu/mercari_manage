@@ -28,6 +28,12 @@ class WarehouseModel(BaseModel):
                 'not_null': True,
                 'default': None,
             },
+            # 货架名称（展示用）；业务唯一键为 (warehouse, name) 中的 name，即货架号
+            'shelf_name': {
+                'type': 'TEXT',
+                'not_null': False,
+                'default': None,
+            },
             'warehouse': {
                 'type': 'TEXT',
                 'not_null': False,
@@ -75,7 +81,7 @@ class WarehouseModel(BaseModel):
 
     @classmethod
     def find_by_warehouse_and_name(cls, warehouse: Any, name: str):
-        """同一仓库下货架名称唯一"""
+        """同一仓库下货架号（name）唯一"""
         wh = cls.normalize_warehouse_key(warehouse)
         result = cls.find_all(
             "COALESCE(NULLIF(TRIM([warehouse]), ''), '默认仓库') = ? AND [name] = ?",
@@ -127,3 +133,13 @@ class WarehouseModel(BaseModel):
             'total_quantity': total_qty[0][0] if total_qty else 0,
             'product_types': product_types[0][0] if product_types else 0,
         }
+
+    @classmethod
+    def sql_display_label(cls, alias: str = "w") -> str:
+        """JOIN warehouses AS {alias} 时，列表展示的仓位文案：有货架名称则「名称（货架号）」否则货架号"""
+        a = alias.strip() or "w"
+        return (
+            f"(CASE WHEN NULLIF(TRIM({a}.shelf_name), '') IS NOT NULL "
+            f"THEN TRIM({a}.shelf_name) || '（' || COALESCE({a}.name, '') || '）' "
+            f"ELSE COALESCE({a}.name, '-') END)"
+        )

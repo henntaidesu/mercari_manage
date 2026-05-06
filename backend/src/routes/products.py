@@ -113,10 +113,13 @@ def _row_to_product_detail(row: tuple) -> dict:
 
 
 def _query_product_with_joins(where_sql: str = "", params: tuple = ()) -> list[dict]:
+    from ..db_manage.models.warehouse import WarehouseModel
+
     select_cols = ", ".join([f"p.[{c}]" for c in PRODUCT_COLUMNS])
     pend_sql = sql_pending_outbound_subquery("p")
+    wh_l = WarehouseModel.sql_display_label("w")
     sql = f"""
-        SELECT {select_cols}, c.name AS category_name, w.name AS warehouse_name,
+        SELECT {select_cols}, c.name AS category_name, {wh_l} AS warehouse_name,
                pt.name AS product_type_name,
                COALESCE(u.display_name, u.username) AS owner_user_name,
                ({pend_sql}) AS pending_outbound_qty

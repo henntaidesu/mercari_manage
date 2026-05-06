@@ -9,6 +9,7 @@ import time
 from datetime import datetime, timedelta
 from typing import Dict, Any, List, Optional, Tuple
 from ..base_model import BaseModel
+from .warehouse import WarehouseModel
 
 
 def _local_today_unix_bounds() -> Tuple[int, int]:
@@ -142,11 +143,13 @@ class TransactionModel(BaseModel):
             )[0][0]
         )
 
+        wh_l = WarehouseModel.sql_display_label("w")
+        tw_l = WarehouseModel.sql_display_label("tw")
         select_sql = f"""
             SELECT t.id, t.type, t.product_id,
                    COALESCE(NULLIF(p.name, ''), '[ID:' || t.product_id || '] 商品已删除') as product_name,
-                   t.warehouse_id, COALESCE(w.name, '-') as warehouse_name,
-                   t.target_warehouse_id, tw.name as target_warehouse_name,
+                   t.warehouse_id, {wh_l} as warehouse_name,
+                   t.target_warehouse_id, {tw_l} as target_warehouse_name,
                    t.quantity, t.remark, t.operator, t.created_at
             {base_sql}
             ORDER BY t.created_at DESC
