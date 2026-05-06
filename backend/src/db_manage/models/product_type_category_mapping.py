@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 """
-商品类型与类别字段映射表
+商品类型与映射ID映射表
 """
 
 from typing import Dict, Any, List
@@ -17,18 +17,12 @@ class ProductTypeCategoryMappingModel(BaseModel):
     @classmethod
     def get_fields(cls) -> Dict[str, Dict[str, Any]]:
         return {
-            'id': {
-                'type': 'INTEGER',
+            'mapping_id': {
+                'type': 'TEXT',
                 'primary_key': True,
-                'autoincrement': True,
                 'not_null': True,
             },
             'product_type': {
-                'type': 'TEXT',
-                'not_null': True,
-                'default': None,
-            },
-            'category_field': {
                 'type': 'TEXT',
                 'not_null': True,
                 'default': None,
@@ -49,17 +43,17 @@ class ProductTypeCategoryMappingModel(BaseModel):
     def get_indexes(cls) -> List[Dict[str, Any]]:
         return [
             {
-                'name': 'idx_ptcm_product_type_category_field',
-                'columns': ['product_type', 'category_field'],
-                'unique': True,
+                'name': 'idx_ptcm_product_type',
+                'columns': ['product_type'],
+                'unique': False,
             },
         ]
 
     @classmethod
-    def find_by_pair(cls, product_type: str, category_field: str):
+    def find_by_pair(cls, product_type: str, mapping_id: str):
         result = cls.find_all(
-            where="product_type = ? AND category_field = ?",
-            params=(product_type, category_field),
+            where="product_type = ? AND mapping_id = ?",
+            params=(product_type, mapping_id),
             limit=1
         )
         return result[0] if result else None

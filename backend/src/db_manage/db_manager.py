@@ -178,6 +178,90 @@ class DBManager:
             print(f"[错误] product_type_category_mappings 独立化迁移失败: {e}")
             return False
 
+    def _migrate_ptcm_category_field_to_mapping_id(self) -> bool:
+        """
+        将 product_type_category_mappings.category_field 迁移为 mapping_id。
+        """
+        db = self.db
+        if not db.table_exists("product_type_category_mappings"):
+            return True
+        cols = [c["name"] for c in db.get_table_columns("product_type_category_mappings")]
+        if "mapping_id" in cols:
+            return True
+        if "category_field" not in cols:
+            return True
+        try:
+            db.execute_update("ALTER TABLE [product_type_category_mappings] ADD COLUMN [mapping_id] TEXT")
+            db.execute_update(
+                """
+                UPDATE [product_type_category_mappings]
+                SET [mapping_id] = [category_field]
+                WHERE [mapping_id] IS NULL OR TRIM([mapping_id]) = ''
+                """
+            )
+            print("[OK] product_type_category_mappings 已迁移 category_field -> mapping_id")
+            return True
+        except Exception as e:
+            print(f"[错误] product_type_category_mappings 字段迁移失败: {e}")
+            return False
+
+    def _migrate_ptcm_mapping_id_as_primary_key(self) -> bool:
+        """
+        将 product_type_category_mappings 的主键改为 mapping_id（TEXT）。
+        """
+        db = self.db
+        tn = "product_type_category_mappings"
+        if not db.table_exists(tn):
+            return True
+        cols = db.get_table_columns(tn)
+        mapping_col = next((c for c in cols if c["name"] == "mapping_id"), None)
+        if not mapping_col:
+            return True
+        if mapping_col.get("pk"):
+            return True
+        try:
+            with db.get_connection() as conn:
+                cur = conn.cursor()
+                cur.execute("PRAGMA foreign_keys=OFF")
+                cur.execute("BEGIN IMMEDIATE")
+                cur.execute(
+                    """
+                    CREATE TABLE [product_type_category_mappings__mig_pk] (
+                        [mapping_id] TEXT NOT NULL PRIMARY KEY,
+                        [product_type] TEXT NOT NULL,
+                        [description] TEXT,
+                        [created_at] DATETIME DEFAULT CURRENT_TIMESTAMP
+                    )
+                    """
+                )
+                cur.execute(
+                    """
+                    INSERT OR IGNORE INTO [product_type_category_mappings__mig_pk]
+                    ([mapping_id], [product_type], [description], [created_at])
+                    SELECT
+                        TRIM([mapping_id]),
+                        COALESCE(NULLIF(TRIM([product_type]), ''), ''),
+                        [description],
+                        [created_at]
+                    FROM [product_type_category_mappings]
+                    WHERE TRIM(COALESCE([mapping_id], '')) != ''
+                    """
+                )
+                cur.execute(f"DROP TABLE [{tn}]")
+                cur.execute(
+                    f"ALTER TABLE [product_type_category_mappings__mig_pk] RENAME TO [{tn}]"
+                )
+                cur.execute(
+                    "CREATE INDEX IF NOT EXISTS idx_ptcm_product_type ON [product_type_category_mappings]([product_type])"
+                )
+                conn.commit()
+                cur.execute("PRAGMA foreign_keys=ON")
+            print("[OK] product_type_category_mappings 已改为 mapping_id 主键")
+            return True
+        except Exception as e:
+            print(f"[错误] product_type_category_mappings 主键迁移失败: {e}")
+            return False
+
     def _get_all_models(self) -> List[Type[BaseModel]]:
         """按依赖顺序返回所有模型类"""
         return [
@@ -206,6 +290,10 @@ class DBManager:
         if not self._migrate_product_types_to_game_types():
             return False
         if not self._migrate_ptcm_to_independent_module():
+            return False
+        if not self._migrate_ptcm_category_field_to_mapping_id():
+            return False
+        if not self._migrate_ptcm_mapping_id_as_primary_key():
             return False
 
         defined_tables = {m.get_table_name() for m in self.models}

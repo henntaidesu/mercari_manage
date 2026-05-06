@@ -10,14 +10,13 @@
 
     <el-card shadow="never" class="table-card">
       <el-table :data="list" v-loading="loading" stripe>
-        <el-table-column label="ID" prop="id" width="70" />
+        <el-table-column label="映射ID" prop="mapping_id" min-width="180" />
         <el-table-column label="商品类型" prop="product_type" min-width="180" />
-        <el-table-column label="类别字段" prop="category_field" min-width="180" />
         <el-table-column label="说明" prop="description" show-overflow-tooltip />
         <el-table-column label="操作" width="140" fixed="right">
           <template #default="{ row }">
             <el-button size="small" @click="openDialog(row)">编辑</el-button>
-            <el-popconfirm title="确认删除该映射？" @confirm="remove(row.id)">
+            <el-popconfirm title="确认删除该映射？" @confirm="remove(row.mapping_id)">
               <template #reference>
                 <el-button size="small" type="danger">删除</el-button>
               </template>
@@ -27,13 +26,13 @@
       </el-table>
     </el-card>
 
-    <el-dialog v-model="dialogVisible" :title="form.id ? '编辑映射' : '新增映射'" width="460px" destroy-on-close>
+    <el-dialog v-model="dialogVisible" :title="form.original_mapping_id ? '编辑映射' : '新增映射'" width="460px" destroy-on-close>
       <el-form :model="form" :rules="rules" ref="formRef" label-width="90px">
         <el-form-item label="商品类型" prop="product_type">
           <el-input v-model="form.product_type" placeholder="请输入商品类型（如：手办、卡牌）" />
         </el-form-item>
-        <el-form-item label="类别字段" prop="category_field">
-          <el-input v-model="form.category_field" placeholder="请输入类别字段" />
+        <el-form-item label="映射ID" prop="mapping_id">
+          <el-input v-model="form.mapping_id" placeholder="请输入映射ID" />
         </el-form-item>
         <el-form-item label="说明">
           <el-input v-model="form.description" type="textarea" :rows="3" placeholder="可选说明" />
@@ -57,10 +56,10 @@ const loading = ref(false)
 const dialogVisible = ref(false)
 const submitting = ref(false)
 const formRef = ref()
-const form = ref({ id: null, product_type: '', category_field: '', description: '' })
+const form = ref({ original_mapping_id: null, product_type: '', mapping_id: '', description: '' })
 const rules = {
   product_type: [{ required: true, message: '请输入商品类型', trigger: 'blur' }],
-  category_field: [{ required: true, message: '请输入类别字段', trigger: 'blur' }],
+  mapping_id: [{ required: true, message: '请输入映射ID', trigger: 'blur' }],
 }
 
 async function load() {
@@ -71,12 +70,12 @@ async function load() {
 function openDialog(row = null) {
   form.value = row
     ? {
-        id: row.id,
+        original_mapping_id: row.mapping_id || null,
         product_type: row.product_type || '',
-        category_field: row.category_field || '',
+        mapping_id: row.mapping_id || '',
         description: row.description || ''
       }
-    : { id: null, product_type: '', category_field: '', description: '' }
+    : { original_mapping_id: null, product_type: '', mapping_id: '', description: '' }
   dialogVisible.value = true
 }
 
@@ -86,10 +85,10 @@ async function submit() {
   try {
     const payload = {
       product_type: String(form.value.product_type || '').trim(),
-      category_field: String(form.value.category_field || '').trim(),
+      mapping_id: String(form.value.mapping_id || '').trim(),
       description: form.value.description
     }
-    if (form.value.id) await productTypeCategoryMappingApi.update(form.value.id, payload)
+    if (form.value.original_mapping_id) await productTypeCategoryMappingApi.update(form.value.original_mapping_id, payload)
     else await productTypeCategoryMappingApi.create(payload)
     ElMessage.success('保存成功')
     dialogVisible.value = false
