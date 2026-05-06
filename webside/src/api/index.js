@@ -47,12 +47,20 @@ export const warehouseApi = {
   remove: (id) => http.delete(`/warehouses/${id}`)
 }
 
-// 商品类型
+// 游戏类型
 export const productTypeApi = {
   list: () => http.get('/product-types'),
   create: (data) => http.post('/product-types', data),
   update: (id, data) => http.put(`/product-types/${id}`, data),
   remove: (id) => http.delete(`/product-types/${id}`)
+}
+
+// 游戏类型与类别字段映射
+export const productTypeCategoryMappingApi = {
+  list: () => http.get('/product-type-category-mappings'),
+  create: (data) => http.post('/product-type-category-mappings', data),
+  update: (id, data) => http.put(`/product-type-category-mappings/${id}`, data),
+  remove: (id) => http.delete(`/product-type-category-mappings/${id}`)
 }
 
 // 库存

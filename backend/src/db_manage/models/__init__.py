@@ -10,6 +10,7 @@ from .order import OrderModel
 from .meilu_account import MeiluAccountModel
 from .on_sale_item import OnSaleItemModel
 from .order_outbound_line import OrderOutboundLineModel
+from .product_type_category_mapping import ProductTypeCategoryMappingModel
 
 __all__ = [
     'CategoryModel',
@@ -23,4 +24,5 @@ __all__ = [
     'MeiluAccountModel',
     'OnSaleItemModel',
     'OrderOutboundLineModel',
+    'ProductTypeCategoryMappingModel',
 ]

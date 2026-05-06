@@ -28,7 +28,7 @@
             <el-select v-model="filterWarehouse" class="search-select-control" placeholder="所有仓库" clearable @change="load">
               <el-option v-for="w in warehouses" :key="w.id" :label="warehouseShelfLabel(w)" :value="w.id" />
             </el-select>
-            <el-select v-model="filterProductType" class="search-select-control" placeholder="所有商品类型" clearable @change="load">
+            <el-select v-model="filterProductType" class="search-select-control" placeholder="所有游戏类型" clearable @change="load">
               <el-option v-for="t in productTypes" :key="t.id" :label="t.name" :value="t.id" />
             </el-select>
             <el-select v-model="filterOwnerUserId" class="search-select-control" placeholder="所有商品归属" clearable @change="load">
@@ -165,7 +165,7 @@
             <div v-else class="editable-cell" @click="editingCategoryRowId = row.id">{{ row.category_name || '未分类' }}</div>
           </template>
         </el-table-column>
-        <el-table-column label="商品类型" width="120" align="center" header-align="center">
+        <el-table-column label="游戏类型" width="120" align="center" header-align="center">
           <template #default="{ row }">
             <el-select
               v-if="editingProductTypeRowId === row.id"
@@ -246,7 +246,7 @@
         <el-table-column label="操作" :width="isMobile ? 140 : 160" align="center" header-align="center" :fixed="isMobile ? false : 'right'">
           <template #default="{ row }">
             <div class="row-actions">
-              <el-button size="small" type="warning" @click="listProductStub">出品</el-button>
+              <el-button size="small" type="warning" @click="listProductStub(row)">出品</el-button>
               <el-button size="small" @click="openDialog(row)">编辑</el-button>
             </div>
           </template>
@@ -315,14 +315,14 @@
             </template>
           </div>
         </el-form-item>
-        <el-form-item label="商品类型" prop="product_type_id">
+        <el-form-item label="游戏类型" prop="product_type_id">
           <div class="product-field-inline">
             <template v-if="!productTypeCreateMode">
               <el-select
                 v-model="form.product_type_id"
                 clearable
                 :filterable="!isIOS"
-                placeholder="请选择商品类型"
+                placeholder="请选择游戏类型"
                 class="product-field-inline__main"
               >
                 <el-option v-for="t in productTypes" :key="t.id" :label="t.name" :value="t.id" />
@@ -332,7 +332,7 @@
             <template v-else>
               <el-input
                 v-model="newProductTypeName"
-                placeholder="输入新商品类型名称"
+                placeholder="输入新游戏类型名称"
                 clearable
                 class="product-field-inline__main"
                 @keyup.enter="confirmCreateProductType"
@@ -484,6 +484,13 @@
         </div>
       </template>
     </el-dialog>
+
+    <ListingFormDialog
+      v-model="listingDialogVisible"
+      :categories="categories"
+      :initial-data="listingSeedData"
+      :is-mobile="isMobile"
+    />
 
     <el-dialog
       v-model="scanVisible"
@@ -726,6 +733,7 @@ import { ref, computed, watch, onMounted, onBeforeUnmount, nextTick } from 'vue'
 import { ElMessage } from 'element-plus'
 import { inventoryApi, categoryApi, warehouseApi, productTypeApi, authApi, scanApi, ocrApi, transactionApi } from '@/api/index.js'
 import { warehouseShelfLabel } from '@/utils/warehouseLabel.js'
+import ListingFormDialog from '@/components/ListingFormDialog.vue'
 
 const list = ref([])
 const loading = ref(false)
@@ -756,6 +764,8 @@ const submitting = ref(false)
 const formRef = ref()
 const fileInputFront = ref()
 const fileInputBack = ref()
+const listingDialogVisible = ref(false)
+const listingSeedData = ref(null)
 
 const scanVisible = ref(false)
 const scanning = ref(false)
@@ -1237,7 +1247,7 @@ async function saveProductTypeInline(row, productTypeId) {
     row.product_type_id = normalized
     const matched = productTypes.value.find((t) => t.id === normalized)
     row.product_type_name = matched?.name || ''
-    ElMessage.success('商品类型已更新')
+    ElMessage.success('游戏类型已更新')
   } finally {
     editingProductTypeRowId.value = null
   }
@@ -1283,7 +1293,7 @@ function cancelCreateProductType() {
 async function confirmCreateProductType() {
   const name = newProductTypeName.value.trim()
   if (!name) {
-    ElMessage.warning('请输入商品类型名称')
+    ElMessage.warning('请输入游戏类型名称')
     return
   }
   const created = await productTypeApi.create({ name })
@@ -1291,7 +1301,7 @@ async function confirmCreateProductType() {
   form.value.product_type_id = created?.id ?? form.value.product_type_id
   newProductTypeName.value = ''
   productTypeCreateMode.value = false
-  ElMessage.success('商品类型创建成功')
+  ElMessage.success('游戏类型创建成功')
 }
 
 async function confirmCreateCategory() {
@@ -1522,9 +1532,19 @@ function openNoBarcodeEntry() {
   form.value.barcode = uuid
 }
 
-/** 煤炉出品入口占位，后续对接 API */
-function listProductStub() {
-  ElMessage.info('出品功能暂未对接')
+function listProductStub(row) {
+  const source = row && typeof row === 'object'
+    ? row
+    : (dialogVisible.value ? form.value : null)
+  listingSeedData.value = source
+    ? {
+        image: source.image_front || source.image || '',
+        name: source.name || '',
+        category_id: source.category_id ?? null,
+        description: source.description || ''
+      }
+    : null
+  listingDialogVisible.value = true
 }
 
 function triggerUpload(side) {

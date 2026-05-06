@@ -21,6 +21,7 @@ const routes = [
       { path: 'meilu-accounts', name: 'MeiluAccounts', component: () => import('@/views/MeiluAccounts.vue'), meta: { title: '煤炉账号', icon: 'User' } },
       { path: 'warehouses', name: 'Warehouses', component: () => import('@/views/Warehouses.vue'), meta: { title: '仓库管理', icon: 'OfficeBuilding' } },
       { path: 'categories', name: 'Categories', component: () => import('@/views/Categories.vue'), meta: { title: '游戏分类', icon: 'Collection' } },
+      { path: 'product-type-category-mappings', name: 'ProductTypeCategoryMappings', component: () => import('@/views/ProductTypeCategoryMappings.vue'), meta: { title: '商品类型映射', icon: 'Connection' } },
       { path: 'system', name: 'System', component: () => import('@/views/System.vue'), meta: { title: '系统管理', icon: 'Setting' } }
     ]
   }

@@ -143,6 +143,7 @@ const menuItems = [
   { path: '/meilu-accounts', title: '煤炉账号', icon: 'User' },
   { path: '/warehouses', title: '仓库管理', icon: 'OfficeBuilding' },
   { path: '/categories', title: '游戏分类', icon: 'Collection' },
+  { path: '/product-type-category-mappings', title: '商品类型映射', icon: 'Connection' },
   { path: '/system', title: '系统管理', icon: 'Setting' },
 ]
 

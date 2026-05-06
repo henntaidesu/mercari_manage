@@ -18,6 +18,7 @@ from .models import (
     OrderOutboundLineModel,
     MeiluAccountModel,
     OnSaleItemModel,
+    ProductTypeCategoryMappingModel,
 )
 
 
@@ -104,6 +105,79 @@ class DBManager:
         print("[OK] warehouses 组合唯一迁移完成")
         return True
 
+    def _migrate_product_types_to_game_types(self) -> bool:
+        """
+        历史表 product_types 迁移到 game_types。
+        采用 rename，保留历史 id，避免 inventory.product_type_id 失联。
+        """
+        db = self.db
+        has_old = db.table_exists("product_types")
+        has_new = db.table_exists("game_types")
+        if not has_old:
+            return True
+        if has_new:
+            # 已存在新表时，尽量并入旧数据（按 id 去重）
+            try:
+                db.execute_update(
+                    """
+                    INSERT OR IGNORE INTO [game_types] ([id], [name], [description], [created_at])
+                    SELECT [id], [name], [description], [created_at]
+                    FROM [product_types]
+                    """
+                )
+                db.drop_table("product_types")
+                print("[OK] product_types 已并入 game_types")
+                return True
+            except Exception as e:
+                print(f"[错误] product_types 并入 game_types 失败: {e}")
+                return False
+        try:
+            db.execute_update("ALTER TABLE [product_types] RENAME TO [game_types]")
+            print("[OK] product_types 已迁移为 game_types")
+            return True
+        except Exception as e:
+            print(f"[错误] product_types -> game_types 迁移失败: {e}")
+            return False
+
+    def _migrate_ptcm_to_independent_module(self) -> bool:
+        """
+        将 product_type_category_mappings 从 product_type_id 迁移到纯文本 product_type。
+        独立模块：不再依赖 game_types / 其他表。
+        """
+        db = self.db
+        if not db.table_exists("product_type_category_mappings"):
+            return True
+        cols = [c["name"] for c in db.get_table_columns("product_type_category_mappings")]
+        if "product_type" in cols:
+            return True
+        if "product_type_id" not in cols:
+            return True
+        try:
+            db.execute_update("ALTER TABLE [product_type_category_mappings] ADD COLUMN [product_type] TEXT")
+            db.execute_update(
+                """
+                UPDATE [product_type_category_mappings]
+                SET [product_type] = (
+                    SELECT gt.[name]
+                    FROM [game_types] gt
+                    WHERE gt.[id] = [product_type_category_mappings].[product_type_id]
+                )
+                WHERE [product_type] IS NULL
+                """
+            )
+            db.execute_update(
+                """
+                UPDATE [product_type_category_mappings]
+                SET [product_type] = '类型' || CAST([product_type_id] AS TEXT)
+                WHERE [product_type] IS NULL OR TRIM([product_type]) = ''
+                """
+            )
+            print("[OK] product_type_category_mappings 已迁移为独立商品类型文本字段")
+            return True
+        except Exception as e:
+            print(f"[错误] product_type_category_mappings 独立化迁移失败: {e}")
+            return False
+
     def _get_all_models(self) -> List[Type[BaseModel]]:
         """按依赖顺序返回所有模型类"""
         return [
@@ -118,6 +192,7 @@ class DBManager:
             OrderOutboundLineModel,  # 订单解析出的待出库明细（依赖 orders / inventory 逻辑）
             MeiluAccountModel,  # 煤炉账号
             OnSaleItemModel,  # 在售商品缓存
+            ProductTypeCategoryMappingModel,  # 商品类型与类别字段映射
         ]
 
     def initialize_database(self) -> bool:
@@ -128,12 +203,16 @@ class DBManager:
         if self.db.table_exists("products") and not self.db.table_exists("inventory"):
             print("检测到旧表 products，正在迁移为 inventory ...")
             self.db.execute_update("ALTER TABLE [products] RENAME TO [inventory]")
+        if not self._migrate_product_types_to_game_types():
+            return False
+        if not self._migrate_ptcm_to_independent_module():
+            return False
 
         defined_tables = {m.get_table_name() for m in self.models}
         db_tables = self.db.get_all_tables()
 
         # 删除代码中已移除的表
-        to_drop = [t for t in db_tables if t not in defined_tables]
+        to_drop = [t for t in db_tables if t not in defined_tables and t != "product_types"]
         for table_name in to_drop:
             print(f"发现废弃表 {table_name}，正在删除...")
             self.db.drop_table(table_name)
@@ -159,7 +238,6 @@ class DBManager:
 
         if not self._migrate_warehouses_composite_unique():
             return False
-
         return True
 
     def check_integrity(self) -> bool:

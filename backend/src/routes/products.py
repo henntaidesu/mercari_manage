@@ -133,13 +133,13 @@ def _query_product_with_joins(where_sql: str = "", params: tuple = ()) -> list[d
                {wh_store} AS inv_wh_name,
                NULLIF(TRIM(w.shelf_name), '') AS inv_shelf_name,
                w.name AS inv_shelf_code,
-               pt.name AS product_type_name,
+               gt.name AS product_type_name,
                COALESCE(u.display_name, u.username) AS owner_user_name,
                ({pend_sql}) AS pending_outbound_qty
         FROM [inventory] p
         LEFT JOIN [categories] c ON c.id = p.category_id
         LEFT JOIN [warehouses] w ON w.id = p.warehouse_id
-        LEFT JOIN [product_types] pt ON pt.id = p.product_type_id
+        LEFT JOIN [game_types] gt ON gt.id = p.product_type_id
         LEFT JOIN [users] u ON u.id = p.owner_user_id
         WHERE 1=1 {where_sql}
     """

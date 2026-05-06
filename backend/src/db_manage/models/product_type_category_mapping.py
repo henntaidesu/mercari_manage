@@ -1,18 +1,18 @@
 # -*- coding: utf-8 -*-
 """
-游戏类型表模型（兼容旧 ProductTypeModel 名称）
+商品类型与类别字段映射表
 """
 
 from typing import Dict, Any, List
 from ..base_model import BaseModel
 
 
-class GameTypeModel(BaseModel):
-    """游戏类型表"""
+class ProductTypeCategoryMappingModel(BaseModel):
+    """商品类型映射（独立模块，不依赖外部表）"""
 
     @classmethod
     def get_table_name(cls) -> str:
-        return "game_types"
+        return "product_type_category_mappings"
 
     @classmethod
     def get_fields(cls) -> Dict[str, Dict[str, Any]]:
@@ -23,10 +23,14 @@ class GameTypeModel(BaseModel):
                 'autoincrement': True,
                 'not_null': True,
             },
-            'name': {
+            'product_type': {
                 'type': 'TEXT',
                 'not_null': True,
-                'unique': True,
+                'default': None,
+            },
+            'category_field': {
+                'type': 'TEXT',
+                'not_null': True,
                 'default': None,
             },
             'description': {
@@ -43,23 +47,19 @@ class GameTypeModel(BaseModel):
 
     @classmethod
     def get_indexes(cls) -> List[Dict[str, Any]]:
-        return []
+        return [
+            {
+                'name': 'idx_ptcm_product_type_category_field',
+                'columns': ['product_type', 'category_field'],
+                'unique': True,
+            },
+        ]
 
     @classmethod
-    def find_by_name(cls, name: str):
-        """根据名称查找游戏类型"""
-        result = cls.find_all("name = ?", (name,), limit=1)
-        return result[0] if result else None
-
-    @classmethod
-    def get_product_count(cls, product_type_id: int) -> int:
-        """获取该游戏类型下的商品数量"""
-        db = cls().db
-        result = db.execute_query(
-            "SELECT COUNT(*) FROM [inventory] WHERE product_type_id = ?", (product_type_id,)
+    def find_by_pair(cls, product_type: str, category_field: str):
+        result = cls.find_all(
+            where="product_type = ? AND category_field = ?",
+            params=(product_type, category_field),
+            limit=1
         )
-        return result[0][0] if result else 0
-
-
-# 兼容旧引用（不破坏现有 import）
-ProductTypeModel = GameTypeModel
+        return result[0] if result else None
