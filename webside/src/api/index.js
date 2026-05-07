@@ -124,6 +124,8 @@ export const orderApi = {
   stockOutOutboundLine: (lineId, data = {}) => http.post(`/orders/outbound-lines/${lineId}/stock-out`, data),
   /** 订单二级列表：手动新增出库明细（预扣库存并进入待出库） */
   addManualOutboundLine: (data) => http.post('/orders/outbound-lines/manual', data),
+  /** 订单二级列表：手动批量新增出库明细（多选商品） */
+  addManualOutboundLinesBatch: (data) => http.post('/orders/outbound-lines/manual/batch', data),
   create: (data) => http.post('/orders', data),
   update: (id, data) => http.put(`/orders/${id}`, data),
   remove: (id) => http.delete(`/orders/${id}`),

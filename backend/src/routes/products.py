@@ -273,6 +273,7 @@ def list_inventory(
     product_type_id: Optional[int] = None,
     owner_user_id: Optional[int] = None,
     warehouse_id: Optional[int] = None,
+    in_stock_only: bool = False,
 ):
     where_parts = []
     params = []
@@ -291,6 +292,8 @@ def list_inventory(
     if warehouse_id:
         where_parts.append("AND p.warehouse_id = ?")
         params.append(warehouse_id)
+    if in_stock_only:
+        where_parts.append("AND COALESCE(p.quantity, 0) > 0")
     where_sql = " " + " ".join(where_parts) + " ORDER BY p.id DESC"
     return _query_product_with_joins(where_sql, tuple(params))
 

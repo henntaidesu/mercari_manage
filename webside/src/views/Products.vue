@@ -22,14 +22,14 @@
         <el-col :xs="24" :md="14" class="search-left-group">
           <el-input v-model="keyword" class="search-input-control" placeholder="搜索商品名称" clearable @change="load" prefix-icon="Search" />
           <div class="search-filters-row">
-            <el-select v-model="filterCat" class="search-select-control" placeholder="所有分类" clearable @change="load">
+            <el-select v-model="filterCat" class="search-select-control" placeholder="所有游戏分类" clearable @change="load">
               <el-option v-for="c in categories" :key="c.id" :label="c.name" :value="c.id" />
             </el-select>
             <el-select v-model="filterWarehouse" class="search-select-control" placeholder="所有仓库" clearable @change="load">
               <el-option v-for="w in warehouses" :key="w.id" :label="warehouseShelfLabel(w)" :value="w.id" />
             </el-select>
-            <el-select v-model="filterProductType" class="search-select-control" placeholder="所有游戏类型" clearable @change="load">
-              <el-option v-for="t in productTypes" :key="t.id" :label="t.name" :value="t.id" />
+            <el-select v-model="filterProductType" class="search-select-control" placeholder="商品类型" clearable @change="load">
+              <el-option v-for="t in mappedProductTypes" :key="t.id" :label="t.name" :value="t.id" />
             </el-select>
             <el-select v-model="filterOwnerUserId" class="search-select-control" placeholder="所有商品归属" clearable @change="load">
               <el-option v-for="u in ownerUsers" :key="u.id" :label="u.display_name || u.username" :value="u.id" />
@@ -165,7 +165,7 @@
             <div v-else class="editable-cell" @click="editingCategoryRowId = row.id">{{ row.category_name || '未分类' }}</div>
           </template>
         </el-table-column>
-        <el-table-column label="游戏类型" width="120" align="center" header-align="center">
+        <el-table-column label="商品类型" width="120" align="center" header-align="center">
           <template #default="{ row }">
             <el-select
               v-if="editingProductTypeRowId === row.id"
@@ -315,14 +315,14 @@
             </template>
           </div>
         </el-form-item>
-        <el-form-item label="游戏类型" prop="product_type_id">
+        <el-form-item label="商品类型" prop="product_type_id">
           <div class="product-field-inline">
             <template v-if="!productTypeCreateMode">
               <el-select
                 v-model="form.product_type_id"
                 clearable
                 :filterable="!isIOS"
-                placeholder="请选择游戏类型"
+                placeholder="请选择商品类型"
                 class="product-field-inline__main"
               >
                 <el-option v-for="t in productTypes" :key="t.id" :label="t.name" :value="t.id" />
@@ -332,7 +332,7 @@
             <template v-else>
               <el-input
                 v-model="newProductTypeName"
-                placeholder="输入新游戏类型名称"
+                placeholder="输入新商品类型名称"
                 clearable
                 class="product-field-inline__main"
                 @keyup.enter="confirmCreateProductType"
@@ -767,6 +767,23 @@ const fileInputBack = ref()
 const listingDialogVisible = ref(false)
 const listingSeedData = ref(null)
 const listingCategoryMappings = ref([])
+const mappedProductTypes = computed(() => {
+  const typeByName = new Map(
+    (productTypes.value || []).map((t) => [String(t?.name || '').trim(), t]).filter(([name]) => !!name)
+  )
+  const seen = new Set()
+  const out = []
+  for (const m of (listingCategoryMappings.value || [])) {
+    const mappedName = String(m?.product_type || '').trim()
+    if (!mappedName) continue
+    const matched = typeByName.get(mappedName)
+    if (!matched || seen.has(matched.id)) continue
+    seen.add(matched.id)
+    out.push(matched)
+  }
+  // 映射表为空或名称未对齐时，回退到完整商品类型，避免筛选下拉无数据
+  return out.length ? out : (productTypes.value || [])
+})
 
 const scanVisible = ref(false)
 const scanning = ref(false)
@@ -1248,7 +1265,7 @@ async function saveProductTypeInline(row, productTypeId) {
     row.product_type_id = normalized
     const matched = productTypes.value.find((t) => t.id === normalized)
     row.product_type_name = matched?.name || ''
-    ElMessage.success('游戏类型已更新')
+    ElMessage.success('商品类型已更新')
   } finally {
     editingProductTypeRowId.value = null
   }
@@ -1294,7 +1311,7 @@ function cancelCreateProductType() {
 async function confirmCreateProductType() {
   const name = newProductTypeName.value.trim()
   if (!name) {
-    ElMessage.warning('请输入游戏类型名称')
+    ElMessage.warning('请输入商品类型名称')
     return
   }
   const created = await productTypeApi.create({ name })
@@ -1302,7 +1319,7 @@ async function confirmCreateProductType() {
   form.value.product_type_id = created?.id ?? form.value.product_type_id
   newProductTypeName.value = ''
   productTypeCreateMode.value = false
-  ElMessage.success('游戏类型创建成功')
+  ElMessage.success('商品类型创建成功')
 }
 
 async function confirmCreateCategory() {

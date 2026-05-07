@@ -164,12 +164,12 @@
                 </el-table>
                 <el-empty
                   v-else
-                  description="暂无出库明细（说明中无「管理ID:」「バーコード:」或尚未保存/同步）"
-                  :image-size="64"
+                  description=" "
+                  class="order-empty-compact"
                 >
+                  <template #image></template>
                   <template #default>
                     <div style="display:flex; flex-direction:column; align-items:center; gap:8px;">
-                      <span>暂无出库明细（说明中无「管理ID:」「バーコード:」或尚未保存/同步）</span>
                       <el-button size="small" type="primary" @click="openManualOutboundDialog(row)">
                         手动添加出库
                       </el-button>
@@ -440,31 +440,80 @@
         <el-form-item label="订单号">
           <el-input :model-value="manualOutboundForm.order_no" disabled />
         </el-form-item>
-        <el-form-item label="库存商品">
+        <el-form-item label="商品归属">
           <el-select
-            v-model="manualOutboundForm.inventory_id"
-            filterable
+            v-model="manualOwnerFilter"
             clearable
+            filterable
             style="width: 100%"
-            placeholder="请选择库存商品"
-            :loading="manualInventoryLoading"
+            placeholder="请选择商品归属"
           >
             <el-option
-              v-for="it in manualInventoryOptions"
-              :key="it.id"
-              :label="`${it.name || '-'}（库存:${Number(it.quantity || 0)}）`"
-              :value="it.id"
+              v-for="owner in manualOwnerOptions"
+              :key="owner"
+              :label="owner"
+              :value="owner"
             />
           </el-select>
         </el-form-item>
-        <el-form-item label="数量">
-          <el-input-number
-            v-model="manualOutboundForm.quantity"
-            :min="1"
-            :precision="0"
-            :controls="false"
-            style="width:100%"
-          />
+        <el-form-item label="库存商品">
+          <el-select
+            v-model="manualOutboundForm.inventory_ids"
+            multiple
+            collapse-tags
+            collapse-tags-tooltip
+            filterable
+            clearable
+            class="manual-inventory-select"
+            style="width: 100%"
+            placeholder="请选择一个或多个库存商品"
+            :loading="manualInventoryLoading"
+            popper-class="manual-inventory-select-popper"
+          >
+            <el-option
+              v-for="it in filteredManualInventoryOptions"
+              :key="it.id"
+              :label="`${it.name || '-'}（归属:${it.owner_user_name || '-'}，库存:${Number(it.quantity || 0)}）`"
+              :value="it.id"
+            >
+              <div class="manual-option-row">
+                <el-image
+                  v-if="inventoryThumbUrl(it)"
+                  class="manual-option-thumb"
+                  :src="inventoryThumbUrl(it)"
+                  fit="contain"
+                  lazy
+                  referrerpolicy="no-referrer"
+                />
+                <span v-else class="manual-option-thumb-fallback">-</span>
+                <div class="manual-option-meta">
+                  <div class="manual-option-name">{{ it.name || '-' }}</div>
+                  <div class="manual-option-sub">归属: {{ it.owner_user_name || '-' }} ｜ 库存: {{ Number(it.quantity || 0) }}</div>
+                </div>
+              </div>
+            </el-option>
+          </el-select>
+        </el-form-item>
+        <el-form-item label="各自数量">
+          <div style="width:100%; display:flex; flex-direction:column; gap:8px;">
+            <div
+              v-for="iid in manualOutboundForm.inventory_ids"
+              :key="iid"
+              style="display:flex; align-items:center; gap:8px;"
+            >
+              <span style="flex:1; min-width:0; color:#cfd3dc;">
+                {{ inventoryLabelById(iid) }}
+              </span>
+              <el-input-number
+                v-model="manualOutboundForm.quantities[iid]"
+                :min="1"
+                :precision="0"
+                :controls="false"
+                style="width:120px"
+              />
+            </div>
+            <span v-if="!manualOutboundForm.inventory_ids.length" class="cell-dash">请先选择库存商品</span>
+          </div>
         </el-form-item>
       </el-form>
       <template #footer>
@@ -501,10 +550,29 @@ const manualOutboundDialogVisible = ref(false)
 const manualOutboundSaving = ref(false)
 const manualInventoryLoading = ref(false)
 const manualInventoryOptions = ref([])
+const manualOwnerFilter = ref('')
 const manualOutboundForm = ref({
   order_no: '',
-  inventory_id: null,
-  quantity: 1,
+  inventory_ids: [],
+  quantities: {},
+})
+const manualOwnerOptions = computed(() => {
+  const out = []
+  const seen = new Set()
+  for (const it of (manualInventoryOptions.value || [])) {
+    const owner = String(it?.owner_user_name || '').trim()
+    if (!owner || seen.has(owner)) continue
+    seen.add(owner)
+    out.push(owner)
+  }
+  return out.sort((a, b) => a.localeCompare(b, 'zh-CN'))
+})
+const filteredManualInventoryOptions = computed(() => {
+  const owner = String(manualOwnerFilter.value || '').trim()
+  if (!owner) return manualInventoryOptions.value || []
+  return (manualInventoryOptions.value || []).filter(
+    (it) => String(it?.owner_user_name || '').trim() === owner
+  )
 })
 const stats = ref({
   total_count: 0,
@@ -1033,9 +1101,10 @@ function outboundPendingQty(line) {
 function canStockOutLine(line) {
   if (Number(line?.is_stocked_out || 0) === 1) return false
   if (line?.inventory_id == null) return false
-  const stock = Number(line?.stock_quantity || 0)
   const qty = Math.max(1, Number(line?.quantity || 1))
-  return stock >= qty
+  // 出库按钮按“是否仍有待出库”判断，不以前端当前库存拦截。
+  // 库存/并发等最终校验交由后端接口处理。
+  return qty > 0
 }
 
 async function onOrderExpandChange(row, expandedRows) {
@@ -1068,13 +1137,14 @@ async function openManualOutboundDialog(orderRow) {
   if (!orderNo) return
   manualOutboundForm.value = {
     order_no: orderNo,
-    inventory_id: null,
-    quantity: 1,
+    inventory_ids: [],
+    quantities: {},
   }
+  manualOwnerFilter.value = ''
   manualOutboundDialogVisible.value = true
   manualInventoryLoading.value = true
   try {
-    const res = await inventoryApi.list({})
+    const res = await inventoryApi.list({ in_stock_only: true })
     manualInventoryOptions.value = Array.isArray(res) ? res : []
   } finally {
     manualInventoryLoading.value = false
@@ -1083,27 +1153,44 @@ async function openManualOutboundDialog(orderRow) {
 
 async function submitManualOutbound() {
   const orderNo = String(manualOutboundForm.value.order_no || '').trim()
-  const inventoryId = Number(manualOutboundForm.value.inventory_id || 0)
-  const qty = Math.max(1, Number(manualOutboundForm.value.quantity || 1))
+  const ids = Array.isArray(manualOutboundForm.value.inventory_ids)
+    ? manualOutboundForm.value.inventory_ids.map((x) => Number(x)).filter((x) => Number.isFinite(x) && x > 0)
+    : []
   if (!orderNo) return
-  if (!inventoryId) {
-    ElMessage.warning('请选择库存商品')
+  if (!ids.length) {
+    ElMessage.warning('请至少选择一个库存商品')
     return
   }
+  const lines = ids.map((iid) => ({
+    inventory_id: iid,
+    quantity: Math.max(1, Number((manualOutboundForm.value.quantities || {})[iid] || 1)),
+  }))
   manualOutboundSaving.value = true
   try {
-    await orderApi.addManualOutboundLine({
+    await orderApi.addManualOutboundLinesBatch({
       order_no: orderNo,
-      inventory_id: inventoryId,
-      quantity: qty,
+      lines,
     })
-    ElMessage.success('已添加手动出库明细')
+    ElMessage.success(`已添加 ${lines.length} 条手动出库明细`)
     manualOutboundDialogVisible.value = false
     clearOutboundExpandCache(orderNo)
     await load()
   } finally {
     manualOutboundSaving.value = false
   }
+}
+
+function inventoryLabelById(iid) {
+  const row = (manualInventoryOptions.value || []).find((x) => Number(x.id) === Number(iid))
+  if (!row) return `库存#${iid}`
+  return `${row.name || '-'}（库存:${Number(row.quantity || 0)}）`
+}
+
+function inventoryThumbUrl(row) {
+  const f = String(row?.image_front || '').trim()
+  if (f) return f
+  const i = String(row?.image || '').trim()
+  return i || ''
 }
 
 async function stockOutLine(orderRow, line) {
@@ -1396,6 +1483,15 @@ onBeforeUnmount(() => {
 .order-expand-inner-table {
   max-width: 100%;
 }
+.order-empty-compact :deep(.el-empty) {
+  padding: 8px 0;
+}
+.order-empty-compact :deep(.el-empty__image) {
+  display: none;
+}
+.order-empty-compact :deep(.el-empty__description) {
+  display: none;
+}
 .form-hint {
   font-size: 12px;
   color: #909399;
@@ -1419,5 +1515,91 @@ onBeforeUnmount(() => {
   align-items: center;
   gap: 12px;
   margin-left: auto;
+}
+.manual-option-row {
+  display: grid;
+  grid-template-columns: 140px 1fr;
+  align-items: start;
+  gap: 12px;
+  width: 100%;
+  min-width: 0;
+  min-height: 156px;
+  padding: 8px 0;
+}
+.manual-option-thumb {
+  width: 140px;
+  height: 140px;
+  border-radius: 4px;
+  flex-shrink: 0;
+  background: #111a2c;
+  border: 1px solid #2f3950;
+}
+:deep(.manual-option-thumb .el-image__inner) {
+  object-fit: contain;
+}
+.manual-option-thumb-fallback {
+  width: 140px;
+  height: 140px;
+  border-radius: 4px;
+  border: 1px solid #3a4250;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: #8b96a8;
+  flex-shrink: 0;
+}
+.manual-option-meta {
+  flex: 1;
+  width: 100%;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.manual-option-name {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: normal;
+  color: #e6edf8 !important;
+  font-size: 16px;
+  font-weight: 500;
+  line-height: 1.3;
+}
+.manual-option-sub {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: normal;
+  color: #9fb0c8 !important;
+  font-size: 13px;
+  line-height: 1.25;
+}
+:deep(.manual-inventory-select .el-select__wrapper) {
+  min-height: 48px;
+}
+:global(.manual-inventory-select-popper .el-select-dropdown__wrap) {
+  max-height: 500px;
+}
+:global(.manual-inventory-select-popper.el-popper) {
+  min-width: 620px !important;
+}
+:global(.manual-inventory-select-popper .el-select-dropdown__item) {
+  min-height: 156px !important;
+  height: auto !important;
+  line-height: normal !important;
+  padding-top: 0 !important;
+  padding-bottom: 0 !important;
+  display: block !important;
+}
+:global(.manual-inventory-select-popper .el-select-dropdown__item > span) {
+  display: block;
+  width: 100%;
+}
+:global(.manual-inventory-select-popper .el-select-dropdown__item.selected .manual-option-name) {
+  color: #ffffff !important;
+}
+:global(.manual-inventory-select-popper .el-select-dropdown__item.selected .manual-option-sub) {
+  color: #dbe7ff !important;
 }
 </style>
