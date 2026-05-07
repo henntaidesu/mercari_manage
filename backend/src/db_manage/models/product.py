@@ -83,6 +83,12 @@ class ProductModel(BaseModel):
                 'not_null': False,
                 'default': 0,
             },
+            # 订单解析后待手动出库数量（未出库且订单非终态）
+            'pending_outbound_qty': {
+                'type': 'INTEGER',
+                'not_null': True,
+                'default': 0,
+            },
             'description': {
                 'type': 'TEXT',
                 'not_null': False,

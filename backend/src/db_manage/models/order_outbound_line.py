@@ -65,6 +65,16 @@ class OrderOutboundLineModel(BaseModel):
                 "not_null": True,
                 "default": 0,
             },
+            "is_stocked_out": {
+                "type": "INTEGER",
+                "not_null": True,
+                "default": 0,
+            },
+            "stocked_out_at": {
+                "type": "INTEGER",
+                "not_null": False,
+                "default": None,
+            },
         }
 
     @classmethod
@@ -91,6 +101,8 @@ class OrderOutboundLineModel(BaseModel):
                 l.line_kind,
                 l.quantity,
                 l.sort_index,
+                COALESCE(l.is_stocked_out, 0) AS is_stocked_out,
+                l.stocked_out_at,
                 p.name AS product_name,
                 p.barcode AS product_barcode,
                 p.sku AS product_sku,
@@ -111,6 +123,8 @@ class OrderOutboundLineModel(BaseModel):
             "line_kind",
             "quantity",
             "sort_index",
+            "is_stocked_out",
+            "stocked_out_at",
             "product_name",
             "product_barcode",
             "product_sku",

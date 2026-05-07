@@ -12,10 +12,6 @@ from PIL import Image, ImageOps
 from ..auth import require_auth
 from ..db_manage.database import DatabaseManager
 from ..image_storage import is_base64_image, save_base64_image, delete_image_file, get_image_root
-from ..operation_mercari.get_order.description_mgmt_ids import (
-    sql_pending_outbound_params,
-    sql_pending_outbound_subquery,
-)
 
 router = APIRouter(prefix="/api/inventory", tags=["inventory"])
 # 公开路由：缩略图等无需登录即可访问（图片本身已通过静态文件公开）
@@ -34,6 +30,7 @@ PRODUCT_COLUMNS = [
     "quantity",
     "mercari_item_id",
     "on_sale_quantity",
+    "pending_outbound_qty",
     "description",
     "listing_title",
     "listing_body",
@@ -116,7 +113,6 @@ def _row_to_product_detail(row: tuple) -> dict:
         "inv_shelf_code",
         "product_type_name",
         "owner_user_name",
-        "pending_outbound_qty",
     ]
     return dict(zip(keys, row))
 
@@ -125,7 +121,6 @@ def _query_product_with_joins(where_sql: str = "", params: tuple = ()) -> list[d
     from ..db_manage.models.warehouse import WarehouseModel
 
     select_cols = ", ".join([f"p.[{c}]" for c in PRODUCT_COLUMNS])
-    pend_sql = sql_pending_outbound_subquery("p")
     wh_l = WarehouseModel.sql_display_label("w")
     wh_store = "COALESCE(NULLIF(TRIM(w.warehouse), ''), '默认仓库')"
     sql = f"""
@@ -134,8 +129,7 @@ def _query_product_with_joins(where_sql: str = "", params: tuple = ()) -> list[d
                NULLIF(TRIM(w.shelf_name), '') AS inv_shelf_name,
                w.name AS inv_shelf_code,
                gt.name AS product_type_name,
-               COALESCE(u.display_name, u.username) AS owner_user_name,
-               ({pend_sql}) AS pending_outbound_qty
+               COALESCE(u.display_name, u.username) AS owner_user_name
         FROM [inventory] p
         LEFT JOIN [categories] c ON c.id = p.category_id
         LEFT JOIN [warehouses] w ON w.id = p.warehouse_id
@@ -143,9 +137,7 @@ def _query_product_with_joins(where_sql: str = "", params: tuple = ()) -> list[d
         LEFT JOIN [users] u ON u.id = p.owner_user_id
         WHERE 1=1 {where_sql}
     """
-    # SQLite 按 SQL 文中「?」出现顺序绑定：SELECT 内待出库子查询的 NOT IN 先于 WHERE，故须先绑终态状态再绑筛选条件
-    bind = tuple(sql_pending_outbound_params()) + tuple(params)
-    rows = db.execute_query(sql, bind)
+    rows = db.execute_query(sql, tuple(params))
     return [_row_to_product_detail(r) for r in rows]
 
 
@@ -449,9 +441,9 @@ def create_product(data: ProductCreate, claims: dict = Depends(require_auth)):
             """
             INSERT INTO [inventory] (
                 name, barcode, category_id, product_type_id, owner_user_id, warehouse_id, price, quantity,
-                mercari_item_id, on_sale_quantity,
+                mercari_item_id, on_sale_quantity, pending_outbound_qty,
                 description, listing_title, listing_body, image, image_front, image_back
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             (
                 data.name,
@@ -464,6 +456,7 @@ def create_product(data: ProductCreate, claims: dict = Depends(require_auth)):
                 data.quantity,
                 (data.mercari_item_id or "").strip() or None,
                 int(data.on_sale_quantity) if data.on_sale_quantity is not None else 0,
+                0,
                 data.description,
                 data.listing_title,
                 data.listing_body,

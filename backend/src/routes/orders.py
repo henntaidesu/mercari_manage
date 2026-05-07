@@ -1,15 +1,21 @@
 # -*- coding: utf-8 -*-
 import json
+import time
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel as PydanticModel
 from typing import List, Optional
+from ..db_manage.database import DatabaseManager
 from ..db_manage.models.order import OrderModel
 from ..db_manage.models.order_outbound_line import OrderOutboundLineModel
 from ..operation_mercari.sync_data import resolve_account_id_by_seller_id
 from ..operation_mercari.get_order.get_in_progress_order.get_order_info import apply_item_info_to_order
-from ..operation_mercari.get_order.description_mgmt_ids import sync_outbound_lines_for_order
+from ..operation_mercari.get_order.description_mgmt_ids import (
+    refresh_inventory_pending_outbound_qty,
+    sync_outbound_lines_for_order,
+)
 
 router = APIRouter(prefix="/api/orders", tags=["orders"])
+db = DatabaseManager()
 
 # 订单 status 仅使用煤炉侧取值（与 items 列表 / 取引详情一致）
 ORDER_STATUSES = frozenset(
@@ -84,6 +90,10 @@ class OrderUpdate(PydanticModel):
     thumbnails: Optional[List[str]] = None
 
 
+class OutboundStockOutBody(PydanticModel):
+    remark: Optional[str] = None
+
+
 def _validate_status_query(status: Optional[str]) -> None:
     """列表/统计筛选：仅允许煤炉订单状态。"""
     if status is None or not str(status).strip():
@@ -103,6 +113,26 @@ def _normalize_order_no(order_no: str) -> str:
     if not val:
         raise HTTPException(status_code=400, detail="订单号不能为空")
     return val
+
+
+def _inventory_ids_for_order(order_no: str) -> List[int]:
+    rows = db.execute_query(
+        """
+        SELECT DISTINCT [inventory_id]
+        FROM [order_outbound_lines]
+        WHERE [order_no] = ? AND [inventory_id] IS NOT NULL
+        """,
+        ((order_no or "").strip(),),
+    )
+    out: List[int] = []
+    for (raw_id,) in rows:
+        try:
+            n = int(raw_id)
+        except (TypeError, ValueError):
+            continue
+        if n > 0:
+            out.append(n)
+    return out
 
 
 @router.get("/stats")
@@ -151,6 +181,78 @@ def list_order_outbound_lines(order_no: str):
         raise HTTPException(status_code=400, detail="order_no 不能为空")
     items = OrderOutboundLineModel.list_enriched_for_order(ono)
     return {"order_no": ono, "items": items}
+
+
+@router.post("/outbound-lines/{line_id}/stock-out")
+def stock_out_order_outbound_line(line_id: int, data: OutboundStockOutBody):
+    line = OrderOutboundLineModel.find_by_id(id=int(line_id))
+    if not line:
+        raise HTTPException(status_code=404, detail="出库明细不存在")
+    if int(line.is_stocked_out or 0) == 1:
+        raise HTTPException(status_code=400, detail="该明细已出库，不能重复出库")
+    if line.inventory_id is None:
+        raise HTTPException(status_code=400, detail="该明细未匹配库存，无法出库")
+    inv_id = int(line.inventory_id)
+    qty = max(1, int(line.quantity or 1))
+
+    inv_rows = db.execute_query(
+        "SELECT [quantity], [warehouse_id] FROM [inventory] WHERE [id] = ? LIMIT 1",
+        (inv_id,),
+    )
+    if not inv_rows:
+        raise HTTPException(status_code=404, detail="库存商品不存在")
+    current_qty = int(inv_rows[0][0] or 0)
+    warehouse_id = inv_rows[0][1]
+    if current_qty < qty:
+        raise HTTPException(status_code=400, detail=f"库存不足，当前库存：{current_qty}")
+
+    updated = db.execute_update(
+        """
+        UPDATE [inventory]
+        SET [quantity] = COALESCE([quantity], 0) - ?,
+            [pending_outbound_qty] = CASE
+                WHEN COALESCE([pending_outbound_qty], 0) >= ? THEN COALESCE([pending_outbound_qty], 0) - ?
+                ELSE 0
+            END
+        WHERE [id] = ?
+        """,
+        (qty, qty, qty, inv_id),
+    )
+    if updated <= 0:
+        raise HTTPException(status_code=500, detail="库存更新失败")
+
+    db.execute_insert(
+        """
+        INSERT INTO [transactions] (
+            type, product_id, warehouse_id, quantity, remark, created_at
+        ) VALUES (?, ?, ?, ?, ?, ?)
+        """,
+        (
+            "out",
+            inv_id,
+            warehouse_id,
+            qty,
+            (data.remark or "").strip() or f"订单手动出库 {line.order_no} / line#{line.id}",
+            int(time.time()),
+        ),
+    )
+
+    line.is_stocked_out = 1
+    line.stocked_out_at = int(time.time())
+    if not line.save():
+        raise HTTPException(status_code=500, detail="写入出库状态失败")
+    refresh_inventory_pending_outbound_qty([inv_id])
+
+    new_qty_rows = db.execute_query("SELECT [quantity] FROM [inventory] WHERE [id] = ? LIMIT 1", (inv_id,))
+    new_qty = int(new_qty_rows[0][0] or 0) if new_qty_rows else 0
+    return {
+        "success": True,
+        "line_id": int(line.id),
+        "order_no": str(line.order_no or ""),
+        "inventory_id": inv_id,
+        "stocked_out_quantity": qty,
+        "new_inventory_quantity": new_qty,
+    }
 
 
 @router.get("")
@@ -253,6 +355,7 @@ def update_order(oid: int, data: OrderUpdate):
     if not item:
         raise HTTPException(status_code=404, detail="订单不存在")
 
+    old_status = str(item.status or "").strip()
     if data.order_no is not None:
         item.order_no = _normalize_order_no(data.order_no)
     if data.order_date is not None:
@@ -298,6 +401,8 @@ def update_order(oid: int, data: OrderUpdate):
     if not item.save():
         raise HTTPException(status_code=400, detail="更新失败，订单号可能重复")
     sync_outbound_lines_for_order(item.order_no, item.description)
+    if old_status != str(item.status or "").strip():
+        refresh_inventory_pending_outbound_qty(_inventory_ids_for_order(item.order_no))
     return item.to_dict()
 
 
@@ -308,7 +413,9 @@ def delete_order(oid: int):
         raise HTTPException(status_code=404, detail="订单不存在")
     ono = (item.order_no or "").strip()
     if ono:
+        touched_ids = _inventory_ids_for_order(ono)
         OrderOutboundLineModel.delete_all("[order_no] = ?", (ono,))
+        refresh_inventory_pending_outbound_qty(touched_ids)
     if not item.delete():
         raise HTTPException(status_code=500, detail="删除失败")
     return {"message": "删除成功"}
