@@ -3,8 +3,12 @@
     <el-card shadow="never" class="search-card">
       <el-row :gutter="12" align="middle">
         <el-col :xs="24" :md="16" class="search-left-group">
-          <el-input v-model="filters.type" placeholder="类型" clearable @change="onFilterChange" />
-          <el-input v-model="filters.owner" placeholder="归属人" clearable @change="onFilterChange" />
+          <el-select v-model="filters.type" placeholder="支出类型" clearable @change="onFilterChange">
+            <el-option v-for="item in typeOptions" :key="item" :label="item" :value="item" />
+          </el-select>
+          <el-select v-model="filters.owner" placeholder="归属人" clearable @change="onFilterChange">
+            <el-option v-for="u in users" :key="u.id" :label="u.display_name || u.username" :value="u.username" />
+          </el-select>
           <el-date-picker
             v-model="dateRange"
             type="daterange"
@@ -25,7 +29,6 @@
       <el-table :data="list" v-loading="loading" stripe>
         <el-table-column label="类型" prop="type" min-width="120" />
         <el-table-column label="物品名称" prop="item_name" min-width="160" />
-        <el-table-column label="进入" prop="entry" width="100" align="center" />
         <el-table-column label="数量" prop="quantity" width="100" align="center" />
         <el-table-column label="单价" width="120" align="right">
           <template #default="{ row }">
@@ -71,14 +74,22 @@
 
     <el-dialog v-model="dialogVisible" :title="form.id ? '编辑成本支出' : '新增成本支出'" width="520px" destroy-on-close>
       <el-form :model="form" :rules="rules" ref="formRef" label-width="88px">
-        <el-form-item label="类型" prop="type">
-          <el-input v-model="form.type" placeholder="请输入类型" maxlength="40" clearable />
-        </el-form-item>
         <el-form-item label="物品名称" prop="item_name">
-          <el-input v-model="form.item_name" placeholder="请输入物品名称" maxlength="80" clearable />
-        </el-form-item>
-        <el-form-item label="进入" prop="entry">
-          <el-input v-model="form.entry" placeholder="请输入进入" maxlength="20" clearable />
+          <el-select
+            v-model="form.item_name"
+            placeholder="请选择物品名称"
+            filterable
+            clearable
+            @change="onItemNameChange"
+            style="width: 100%"
+          >
+            <el-option
+              v-for="item in costRecordItemOptions"
+              :key="item.item_name"
+              :label="item.item_name"
+              :value="item.item_name"
+            />
+          </el-select>
         </el-form-item>
         <el-row :gutter="12">
           <el-col :span="12">
@@ -93,7 +104,9 @@
           </el-col>
         </el-row>
         <el-form-item label="归属人">
-          <el-input v-model="form.owner" placeholder="请输入归属人（可选）" maxlength="40" clearable />
+          <el-select v-model="form.owner" clearable placeholder="请选择归属人（可选）" style="width: 100%">
+            <el-option v-for="u in users" :key="u.id" :label="u.display_name || u.username" :value="u.username" />
+          </el-select>
         </el-form-item>
         <el-form-item label="记录时间" prop="record_time">
           <el-date-picker
@@ -114,9 +127,9 @@
 </template>
 
 <script setup>
-import { ref } from 'vue'
+import { onMounted, ref } from 'vue'
 import { ElMessage } from 'element-plus'
-import { costExpenseApi } from '@/api/index.js'
+import { authApi, costExpenseApi, costRecordApi } from '@/api/index.js'
 
 const loading = ref(false)
 const submitting = ref(false)
@@ -127,6 +140,9 @@ const pageSize = ref(20)
 const dialogVisible = ref(false)
 const formRef = ref()
 const dateRange = ref([])
+const users = ref([])
+const costRecordItemOptions = ref([])
+const typeOptions = ['快递费', '包装材料']
 
 const filters = ref({
   type: '',
@@ -137,7 +153,6 @@ const createDefaultForm = () => ({
   id: null,
   type: '',
   item_name: '',
-  entry: '进入',
   quantity: 1,
   unit_price: null,
   owner: '',
@@ -147,9 +162,7 @@ const createDefaultForm = () => ({
 const form = ref(createDefaultForm())
 
 const rules = {
-  type: [{ required: true, message: '请输入类型', trigger: 'blur' }],
   item_name: [{ required: true, message: '请输入物品名称', trigger: 'blur' }],
-  entry: [{ required: true, message: '请输入进入', trigger: 'blur' }],
   quantity: [{ required: true, message: '请输入数量', trigger: 'blur' }],
   unit_price: [{ required: true, message: '请输入单价', trigger: 'blur' }],
   record_time: [{ required: true, message: '请选择记录时间', trigger: 'change' }],
@@ -181,6 +194,26 @@ async function load() {
   }
 }
 
+async function loadUsers() {
+  users.value = await authApi.listUsers()
+}
+
+async function loadCostRecordItemOptions() {
+  const res = await costRecordApi.listPackagingItems()
+  costRecordItemOptions.value = Array.isArray(res?.items) ? res.items : []
+}
+
+function getSelectedItemMeta(itemName) {
+  return costRecordItemOptions.value.find((item) => item.item_name === itemName) || null
+}
+
+function onItemNameChange(itemName) {
+  const meta = getSelectedItemMeta(itemName)
+  if (!meta) return
+  form.value.type = meta.expense_type || ''
+  form.value.unit_price = Number(meta.amount || 0)
+}
+
 function onFilterChange() {
   page.value = 1
   load()
@@ -196,7 +229,6 @@ function openEdit(row) {
     id: row.id,
     type: row.type || '',
     item_name: row.item_name || '',
-    entry: row.entry || '',
     quantity: Number(row.quantity || 1),
     unit_price: Number(row.unit_price || 0),
     owner: row.owner || '',
@@ -210,9 +242,7 @@ async function submit() {
   submitting.value = true
   try {
     const payload = {
-      type: String(form.value.type || '').trim(),
       item_name: String(form.value.item_name || '').trim(),
-      entry: String(form.value.entry || '').trim(),
       quantity: Number(form.value.quantity || 0),
       unit_price: Number(form.value.unit_price || 0),
       owner: String(form.value.owner || '').trim() || null,
@@ -239,7 +269,10 @@ async function remove(id) {
   load()
 }
 
-load()
+onMounted(async () => {
+  await Promise.all([loadUsers(), loadCostRecordItemOptions()])
+  await load()
+})
 </script>
 
 <style scoped>

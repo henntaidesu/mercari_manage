@@ -92,6 +92,7 @@ export const transactionApi = {
 // 成本记录
 export const costRecordApi = {
   list: (params) => http.get('/cost-records', { params }),
+  listPackagingItems: () => http.get('/cost-records/packaging-items'),
   create: (data) => http.post('/cost-records', data),
   update: (id, data) => http.put(`/cost-records/${id}`, data),
   remove: (id) => http.delete(`/cost-records/${id}`),

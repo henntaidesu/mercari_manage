@@ -78,6 +78,29 @@ def list_cost_records(
     )
 
 
+@router.get("/packaging-items")
+def list_packaging_items():
+    rows = CostRecordModel.find_all(
+        where="type = ? AND item_name IS NOT NULL AND TRIM(item_name) != ''",
+        params=("packaging",),
+        order_by="cost_date DESC, id DESC",
+    )
+    latest_by_name = {}
+    for row in rows:
+        name = (row.item_name or "").strip()
+        if not name or name in latest_by_name:
+            continue
+        latest_by_name[name] = {
+            "item_name": name,
+            "source_type": row.type,
+            "expense_type": "包装材料",
+            "amount": int(row.amount or 0),
+            "quantity": int(row.quantity or 0),
+        }
+    items = sorted(latest_by_name.values(), key=lambda x: x["item_name"])
+    return {"items": items}
+
+
 @router.post("")
 def create_cost_record(data: CostRecordCreate):
     _validate_type(data.type)
