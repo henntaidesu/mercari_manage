@@ -288,7 +288,7 @@
                 size="small"
                 type="warning"
                 :disabled="Number(row.quantity ?? 0) <= 0"
-                @click.stop="enterListingPickMode(row)"
+                @click.stop="openListingFormForRow(row)"
               >出品</el-button>
               <el-button size="small" @click.stop="openDialog(row)">编辑</el-button>
             </div>
@@ -316,7 +316,7 @@
     <el-dialog
       v-model="dialogVisible"
       :title="form.id ? '编辑商品' : '新增商品'"
-      :width="isMobile ? '94vw' : '520px'"
+      :width="isMobile ? '94vw' : '580px'"
       class="product-dialog"
       destroy-on-close
     >
@@ -364,20 +364,36 @@
             </template>
           </div>
         </el-form-item>
-        <el-form-item label="商品类型" prop="product_type_id">
-          <el-cascader
-            v-model="productTypeCascaderPath"
-            :options="productTypeCascaderOptions"
-            :props="productTypeCascaderProps"
-            :show-all-levels="false"
-            clearable
-            filterable
-            placeholder="请选择商品类型（按1/2/3级分类）"
-            class="product-field-inline__main"
-            popper-class="product-type-cascader-popper"
-            @change="handleProductTypeCascaderChange"
-          />
-        </el-form-item>
+        <el-row :gutter="12">
+          <el-col :xs="24" :sm="16">
+            <el-form-item label="商品类型" prop="product_type_id">
+              <el-cascader
+                v-model="productTypeCascaderPath"
+                :options="productTypeCascaderOptions"
+                :props="productTypeCascaderProps"
+                :show-all-levels="false"
+                clearable
+                filterable
+                placeholder="请选择商品类型（按1/2/3级分类）"
+                class="product-field-inline__main"
+                style="width: 100%"
+                popper-class="product-type-cascader-popper"
+                @change="handleProductTypeCascaderChange"
+              />
+            </el-form-item>
+          </el-col>
+          <el-col :xs="24" :sm="8">
+            <el-form-item label="单价" prop="price">
+              <el-input
+                v-model="priceEdit"
+                placeholder="整数"
+                class="product-price-input"
+                inputmode="numeric"
+                @blur="applyPriceEditToForm"
+              />
+            </el-form-item>
+          </el-col>
+        </el-row>
         <el-form-item label="商品归属" prop="owner_user_id">
           <el-select
             v-model="form.owner_user_id"
@@ -471,7 +487,7 @@
         <el-form-item label="标题">
           <el-input v-model="form.listing_title" class="listing-field-fullwidth" type="text" clearable />
         </el-form-item>
-        <el-form-item label="正文">
+        <el-form-item label="商品说明">
           <el-input
             v-model="form.listing_body"
             class="listing-field-fullwidth"
@@ -502,8 +518,8 @@
         </template>
       </el-form>
       <template #footer>
-        <div class="dialog-footer">
-          <div class="dialog-footer-left">
+        <div class="product-dialog-footer">
+          <div class="product-dialog-footer__left">
             <template v-if="form.id">
               <el-button type="success" @click="openOcrForRow(form)">OCR</el-button>
               <el-popconfirm title="确认删除该商品？" @confirm="remove(form.id); dialogVisible = false">
@@ -513,7 +529,7 @@
               </el-popconfirm>
             </template>
           </div>
-          <div class="dialog-footer-right">
+          <div class="product-dialog-footer__right">
             <el-button @click="dialogVisible = false">取消</el-button>
             <el-button type="primary" @click="submit" :loading="submitting">保存</el-button>
           </div>
@@ -521,11 +537,19 @@
       </template>
     </el-dialog>
 
-    <ListingFormDialog
+    <SingleListingFormDialog
       v-model="listingDialogVisible"
       :category-mappings="listingCategoryMappings"
       :initial-data="listingSeedData"
       :is-mobile="isMobile"
+      @saved="onListingFormSaved"
+    />
+    <CombinedListingFormDialog
+      v-model="combinedListingDialogVisible"
+      :category-mappings="listingCategoryMappings"
+      :initial-data="combinedListingSeedData"
+      :is-mobile="isMobile"
+      @saved="onListingFormSaved"
     />
 
     <el-dialog
@@ -769,7 +793,8 @@ import { ref, computed, watch, onMounted, onBeforeUnmount, nextTick } from 'vue'
 import { ElMessage } from 'element-plus'
 import { inventoryApi, categoryApi, warehouseApi, authApi, scanApi, ocrApi, transactionApi, productTypeCategoryMappingApi, onSaleItemApi } from '@/api/index.js'
 import { warehouseShelfLabel } from '@/utils/warehouseLabel.js'
-import ListingFormDialog from '@/components/ListingFormDialog.vue'
+import SingleListingFormDialog from '@/components/SingleListingFormDialog.vue'
+import CombinedListingFormDialog from '@/components/CombinedListingFormDialog.vue'
 
 const list = ref([])
 const loading = ref(false)
@@ -818,6 +843,9 @@ const fileInputFront = ref()
 const fileInputBack = ref()
 const listingDialogVisible = ref(false)
 const listingSeedData = ref(null)
+/** 组合出品独立弹窗 */
+const combinedListingDialogVisible = ref(false)
+const combinedListingSeedData = ref(null)
 /** 组合出品「在列表中选择」模式 */
 const listingPickMode = ref(false)
 /** 已选中的库存 id 集合 */
@@ -845,6 +873,8 @@ const categoryCreateMode = ref(false)
 const warehouseCreateMode = ref(false)
 /** 编辑弹窗库存数量：纯文本输入，blur / 保存时写回 form.quantity */
 const quantityEdit = ref('0')
+/** 编辑弹窗单价：纯文本整数，blur / 保存时写回 form.price */
+const priceEdit = ref('0')
 
 /** 编辑弹窗：煤炉商品ID 列表（一对多） */
 const mercariIdList = ref([])
@@ -859,6 +889,18 @@ function applyQuantityEditToForm() {
   const v = Number.isNaN(n) ? 0 : Math.max(0, n)
   form.value.quantity = v
   quantityEdit.value = String(v)
+}
+
+function syncPriceEditFromForm() {
+  priceEdit.value = String(Math.round(Number(form.value.price ?? 0)))
+}
+
+function applyPriceEditToForm() {
+  const raw = String(priceEdit.value ?? '').trim()
+  const n = parseInt(raw, 10)
+  const v = Number.isNaN(n) ? 0 : Math.max(0, Math.min(999999999, n))
+  form.value.price = v
+  priceEdit.value = String(v)
 }
 
 function parseMercariIdsRaw(raw) {
@@ -974,6 +1016,16 @@ const rules = {
     },
   ],
   image_front: [{ validator: (_, val, cb) => val ? cb() : cb(new Error('请拍摄或上传正面图')), trigger: 'change' }],
+  price: [
+    {
+      validator: (_, val, cb) => {
+        const n = Number(val)
+        if (Number.isNaN(n) || n < 0) cb(new Error('单价须为大于等于 0 的数字'))
+        else cb()
+      },
+      trigger: 'blur',
+    },
+  ],
 }
 
 const productTypeCascaderProps = {
@@ -1735,6 +1787,7 @@ function openDialog(row = null) {
         image_back: null
       }
   syncQuantityEditFromForm()
+  syncPriceEditFromForm()
   syncMercariIdListFromForm()
   syncCascaderPathByProductTypeId(form.value.product_type_id)
   dialogVisible.value = true
@@ -1766,13 +1819,66 @@ function buildListingSeedFromInventoryRows(rows) {
   const sameType = rows.every((r) => r.product_type_id === first.product_type_id)
   const mappingId =
     sameType && first.product_type_id != null ? String(first.product_type_id) : null
-  const descParts = rows.map((r) => r.description).filter(Boolean)
+  const descParts = rows
+    .map((r) => {
+      const b = String(r.listing_body ?? '').trim()
+      if (b) return b
+      return String(r.description ?? '').trim()
+    })
+    .filter(Boolean)
+  const imageBack = rows.map((r) => r?.image_back).find((x) => x) || ''
   return {
     image: first.image_front || first.image || '',
+    image_back: imageBack,
     name: name || String(first.name || '').trim() || '',
     category_mapping_id: mappingId,
     description: descParts.join('\n---\n') || '',
+    price: Math.round(Number(first.price ?? 0)),
     inventory_ids: rows.map((r) => r.id)
+  }
+}
+
+/** 组合出品：仅用于预览多商品图；不预填名称与说明 */
+function buildCombinedListingSeedFromInventoryRows(rows) {
+  if (!rows?.length) return null
+  const first = rows[0]
+  const sameType = rows.every((r) => r.product_type_id === first.product_type_id)
+  const mappingId =
+    sameType && first.product_type_id != null ? String(first.product_type_id) : null
+  const combined_images = rows.map((r) => ({
+    inventory_id: r.id,
+    front: r.image_front || r.image || '',
+    back: String(r.image_back || '').trim() || ''
+  }))
+  return {
+    image: '',
+    image_back: '',
+    name: '',
+    category_mapping_id: mappingId,
+    description: '',
+    /** 组合出品：取首条库存单价为初始值，保存时写回所选全部条目 */
+    price: Math.round(Number(first.price ?? 0)),
+    combined_images,
+    inventory_ids: rows.map((r) => r.id)
+  }
+}
+
+/** 出品表单保存：写回所选库存的 listing_body、price（与编辑商品一致） */
+async function onListingFormSaved(data) {
+  const ids = (data.inventory_ids || []).map((id) => Number(id)).filter((x) => Number.isFinite(x))
+  if (!ids.length) return
+  const listing_body = data.description != null ? String(data.description) : ''
+  const price = Math.round(Number(data.price ?? 0))
+  const safePrice = Number.isFinite(price) && price >= 0 ? price : 0
+  try {
+    for (const id of ids) {
+      await inventoryApi.update(id, { listing_body, price: safePrice })
+    }
+    ElMessage.success('商品说明与单价已保存到库存')
+    await load({ resetPage: false })
+    loadInventoryStats()
+  } catch {
+    // 错误提示由拦截器处理
   }
 }
 
@@ -1781,20 +1887,23 @@ function isListingPickSelectable(row) {
   return Number(row?.quantity ?? 0) > 0
 }
 
-/** 进入「在列表中选择出品商品」模式；可预选一行 */
-async function enterListingPickMode(prefillRow = null) {
+/** 进入「组合出品」：在列表中多选库存后再填表单 */
+async function enterListingPickMode() {
   listingPickMode.value = true
-  const ids = new Set()
-  if (prefillRow && typeof prefillRow === 'object' && prefillRow.id != null) {
-    if (!isListingPickSelectable(prefillRow)) {
-      ElMessage.warning('库存为 0 的商品不能选中')
-    } else {
-      ids.add(prefillRow.id)
-    }
-  }
-  listingPickIds.value = ids
+  listingPickIds.value = new Set()
   closeAllInlineEditors()
   await load({ resetPage: false })
+}
+
+/** 「出品」：当前行直接打开出品表单（单条库存） */
+function openListingFormForRow(row) {
+  if (!row || row.id == null) return
+  if (!isListingPickSelectable(row)) {
+    ElMessage.warning('库存为 0 的商品无法出品')
+    return
+  }
+  listingSeedData.value = buildListingSeedFromInventoryRows([row])
+  listingDialogVisible.value = true
 }
 
 async function exitListingPickMode() {
@@ -1856,9 +1965,9 @@ async function confirmListingPick() {
     ElMessage.warning('所选商品均无库存，无法出品')
     return
   }
-  listingSeedData.value = buildListingSeedFromInventoryRows(rows)
+  combinedListingSeedData.value = buildCombinedListingSeedFromInventoryRows(rows)
   await exitListingPickMode()
-  listingDialogVisible.value = true
+  combinedListingDialogVisible.value = true
 }
 
 function triggerUpload(side) {
@@ -1888,6 +1997,7 @@ function handleImageUpload(e, side) {
 
 async function submit() {
   applyQuantityEditToForm()
+  applyPriceEditToForm()
   applyMercariIdListToForm()
   await formRef.value.validate()
   submitting.value = true
@@ -2625,6 +2735,31 @@ onBeforeUnmount(() => {
 }
 .scan-tip { color: #9aa7be; font-size: 13px; text-align: center; }
 
+/* 编辑商品弹窗底部：一行内排完 OCR / 删除 / 取消 / 保存 */
+.product-dialog-footer {
+  display: flex;
+  flex-direction: row;
+  flex-wrap: nowrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  width: 100%;
+  box-sizing: border-box;
+}
+.product-dialog-footer__left,
+.product-dialog-footer__right {
+  display: flex;
+  flex-direction: row;
+  flex-wrap: nowrap;
+  align-items: center;
+  gap: 8px;
+  flex-shrink: 0;
+}
+.product-price-input {
+  width: 100%;
+  max-width: 100%;
+}
+
 @media (max-width: 768px) {
   .search-card :deep(.el-row) {
     row-gap: 8px;
@@ -2682,19 +2817,15 @@ onBeforeUnmount(() => {
   .image-upload-area.large {
     height: 150px;
   }
-  .dialog-footer {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    gap: 8px;
+  .product-dialog-footer {
+    flex-wrap: nowrap;
+    gap: 6px;
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+    padding-bottom: 2px;
   }
-  .dialog-footer-left {
-    display: flex;
-    gap: 8px;
-  }
-  .dialog-footer-right {
-    display: flex;
-    gap: 8px;
+  .product-dialog-footer :deep(.el-button) {
+    flex-shrink: 0;
   }
   :deep(.product-dialog .el-dialog),
   :deep(.scan-dialog .el-dialog) {
@@ -2707,9 +2838,14 @@ onBeforeUnmount(() => {
 }
 </style>
 
-<!-- 无 scoped：须覆盖 App.vue 全局 `.el-input { width: 180px !important }`，否则标题与正文不同宽 -->
+<!-- 无 scoped：须覆盖 App.vue 全局 `.el-input { width: 180px !important }`，否则标题与商品说明不同宽 -->
 <style>
 .product-dialog .listing-field-fullwidth.el-input {
+  width: 100% !important;
+  max-width: 100%;
+}
+
+.product-dialog .product-price-input {
   width: 100% !important;
   max-width: 100%;
 }
