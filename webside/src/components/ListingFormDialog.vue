@@ -8,6 +8,9 @@
     @update:model-value="onVisibleChange"
   >
     <el-form :model="form" label-width="110px">
+      <el-form-item v-if="form.inventory_ids?.length" label="关联库存">
+        <span class="listing-inv-count">已选 {{ form.inventory_ids.length }} 条库存条目（组合出品）</span>
+      </el-form-item>
       <el-form-item label="商品图片">
         <div class="listing-image-box">
           <el-image
@@ -261,7 +264,10 @@ watch(
       category_mapping_path: seedPath,
       description: seed.description || '',
       shipping_from: areaId,
-      shipping_from_path: buildShippingFromPath(areaId)
+      shipping_from_path: buildShippingFromPath(areaId),
+      inventory_ids: Array.isArray(seed.inventory_ids)
+        ? seed.inventory_ids.map((x) => Number(x)).filter((x) => Number.isFinite(x))
+        : []
     }
   }
 )
@@ -281,7 +287,8 @@ function getDefaultForm() {
     /** el-cascader 的路径值：[REGION:xxx, AREA:xxx] */
     shipping_from_path: [],
     shipping_days: '2_3_days',
-    sale_type: 'instant_buy'
+    sale_type: 'instant_buy',
+    inventory_ids: []
   }
 }
 
@@ -361,5 +368,9 @@ function submitStub() {
   display: flex;
   justify-content: flex-end;
   gap: 8px;
+}
+.listing-inv-count {
+  font-size: 13px;
+  color: #606266;
 }
 </style>

@@ -1,5 +1,5 @@
 ﻿<template>
-  <div>
+  <div :class="{ 'listing-pick-mode-active': listingPickMode }">
     <!-- 库存统计卡片（全库汇总）；手机端不展示 -->
     <el-card v-if="!isMobile" class="section-card inventory-stats-wrap" shadow="never">
       <el-row :gutter="16" class="stat-row inventory-stat-row">
@@ -47,27 +47,42 @@
         </el-col>
         <el-col :xs="24" :md="10" class="search-actions" :class="{ 'search-actions--ios': isIOS }">
           <template v-if="isIOS">
-            <div class="search-actions-ios-row">
+            <template v-if="!listingPickMode">
+              <div class="search-actions-ios-row">
+                <el-button type="success" @click="openContScan('in')">条码入库</el-button>
+                <el-button type="danger" @click="openContScan('out')">条码出库</el-button>
+                <el-button type="danger" plain @click="openManualOutDialog">手动出库</el-button>
+                <el-button type="primary" @click="openLookupScan">条码寻找</el-button>
+              </div>
+              <div class="search-actions-ios-row">
+                <el-button type="info" @click="openImageFind">拍照寻找</el-button>
+                <el-button type="warning" @click="openNoBarcodeEntry">无码录入</el-button>
+                <el-button @click="enterListingPickMode()">组合出品</el-button>
+              </div>
+            </template>
+            <template v-else>
+              <div class="search-actions-ios-row listing-pick-actions">
+                <span class="listing-pick-count">已选 {{ listingPickIds.size }} 条</span>
+                <el-button type="primary" :disabled="!listingPickIds.size" @click="confirmListingPick">下一步</el-button>
+                <el-button @click="exitListingPickMode">取消选择</el-button>
+              </div>
+            </template>
+          </template>
+          <template v-else>
+            <template v-if="!listingPickMode">
               <el-button type="success" @click="openContScan('in')">条码入库</el-button>
               <el-button type="danger" @click="openContScan('out')">条码出库</el-button>
               <el-button type="danger" plain @click="openManualOutDialog">手动出库</el-button>
               <el-button type="primary" @click="openLookupScan">条码寻找</el-button>
-            </div>
-            <div class="search-actions-ios-row">
               <el-button type="info" @click="openImageFind">拍照寻找</el-button>
               <el-button type="warning" @click="openNoBarcodeEntry">无码录入</el-button>
-              <el-button @click="listProductStub">组合出品</el-button>
-            </div>
-
-          </template>
-          <template v-else>
-            <el-button type="success" @click="openContScan('in')">条码入库</el-button>
-            <el-button type="danger" @click="openContScan('out')">条码出库</el-button>
-            <el-button type="danger" plain @click="openManualOutDialog">手动出库</el-button>
-            <el-button type="primary" @click="openLookupScan">条码寻找</el-button>
-            <el-button type="info" @click="openImageFind">拍照寻找</el-button>
-            <el-button type="warning" @click="openNoBarcodeEntry">无码录入</el-button>
-            <el-button @click="listProductStub">组合出品</el-button>
+              <el-button @click="enterListingPickMode()">组合出品</el-button>
+            </template>
+            <template v-else>
+              <span class="listing-pick-count">已选 {{ listingPickIds.size }} 条</span>
+              <el-button type="primary" :disabled="!listingPickIds.size" @click="confirmListingPick">下一步：填写出品表单</el-button>
+              <el-button @click="exitListingPickMode">取消选择</el-button>
+            </template>
           </template>
         </el-col>
       </el-row>
@@ -81,8 +96,10 @@
         stripe
         row-key="id"
         :size="isMobile ? 'small' : 'default'"
+        :row-class-name="rowClassName"
         @sort-change="onInventorySortChange"
         @expand-change="onInventoryExpandChange"
+        @row-click="onTableRowClick"
       >
         <el-table-column type="expand" width="44">
           <template #default="{ row }">
@@ -190,7 +207,7 @@
               <el-option label="未分类" :value="null" />
               <el-option v-for="c in categories" :key="c.id" :label="c.name" :value="c.id" />
             </el-select>
-            <div v-else class="editable-cell" @click="editingCategoryRowId = row.id">{{ row.category_name || '未分类' }}</div>
+            <div v-else class="editable-cell" @click="!listingPickMode && (editingCategoryRowId = row.id)">{{ row.category_name || '未分类' }}</div>
           </template>
         </el-table-column>
         <el-table-column label="商品类型" width="120" align="center" header-align="center">
@@ -264,12 +281,23 @@
             <span v-else class="cell-muted">{{ Number(row.pending_outbound_qty || 0) }}</span>
           </template>
         </el-table-column>
-        <el-table-column label="操作" :width="isMobile ? 140 : 160" align="center" header-align="center" :fixed="isMobile ? false : 'right'">
+        <el-table-column v-if="!listingPickMode" label="操作" :width="isMobile ? 140 : 160" align="center" header-align="center" :fixed="isMobile ? false : 'right'">
           <template #default="{ row }">
             <div class="row-actions">
-              <el-button size="small" type="warning" @click="listProductStub(row)">出品</el-button>
-              <el-button size="small" @click="openDialog(row)">编辑</el-button>
+              <el-button
+                size="small"
+                type="warning"
+                :disabled="Number(row.quantity ?? 0) <= 0"
+                @click.stop="enterListingPickMode(row)"
+              >出品</el-button>
+              <el-button size="small" @click.stop="openDialog(row)">编辑</el-button>
             </div>
+          </template>
+        </el-table-column>
+        <el-table-column v-else label="选择" width="64" align="center" header-align="center" :fixed="isMobile ? false : 'right'">
+          <template #default="{ row }">
+            <el-icon v-if="listingPickIds.has(row.id)" color="#67C23A" :size="20"><Check /></el-icon>
+            <span v-else class="cell-muted">-</span>
           </template>
         </el-table-column>
       </el-table>
@@ -790,6 +818,10 @@ const fileInputFront = ref()
 const fileInputBack = ref()
 const listingDialogVisible = ref(false)
 const listingSeedData = ref(null)
+/** 组合出品「在列表中选择」模式 */
+const listingPickMode = ref(false)
+/** 已选中的库存 id 集合 */
+const listingPickIds = ref(new Set())
 const listingCategoryMappings = ref([])
 const productTypeCascaderPath = ref([])
 const inventoryExpandById = ref({})
@@ -1145,6 +1177,7 @@ function isEditing(row, field) {
 }
 
 function startInlineEdit(row, field) {
+  if (listingPickMode.value) return
   editingCell.value = getCellKey(row, field)
   const currentValue = row[field]
   editingValue.value = currentValue === null || currentValue === undefined ? '' : String(currentValue)
@@ -1185,10 +1218,12 @@ function openSelectMenuByMap(map, rowId) {
 }
 
 function openProductTypeInline(row) {
+  if (listingPickMode.value) return
   editingProductTypeRowId.value = row.id
 }
 
 function openOwnerInline(row) {
+  if (listingPickMode.value) return
   editingOwnerRowId.value = row.id
   openSelectMenuByMap(inlineOwnerSelectMap, row.id)
 }
@@ -1475,6 +1510,7 @@ async function load(options = {}) {
   if (filterWarehouse.value) params.warehouse_id = filterWarehouse.value
   if (filterProductType.value) params.product_type_id = filterProductType.value
   if (filterOwnerUserId.value) params.owner_user_id = filterOwnerUserId.value
+  if (listingPickMode.value) params.in_stock_only = true
   list.value = await inventoryApi.list(params).finally(() => (loading.value = false))
   if (resetPage) {
     inventorySortProp.value = ''
@@ -1721,20 +1757,107 @@ function openNoBarcodeEntry() {
   form.value.barcode = uuid
 }
 
-function listProductStub(row) {
-  const source = row && typeof row === 'object'
-    ? row
-    : (dialogVisible.value ? form.value : null)
-  listingSeedData.value = source
-    ? {
-        image: source.image_front || source.image || '',
-        name: source.name || '',
-        category_mapping_id: source.product_type_id != null
-          ? String(source.product_type_id)
-          : (source.category_mapping_id != null ? String(source.category_mapping_id) : null),
-        description: source.description || ''
-      }
-    : null
+function buildListingSeedFromInventoryRows(rows) {
+  if (!rows?.length) return null
+  const first = rows[0]
+  const names = rows.map((r) => String(r.name || '').trim()).filter(Boolean)
+  let name = names.join('、')
+  if (name.length > 200) name = `${name.slice(0, 197)}…`
+  const sameType = rows.every((r) => r.product_type_id === first.product_type_id)
+  const mappingId =
+    sameType && first.product_type_id != null ? String(first.product_type_id) : null
+  const descParts = rows.map((r) => r.description).filter(Boolean)
+  return {
+    image: first.image_front || first.image || '',
+    name: name || String(first.name || '').trim() || '',
+    category_mapping_id: mappingId,
+    description: descParts.join('\n---\n') || '',
+    inventory_ids: rows.map((r) => r.id)
+  }
+}
+
+/** 组合出品可选：库存大于 0 */
+function isListingPickSelectable(row) {
+  return Number(row?.quantity ?? 0) > 0
+}
+
+/** 进入「在列表中选择出品商品」模式；可预选一行 */
+async function enterListingPickMode(prefillRow = null) {
+  listingPickMode.value = true
+  const ids = new Set()
+  if (prefillRow && typeof prefillRow === 'object' && prefillRow.id != null) {
+    if (!isListingPickSelectable(prefillRow)) {
+      ElMessage.warning('库存为 0 的商品不能选中')
+    } else {
+      ids.add(prefillRow.id)
+    }
+  }
+  listingPickIds.value = ids
+  closeAllInlineEditors()
+  await load({ resetPage: false })
+}
+
+async function exitListingPickMode() {
+  listingPickMode.value = false
+  listingPickIds.value = new Set()
+  await load({ resetPage: false })
+}
+
+function toggleListingPickRow(row) {
+  if (!row || row.id == null) return
+  const next = new Set(listingPickIds.value)
+  if (next.has(row.id)) {
+    next.delete(row.id)
+    listingPickIds.value = next
+    return
+  }
+  if (!isListingPickSelectable(row)) {
+    ElMessage.warning('库存为 0 的商品不能选中')
+    return
+  }
+  next.add(row.id)
+  listingPickIds.value = next
+}
+
+function rowClassName({ row }) {
+  const classes = []
+  if (listingPickMode.value && listingPickIds.value.has(row?.id)) {
+    classes.push('listing-pick-row-selected')
+  }
+  if (listingPickMode.value && !isListingPickSelectable(row)) {
+    classes.push('listing-pick-row-disabled')
+  }
+  return classes.filter(Boolean).join(' ')
+}
+
+function onTableRowClick(row) {
+  if (!listingPickMode.value) return
+  toggleListingPickRow(row)
+}
+
+function closeAllInlineEditors() {
+  editingCategoryRowId.value = null
+  editingProductTypeRowId.value = null
+  editingOwnerRowId.value = null
+  editingCell.value = ''
+  editingValue.value = ''
+}
+
+async function confirmListingPick() {
+  if (!listingPickIds.value.size) {
+    ElMessage.warning('请至少选择一条商品')
+    return
+  }
+  const idSet = listingPickIds.value
+  const rows = sortedInventoryList.value.filter(
+    (r) => idSet.has(r.id) && isListingPickSelectable(r)
+  )
+  if (!rows.length) {
+    ElMessage.warning('所选商品均无库存，无法出品')
+    return
+  }
+  listingSeedData.value = buildListingSeedFromInventoryRows(rows)
+  await exitListingPickMode()
   listingDialogVisible.value = true
 }
 
@@ -2615,5 +2738,35 @@ onBeforeUnmount(() => {
 
 .product-type-cascader-popper .el-cascader-menu__list {
   min-height: 300px !important;
+}
+
+.listing-pick-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+.listing-pick-count {
+  font-size: 13px;
+  color: #67C23A;
+  font-weight: 600;
+  margin-right: 4px;
+}
+/* 选择模式下：选中行整行浅绿色覆盖（含固定列），80% 透明（alpha 0.2） */
+.el-table tr.listing-pick-row-selected > td.el-table__cell {
+  background-color: rgba(103, 194, 58, 0.2) !important;
+  cursor: pointer;
+}
+.el-table tr.listing-pick-row-selected:hover > td.el-table__cell,
+.el-table tr.listing-pick-row-selected.hover-row > td.el-table__cell {
+  background-color: rgba(103, 194, 58, 0.32) !important;
+}
+.el-table tbody tr.listing-pick-row-disabled {
+  cursor: not-allowed !important;
+  opacity: 0.55;
+}
+/* 选择模式下，整张表行的鼠标指针变为可点击 */
+.listing-pick-mode-active .el-table tbody tr {
+  cursor: pointer;
 }
 </style>
