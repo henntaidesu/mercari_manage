@@ -95,7 +95,8 @@ class PostToMarketBody(PydanticModel):
     # 配送方法：undecided / rakuraku / yuuyu / tanome / regular_mail
     shipping_method: str = "undecided"
     # 販売タイプ + 价格
-    sale_type: str = "instant_buy"   # "instant_buy" | "negotiable"
+    sale_type: str = "instant_buy"   # "instant_buy" | "auction"
+    auction_duration: str = "normal"  # "normal" | "3hours"（仅 auction 时生效）
     price: int = 0
     # 发货
     shipping_days: str = "2_3_days"  # "1_2_days" | "2_3_days" | "4_7_days"
@@ -165,6 +166,7 @@ async def post_to_market(body: PostToMarketBody):
             shipping_payer=body.shipping_payer,
             shipping_method=body.shipping_method,
             sale_type=body.sale_type,
+            auction_duration=body.auction_duration,
             price=body.price,
             shipping_days=body.shipping_days,
             shipping_from_area_id=body.shipping_from_area_id,

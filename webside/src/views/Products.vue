@@ -1919,6 +1919,7 @@ async function onListingFormSaved(data) {
       shipping_payer: data.shipping_payer || 'seller',
       shipping_method: data.shipping_method || 'undecided',
       sale_type: data.sale_type || 'instant_buy',
+      auction_duration: data.auction_duration || 'normal',
       price: safePrice,
       shipping_days: data.shipping_days || '2_3_days',
       shipping_from_area_id: data.shipping_from ? String(data.shipping_from) : '',
@@ -1937,9 +1938,17 @@ async function onListingFormSaved(data) {
       if (d.sale_type_set && d.price_filled) parts.push('销售方式与价格已填写')
       if (d.shipping_days_set) parts.push('发货天数已设置')
       if (d.shipping_from_set) parts.push('发货地址已设置')
-      ElMessage.success(
-        parts.length ? `出品页填写完成：${parts.join('、')}` : '浏览器已打开出品页'
-      )
+      if (d.submitted === true) {
+        ElMessage.success('出品成功！' + (d.submit_message ? `（${d.submit_message}）` : ''))
+      } else if (d.submit_error) {
+        ElMessage.error(`出品按钮点击失败：${d.submit_error}`)
+      } else if (d.submitted === false && d.submit_message) {
+        ElMessage.warning(`出品提示异常：${d.submit_message}`)
+      } else {
+        ElMessage.success(
+          parts.length ? `出品页填写完成：${parts.join('、')}` : '浏览器已打开出品页'
+        )
+      }
     }
   } catch {
     // axios 拦截器已弹窗，此处仅记录

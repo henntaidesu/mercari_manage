@@ -3,16 +3,19 @@
 Mercari 出品自动化：打开 https://jp.mercari.com/sell/create 并填写表单。
 
 执行步骤：
-  1.  用 MITM 代理启动（或复用）指定账号的 Edge 持久化会话
-  2.  导航到出品页
-  3.  确保 Switch 开关处于 false（关闭）状态
-  4.  图片上传（写真を追加）→ 关闭图像选择弹窗
-  5.  填写商品名称
-  6.  填写商品说明
-  7.  商品类型选择（按数据库记录的各级 position）
-  8.  発売タイプ + 价格填写（即购 / 价格可谈）
-  9.  最大发货天数选择
-  10. 发货地址（发货地）选择
+  前置  确保 Switch 开关处于 false（关闭）状态
+   1.  图片上传（写真を追加）
+   2.  填写商品名称
+   3.  选择商品类型（按 DB position 逐级点击）
+   4.  选择商品状態
+   5.  填写商品说明
+   6.  选择快递費負担
+   7.  选择配送方法
+   8.  选择发货地址
+   9.  选择最大发货天数
+  10.  选择出售类型（即购 / 拍卖；拍卖时同步选时长）
+  11.  填写出售价格
+  12.  点击出品按钮提交
 """
 from __future__ import annotations
 
@@ -82,9 +85,12 @@ SHIPPING_METHOD_XPATH: Dict[str, str] = {
     "rakuraku":    '//*[@id="main"]/div/div[1]/div[1]/div/fieldset/input',
     "yuuyu":       '//*[@id="main"]/div/div[2]/div[1]/div/fieldset/input',
     "tanome":      '//*[@id="main"]/div/div[3]/div[1]/div/fieldset/input',
-    "undecided":   '//*[@id="_r_3g_"]/fieldset[8]/input',
+    "undecided":   '/html/body/div[2]/div[2]/main/div/div[4]/div[2]/fieldset[8]/input',
     "regular_mail":'',   # 普通郵便：页面上可能无固定 XPath；留空跳过
 }
+
+# 「未定」需先点击展开的折叠区块（点击后列表展开才能显示 未定 radio）
+SHIPPING_METHOD_UNDECIDED_EXPAND_XPATH = '//*[@id="main"]/div/div[4]/div'
 
 # 配送方法选择完成后的「確認」按钮
 SHIPPING_METHOD_CONFIRM_XPATH = '/html/body/div[4]/div/div/button'
@@ -97,12 +103,19 @@ SALE_INSTANT_PRICE_XPATH = (
     '//*[@id="main"]/form/section[5]/div[2]/div/div/div[2]/div[2]/div[1]/div/div/div[1]/input'
 )
 
-# 販売タイプ — 価格相談（価格可谈）
-SALE_NEGO_RADIO_XPATH = (
+# 販売タイプ — 拍卖（オークション）
+SALE_AUCTION_RADIO_XPATH = (
     '//*[@id="main"]/form/section[5]/div[2]/div/div/div[1]/div[1]/label/input'
 )
-SALE_NEGO_PRICE_XPATH = (
+SALE_AUCTION_PRICE_XPATH = (
     '//*[@id="main"]/form/section[5]/div[2]/div/div/div[1]/div[2]/div[3]/div/div/div[1]/input'
+)
+# 拍卖时长选项：通常 / 三小时
+SALE_AUCTION_DURATION_NORMAL_XPATH = (
+    '//*[@id="main"]/form/section[5]/div[2]/div/div/div[1]/div[2]/div[1]/div/div/div[1]'
+)
+SALE_AUCTION_DURATION_3H_XPATH = (
+    '//*[@id="main"]/form/section[5]/div[2]/div/div/div[1]/div[2]/div[1]/div/div/div[2]'
 )
 
 # 発送までの日数 select
@@ -264,7 +277,8 @@ async def post_to_market(
     # 配送方法：undecided / rakuraku / yuuyu / tanome / regular_mail
     shipping_method: str = "undecided",
     # 販売タイプ + 价格
-    sale_type: str = "instant_buy",   # "instant_buy" | "negotiable"
+    sale_type: str = "instant_buy",   # "instant_buy" | "auction"
+    auction_duration: str = "normal",  # "normal" | "3hours"（仅 auction 时生效）
     price: int = 0,
     # 发货
     shipping_days: str = "2_3_days",  # "1_2_days" | "2_3_days" | "4_7_days"
@@ -330,18 +344,19 @@ async def post_to_market(
         "switch_clicked": False,
         "images_uploaded": 0,
         "name_filled": False,
-        "description_filled": False,
         "category_selected": False,
         "condition_set": False,
+        "description_filled": False,
         "shipping_payer_set": False,
         "shipping_method_set": False,
+        "shipping_from_set": False,
+        "shipping_days_set": False,
         "sale_type_set": False,
         "price_filled": False,
-        "shipping_days_set": False,
-        "shipping_from_set": False,
+        "submitted": False,
     }
 
-    # ── 3. 确保 Switch 开关处于 false ───────────────────────────────────── #
+    # ── 前置：确保 Switch 开关处于 false ─────────────────────────────────── #
     try:
         switch_loc = page.locator(f"xpath={SWITCH_INPUT_XPATH}")
         await switch_loc.first.wait_for(state="attached", timeout=element_timeout_ms)
@@ -369,7 +384,7 @@ async def post_to_market(
         log.warning("[post_to_market] Switch 检查失败: %s", exc)
         result["switch_error"] = str(exc)
 
-    # ── 4. 图片上传 ──────────────────────────────────────────────────────── #
+    # ── 步骤 1：图片上传 ──────────────────────────────────────────────────── #
     if local_images:
         try:
             btn_loc = page.locator(f"xpath={PHOTO_ADD_BUTTON_XPATH}")
@@ -379,8 +394,6 @@ async def post_to_market(
             fc = await fc_info.value
             await fc.set_files(local_images)
             result["images_uploaded"] = len(local_images)
-
-            # 等待缩略图
             try:
                 await page.wait_for_selector(
                     "img[alt*='写真'], img[alt*='photo'], section img",
@@ -388,7 +401,6 @@ async def post_to_market(
                 )
             except Exception:
                 pass
-
             # 关闭图像选择弹窗（暂时注释，弹窗可能已自动关闭或 XPath 需确认）
             # try:
             #     close_btn = page.locator('xpath=//*[@id="modal"]/div[3]/div/button')
@@ -405,7 +417,7 @@ async def post_to_market(
             log.error("[post_to_market] 图片上传失败: %s", exc)
             result["images_error"] = str(exc)
 
-    # ── 5. 填写商品名称 ──────────────────────────────────────────────────── #
+    # ── 步骤 2：填写商品名称 ──────────────────────────────────────────────── #
     name_str = (name or "").strip()
     if name_str:
         try:
@@ -426,7 +438,40 @@ async def post_to_market(
             log.error("[post_to_market] 填写商品名称失败: %s", exc)
             result["name_error"] = str(exc)
 
-    # ── 6. 填写商品说明 ──────────────────────────────────────────────────── #
+    # ── 步骤 3：选择商品类型 ──────────────────────────────────────────────── #
+    if any(p is not None for p in [
+        category_level1_pos, category_level2_pos,
+        category_level3_pos, product_type_pos,
+    ]):
+        try:
+            await _select_category(
+                page,
+                category_level1_pos,
+                category_level2_pos,
+                category_level3_pos,
+                product_type_pos,
+                element_timeout_ms=element_timeout_ms,
+                page_load_timeout_ms=page_load_timeout_ms,
+            )
+            result["category_selected"] = True
+        except Exception as exc:
+            log.error("[post_to_market] 商品类型选择失败: %s", exc)
+            result["category_error"] = str(exc)
+
+    # ── 步骤 4：选择商品状態 ──────────────────────────────────────────────── #
+    if status:
+        try:
+            await _select_condition(
+                page, status,
+                element_timeout_ms=element_timeout_ms,
+                page_load_timeout_ms=page_load_timeout_ms,
+            )
+            result["condition_set"] = True
+        except Exception as exc:
+            log.error("[post_to_market] 商品状態選択失败: %s", exc)
+            result["condition_error"] = str(exc)
+
+    # ── 步骤 5：填写商品说明 ──────────────────────────────────────────────── #
     desc_str = (description or "").strip()
     if desc_str:
         try:
@@ -447,40 +492,7 @@ async def post_to_market(
             log.error("[post_to_market] 填写商品说明失败: %s", exc)
             result["description_error"] = str(exc)
 
-    # ── 7. 商品类型选择 ──────────────────────────────────────────────────── #
-    if any(p is not None for p in [
-        category_level1_pos, category_level2_pos,
-        category_level3_pos, product_type_pos,
-    ]):
-        try:
-            await _select_category(
-                page,
-                category_level1_pos,
-                category_level2_pos,
-                category_level3_pos,
-                product_type_pos,
-                element_timeout_ms=element_timeout_ms,
-                page_load_timeout_ms=page_load_timeout_ms,
-            )
-            result["category_selected"] = True
-        except Exception as exc:
-            log.error("[post_to_market] 商品类型选择失败: %s", exc)
-            result["category_error"] = str(exc)
-
-    # ── 8. 商品状態選択 ──────────────────────────────────────────────────── #
-    if status:
-        try:
-            await _select_condition(
-                page, status,
-                element_timeout_ms=element_timeout_ms,
-                page_load_timeout_ms=page_load_timeout_ms,
-            )
-            result["condition_set"] = True
-        except Exception as exc:
-            log.error("[post_to_market] 商品状態選択失败: %s", exc)
-            result["condition_error"] = str(exc)
-
-    # ── 9. 快递費負担 ────────────────────────────────────────────────────── #
+    # ── 步骤 6：选择快递費負担 ────────────────────────────────────────────── #
     if shipping_payer:
         try:
             await _set_shipping_payer(
@@ -492,7 +504,7 @@ async def post_to_market(
             log.error("[post_to_market] 快递費負担设置失败: %s", exc)
             result["shipping_payer_error"] = str(exc)
 
-    # ── 10. 配送方法 ─────────────────────────────────────────────────────── #
+    # ── 步骤 7：选择配送方法 ──────────────────────────────────────────────── #
     if shipping_method:
         try:
             await _select_shipping_method(
@@ -505,19 +517,19 @@ async def post_to_market(
             log.error("[post_to_market] 配送方法设置失败: %s", exc)
             result["shipping_method_error"] = str(exc)
 
-    # ── 11. 販売タイプ + 价格 ────────────────────────────────────────────── #
-    try:
-        await _set_sale_type_and_price(
-            page, sale_type, price,
-            element_timeout_ms=element_timeout_ms,
-        )
-        result["sale_type_set"] = True
-        result["price_filled"] = True
-    except Exception as exc:
-        log.error("[post_to_market] 销售类型/价格设置失败: %s", exc)
-        result["sale_price_error"] = str(exc)
+    # ── 步骤 8：选择发货地址 ──────────────────────────────────────────────── #
+    if shipping_from_area_id:
+        try:
+            await _set_shipping_from(
+                page, shipping_from_area_id,
+                element_timeout_ms=element_timeout_ms,
+            )
+            result["shipping_from_set"] = True
+        except Exception as exc:
+            log.error("[post_to_market] 发货地址设置失败: %s", exc)
+            result["shipping_from_error"] = str(exc)
 
-    # ── 12. 最大发货天数 ─────────────────────────────────────────────────── #
+    # ── 步骤 9：选择最大发货天数 ──────────────────────────────────────────── #
     if shipping_days:
         try:
             await _set_shipping_days(
@@ -529,17 +541,62 @@ async def post_to_market(
             log.error("[post_to_market] 发货天数设置失败: %s", exc)
             result["shipping_days_error"] = str(exc)
 
-    # ── 13. 发货地址 ─────────────────────────────────────────────────────── #
-    if shipping_from_area_id:
+    # ── 步骤 10+11：选择出售类型 + 填写价格 ──────────────────────────────── #
+    try:
+        await _set_sale_type_and_price(
+            page, sale_type, price,
+            auction_duration=auction_duration,
+            element_timeout_ms=element_timeout_ms,
+        )
+        result["sale_type_set"] = True
+        result["price_filled"] = True
+    except Exception as exc:
+        log.error("[post_to_market] 销售类型/价格设置失败: %s", exc)
+        result["sale_price_error"] = str(exc)
+
+    # ── 步骤 12：点击出品（出售）按钮 ───────────────────────────────────── #
+    try:
+        submit_loc = page.locator('xpath=//*[@id="main"]/form/div[3]/div[1]/button')
+        await submit_loc.first.wait_for(state="visible", timeout=element_timeout_ms)
+        await submit_loc.first.scroll_into_view_if_needed()
+        await submit_loc.first.click()
+        log.info("[post_to_market] 已点击出品按钮，等待页面跳转…")
+
+        # 等待跳转到 https://jp.mercari.com/sell
         try:
-            await _set_shipping_from(
-                page, shipping_from_area_id,
-                element_timeout_ms=element_timeout_ms,
+            await page.wait_for_url(
+                "**/sell**",
+                timeout=30_000,
             )
-            result["shipping_from_set"] = True
+        except Exception:
+            pass
+
+        result["url_after_submit"] = page.url
+
+        # 检查出品完成提示文本
+        SUCCESS_TEXT = "出品が完了しました"
+        CONFIRM_SPAN_XPATH = (
+            '/html/body/div[4]/div/div[2]/div[2]/div/div[1]/span'
+        )
+        try:
+            span_loc = page.locator(f"xpath={CONFIRM_SPAN_XPATH}")
+            await span_loc.first.wait_for(state="visible", timeout=10_000)
+            span_text = (await span_loc.first.inner_text()).strip()
+            result["submit_message"] = span_text
+            if span_text == SUCCESS_TEXT:
+                result["submitted"] = True
+                log.info("[post_to_market] 出品成功：%s", span_text)
+            else:
+                result["submitted"] = False
+                log.warning("[post_to_market] 出品提示文本异常: %s", span_text)
         except Exception as exc:
-            log.error("[post_to_market] 发货地址设置失败: %s", exc)
-            result["shipping_from_error"] = str(exc)
+            # 找不到提示框时以页面 URL 判断是否跳转成功
+            log.warning("[post_to_market] 未找到出品完成提示框: %s", exc)
+            result["submit_message"] = ""
+            result["submitted"] = "sell" in page.url
+    except Exception as exc:
+        log.error("[post_to_market] 点击出品按钮失败: %s", exc)
+        result["submit_error"] = str(exc)
 
     return result
 
@@ -599,26 +656,43 @@ async def _set_sale_type_and_price(
     sale_type: str,
     price: int,
     *,
+    auction_duration: str = "normal",
     element_timeout_ms: int,
 ) -> None:
     """
-    选择販売タイプ（即购 / 价格可谈）并填写价格。
-    选中对应 radio → 用 React 原生 setter 写入价格输入框。
+    选择販売タイプ（即购 / 拍卖）并填写价格。
+    拍卖时额外点击时长选项（通常 / 三小时）。
     """
     is_instant = (sale_type or "instant_buy") == "instant_buy"
-    radio_xpath = SALE_INSTANT_RADIO_XPATH if is_instant else SALE_NEGO_RADIO_XPATH
-    price_xpath = SALE_INSTANT_PRICE_XPATH if is_instant else SALE_NEGO_PRICE_XPATH
+    radio_xpath = SALE_INSTANT_RADIO_XPATH if is_instant else SALE_AUCTION_RADIO_XPATH
+    price_xpath = SALE_INSTANT_PRICE_XPATH if is_instant else SALE_AUCTION_PRICE_XPATH
 
-    # 点击 radio（label 包裹的 input，直接 click 即可）
+    # 点击 radio
     radio_loc = page.locator(f"xpath={radio_xpath}")
     await radio_loc.first.wait_for(state="attached", timeout=element_timeout_ms)
     await radio_loc.first.scroll_into_view_if_needed()
     try:
         await radio_loc.first.click(timeout=element_timeout_ms, force=True)
     except Exception:
-        # 部分 radio 已选中时 click 可能抛出，忽略
         pass
     await page.wait_for_timeout(200)
+
+    # 拍卖时选择时长（通常 / 三小时）
+    if not is_instant:
+        duration_xpath = (
+            SALE_AUCTION_DURATION_3H_XPATH
+            if (auction_duration or "normal") == "3hours"
+            else SALE_AUCTION_DURATION_NORMAL_XPATH
+        )
+        try:
+            dur_loc = page.locator(f"xpath={duration_xpath}")
+            await dur_loc.first.wait_for(state="visible", timeout=element_timeout_ms)
+            await dur_loc.first.scroll_into_view_if_needed()
+            await dur_loc.first.click(timeout=element_timeout_ms)
+            log.info("[sale] 拍卖时长已选: %s", auction_duration)
+            await page.wait_for_timeout(200)
+        except Exception as exc:
+            log.warning("[sale] 拍卖时长选择失败: %s", exc)
 
     # 填写价格
     price_str = str(max(0, int(price)))
@@ -632,7 +706,7 @@ async def _set_sale_type_and_price(
         await price_loc.first.focus()
         await page.keyboard.press("Control+a")
         await page.keyboard.type(price_str, delay=0)
-    log.info("[sale] type=%s price=%s 已设置", sale_type, price_str)
+    log.info("[sale] type=%s duration=%s price=%s 已设置", sale_type, auction_duration, price_str)
 
 
 async def _set_shipping_days(
@@ -808,6 +882,17 @@ async def _select_shipping_method(
     await link_loc.first.wait_for(state="visible", timeout=element_timeout_ms)
     await link_loc.first.click()
     await page.wait_for_load_state("domcontentloaded", timeout=page_load_timeout_ms)
+
+    # 若选择「未定」，需先点击折叠标题展开选项列表
+    if shipping_method == "undecided":
+        expand_loc = page.locator(f"xpath={SHIPPING_METHOD_UNDECIDED_EXPAND_XPATH}")
+        try:
+            await expand_loc.first.wait_for(state="visible", timeout=element_timeout_ms)
+            await expand_loc.first.click()
+            log.info("[shipping_method] 已展开「未定」选项组")
+            await page.wait_for_timeout(400)
+        except Exception as exc:
+            log.warning("[shipping_method] 展开「未定」折叠失败: %s", exc)
 
     # 点击 radio
     radio_loc = page.locator(f"xpath={radio_xpath}")

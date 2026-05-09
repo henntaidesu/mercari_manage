@@ -164,9 +164,19 @@
         </el-select>
       </el-form-item>
       <el-form-item label="出售方法" prop="sale_type">
-        <el-select v-model="form.sale_type" placeholder="请选择出售方法" style="width: 100%">
-          <el-option v-for="s in saleTypeOptions" :key="s.value" :label="s.label" :value="s.value" />
-        </el-select>
+        <div style="display:flex;gap:8px;width:100%">
+          <el-select v-model="form.sale_type" placeholder="请选择出售方法" style="flex:1">
+            <el-option v-for="s in saleTypeOptions" :key="s.value" :label="s.label" :value="s.value" />
+          </el-select>
+          <el-select
+            v-if="form.sale_type === 'auction'"
+            v-model="form.auction_duration"
+            style="width:110px"
+          >
+            <el-option label="通常" value="normal" />
+            <el-option label="三小时" value="3hours" />
+          </el-select>
+        </div>
       </el-form-item>
       <el-form-item label="单价" prop="price" class="listing-form-item--price">
         <div class="listing-field-full">
@@ -453,7 +463,7 @@ const shippingDaysOptions = [
 ]
 const saleTypeOptions = [
   { label: '即购', value: 'instant_buy' },
-  { label: '价格可谈', value: 'negotiable' }
+  { label: '拍卖', value: 'auction' }
 ]
 
 function meiluAccountOptionLabel(a) {
@@ -530,6 +540,7 @@ function getDefaultForm() {
     shipping_from_path: [],
     shipping_days: '2_3_days',
     sale_type: 'instant_buy',
+    auction_duration: 'normal',
     inventory_ids: [],
     price: 0,
     /** 仅占位，供「商品图片」表单项校验（实际读 combinedPreviewImages） */
