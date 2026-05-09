@@ -37,6 +37,26 @@ class ProductTypeCategoryMappingModel(BaseModel):
                 'not_null': False,
                 'default': None,
             },
+            'category_level1_position': {
+                'type': 'INTEGER',
+                'not_null': False,
+                'default': None,
+            },
+            'category_level2_position': {
+                'type': 'INTEGER',
+                'not_null': False,
+                'default': None,
+            },
+            'category_level3_position': {
+                'type': 'INTEGER',
+                'not_null': False,
+                'default': None,
+            },
+            'product_type_position': {
+                'type': 'INTEGER',
+                'not_null': False,
+                'default': None,
+            },
             'product_type': {
                 'type': 'TEXT',
                 'not_null': True,

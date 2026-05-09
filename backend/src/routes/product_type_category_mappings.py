@@ -13,6 +13,10 @@ class MappingCreate(PydanticModel):
     category_level1: Optional[str] = None
     category_level2: Optional[str] = None
     category_level3: Optional[str] = None
+    category_level1_position: Optional[int] = None
+    category_level2_position: Optional[int] = None
+    category_level3_position: Optional[int] = None
+    product_type_position: Optional[int] = None
     product_type: str
     mapping_id: str
     description: Optional[str] = None
@@ -22,6 +26,10 @@ class MappingUpdate(PydanticModel):
     category_level1: Optional[str] = None
     category_level2: Optional[str] = None
     category_level3: Optional[str] = None
+    category_level1_position: Optional[int] = None
+    category_level2_position: Optional[int] = None
+    category_level3_position: Optional[int] = None
+    product_type_position: Optional[int] = None
     product_type: Optional[str] = None
     mapping_id: Optional[str] = None
     description: Optional[str] = None
@@ -51,6 +59,10 @@ def create_mapping(data: MappingCreate):
         category_level1=(data.category_level1 or "").strip() or None,
         category_level2=(data.category_level2 or "").strip() or None,
         category_level3=(data.category_level3 or "").strip() or None,
+        category_level1_position=data.category_level1_position,
+        category_level2_position=data.category_level2_position,
+        category_level3_position=data.category_level3_position,
+        product_type_position=data.product_type_position,
         product_type=product_type,
         mapping_id=mapping_id,
         description=data.description
@@ -84,6 +96,14 @@ def update_mapping(pk_mapping_id: str, data: MappingUpdate):
         row.category_level2 = data.category_level2.strip() or None
     if data.category_level3 is not None:
         row.category_level3 = data.category_level3.strip() or None
+    if data.category_level1_position is not None:
+        row.category_level1_position = data.category_level1_position
+    if data.category_level2_position is not None:
+        row.category_level2_position = data.category_level2_position
+    if data.category_level3_position is not None:
+        row.category_level3_position = data.category_level3_position
+    if data.product_type_position is not None:
+        row.product_type_position = data.product_type_position
     if data.mapping_id is not None:
         row.mapping_id = data.mapping_id.strip()
     if data.description is not None:
