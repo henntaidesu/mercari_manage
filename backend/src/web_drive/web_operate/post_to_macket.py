@@ -3,14 +3,20 @@
 Mercari 出品自动化：打开 https://jp.mercari.com/sell/create 并填写表单。
 
 执行步骤：
-  1. 用 MITM 代理启动（或复用）指定账号的 Edge 持久化会话
-  2. 导航到出品页
-  3. 点击「写真を追加」按钮 → 文件选择器上传正/背面图
-  4. 填写商品名称
-  5. 填写商品说明
+  1.  用 MITM 代理启动（或复用）指定账号的 Edge 持久化会话
+  2.  导航到出品页
+  3.  确保 Switch 开关处于 false（关闭）状态
+  4.  图片上传（写真を追加）→ 关闭图像选择弹窗
+  5.  填写商品名称
+  6.  填写商品说明
+  7.  商品类型选择（按数据库记录的各级 position）
+  8.  発売タイプ + 价格填写（即购 / 价格可谈）
+  9.  最大发货天数选择
+  10. 发货地址（发货地）选择
 """
 from __future__ import annotations
 
+import asyncio
 import logging
 import os
 import tempfile
@@ -23,25 +29,95 @@ log = logging.getLogger(__name__)
 
 SELL_CREATE_URL = "https://jp.mercari.com/sell/create"
 
-# 写真ブロック内「写真を追加」按钮（含 span 子节点）
-PHOTO_ADD_BUTTON_XPATH = (
-    '//*[@id="main"]/form/section[1]/div/div[6]/div[2]/button'
-)
+# 写真ブロック内「写真を追加」按钮
+PHOTO_ADD_BUTTON_XPATH = '//*[@id="main"]/form/section[1]/div/div[6]/div[2]/button'
 
-# 需要确保处于 false（关闭）状态的 Switch 开关 input
-# aria-checked="true" 时点击一次使其恢复 false
+# Switch 开关 input（需确保 aria-checked="false"）
 SWITCH_INPUT_XPATH = (
     '//*[@id="main"]/form/section[1]/div/div[2]/label/div[2]/div/div/div/input'
 )
 
-# 商品名称输入框
-NAME_INPUT_XPATH = (
-    '//*[@id="main"]/form/section[2]/div[2]/div/div[1]/input'
-)
+# 商品名称 input
+NAME_INPUT_XPATH = '//*[@id="main"]/form/section[2]/div[2]/div/div[1]/input'
 
 # 商品说明 textarea
-DESCRIPTION_TEXTAREA_XPATH = (
-    '//*[@id="main"]/form/div[1]/div/label/textarea[1]'
+DESCRIPTION_TEXTAREA_XPATH = '//*[@id="main"]/form/div[1]/div/label/textarea[1]'
+
+# カテゴリー 入口链接
+CATEGORY_LINK_XPATH = '//*[@id="main"]/form/section[3]/div[2]/span/a'
+
+# 类别页面各级列表项（a[x] 中 x 来自 DB position 字段）
+CATEGORY_ITEM_XPATH_TPL = '//*[@id="main"]/a[{pos}]'
+
+# 商品状態 入口链接
+CONDITION_LINK_XPATH = '//*[@id="main"]/form/section[3]/div[4]/span/a'
+
+# 商品状態 选择页面列表项（li[x]，1-based）
+CONDITION_ITEM_XPATH_TPL = '//*[@id="main"]/ul/li[{pos}]'
+
+# 商品状態 → 列表位置映射
+CONDITION_POS: Dict[str, int] = {
+    "new_unused":    1,  # 新品、未使用
+    "almost_unused": 2,  # 未使用に近い
+    "good":          3,  # 目立った傷や汚れなし
+    "fair":          4,  # やや傷や汚れあり
+    "used":          5,  # 傷や汚れあり
+}
+
+# 快递費負担 select
+SHIPPING_PAYER_SELECT_XPATH = (
+    '//*[@id="main"]/form/section[4]/div[2]/div/label/div/select'
+)
+# select value 映射：seller(出品者負担)=2  buyer(購入者負担)=1
+SHIPPING_PAYER_VALUE: Dict[str, str] = {
+    "seller": "2",  # 送料込み(出品者負担)
+    "buyer":  "1",  # 着払い(購入者負担)
+}
+
+# 配送方法 入口链接
+SHIPPING_METHOD_LINK_XPATH = '//*[@id="main"]/form/section[4]/div[3]/span/a'
+
+# 配送方法 选择页面各方法的 radio input XPath
+SHIPPING_METHOD_XPATH: Dict[str, str] = {
+    "rakuraku":    '//*[@id="main"]/div/div[1]/div[1]/div/fieldset/input',
+    "yuuyu":       '//*[@id="main"]/div/div[2]/div[1]/div/fieldset/input',
+    "tanome":      '//*[@id="main"]/div/div[3]/div[1]/div/fieldset/input',
+    "undecided":   '//*[@id="_r_3g_"]/fieldset[8]/input',
+    "regular_mail":'',   # 普通郵便：页面上可能无固定 XPath；留空跳过
+}
+
+# 配送方法选择完成后的「確認」按钮
+SHIPPING_METHOD_CONFIRM_XPATH = '/html/body/div[4]/div/div/button'
+
+# 販売タイプ — 即購（定価）
+SALE_INSTANT_RADIO_XPATH = (
+    '//*[@id="main"]/form/section[5]/div[2]/div/div/div[2]/div[1]/label/input'
+)
+SALE_INSTANT_PRICE_XPATH = (
+    '//*[@id="main"]/form/section[5]/div[2]/div/div/div[2]/div[2]/div[1]/div/div/div[1]/input'
+)
+
+# 販売タイプ — 価格相談（価格可谈）
+SALE_NEGO_RADIO_XPATH = (
+    '//*[@id="main"]/form/section[5]/div[2]/div/div/div[1]/div[1]/label/input'
+)
+SALE_NEGO_PRICE_XPATH = (
+    '//*[@id="main"]/form/section[5]/div[2]/div/div/div[1]/div[2]/div[3]/div/div/div[1]/input'
+)
+
+# 発送までの日数 select
+SHIPPING_DAYS_SELECT_XPATH = (
+    '//*[@id="main"]/form/section[4]/div[5]/div/label/div/select'
+)
+SHIPPING_DAYS_OPTION_INDEX: Dict[str, int] = {
+    "1_2_days": 2,
+    "2_3_days": 3,
+    "4_7_days": 4,
+}
+
+# 発送元 select
+SHIPPING_FROM_SELECT_XPATH = (
+    '//*[@id="main"]/form/section[4]/div[4]/div/label/div/select'
 )
 
 # ──────────────────────────── 工具函数 ──────────────────────────────────── #
@@ -49,25 +125,16 @@ DESCRIPTION_TEXTAREA_XPATH = (
 def _backend_imges_root() -> str:
     """返回 backend/imges 目录的绝对路径。"""
     here = os.path.dirname(os.path.abspath(__file__))
-    # post_to_macket.py → web_operate → web_drive → src → backend
     backend = os.path.dirname(os.path.dirname(os.path.dirname(here)))
     return os.path.join(backend, "imges")
 
 
 def _resolve_image_to_local(url_or_path: str) -> Optional[str]:
-    """
-    将图片 URL 或路径解析为本地绝对路径（供 Playwright set_input_files 使用）。
-
-    - /imges/xxx.jpg  → backend/imges/xxx.jpg
-    - http(s)://...   → 下载到系统临时目录
-    - 本地绝对路径    → 直接返回
-    返回 None 表示无法处理。
-    """
+    """将图片 URL / 路径解析为本地绝对路径（供 Playwright set_input_files 使用）。"""
     s = (url_or_path or "").strip()
     if not s:
         return None
 
-    # 本地相对路径 /imges/...
     if s.startswith("/imges/"):
         filename = s.split("/imges/", 1)[1].strip("/")
         if not filename:
@@ -75,11 +142,9 @@ def _resolve_image_to_local(url_or_path: str) -> Optional[str]:
         abs_path = os.path.join(_backend_imges_root(), filename)
         return abs_path if os.path.isfile(abs_path) else None
 
-    # 本地绝对路径
     if os.path.isabs(s):
         return s if os.path.isfile(s) else None
 
-    # 外部 HTTP(S) URL → 下载到临时文件
     if s.startswith("http://") or s.startswith("https://"):
         ext = ".jpg"
         for candidate in (".jpg", ".jpeg", ".png", ".webp", ".gif"):
@@ -98,6 +163,86 @@ def _resolve_image_to_local(url_or_path: str) -> Optional[str]:
     return None
 
 
+async def _react_set_input(page: Any, xpath: str, value: str) -> bool:
+    """
+    通过 React 原生 setter + 完整事件链写入 input 值。
+    返回 True 表示成功定位并写入，False 表示元素未找到（可调用方兜底）。
+    """
+    return await page.evaluate(
+        """([xpath, value]) => {
+            let el = null;
+            try {
+                el = document.evaluate(
+                    xpath, document, null,
+                    XPathResult.FIRST_ORDERED_NODE_TYPE, null
+                ).singleNodeValue;
+            } catch(e) {}
+            if (!el) return false;
+            el.focus();
+            const setter = Object.getOwnPropertyDescriptor(
+                window.HTMLInputElement.prototype, 'value'
+            ).set;
+            setter.call(el, value);
+            ['focus','input','change','keyup','blur'].forEach(t =>
+                el.dispatchEvent(new Event(t, { bubbles: true }))
+            );
+            return true;
+        }""",
+        [xpath, value],
+    )
+
+
+async def _react_set_textarea(page: Any, xpath: str, value: str) -> bool:
+    """通过 React 原生 setter + 完整事件链写入 textarea 值。"""
+    return await page.evaluate(
+        """([xpath, value]) => {
+            let el = null;
+            try {
+                el = document.evaluate(
+                    xpath, document, null,
+                    XPathResult.FIRST_ORDERED_NODE_TYPE, null
+                ).singleNodeValue;
+            } catch(e) {}
+            if (!el) el = document.querySelector('textarea[name="description"]');
+            if (!el) el = document.querySelector('[data-testid="input-description"] textarea');
+            if (!el) return false;
+            el.focus();
+            const setter = Object.getOwnPropertyDescriptor(
+                window.HTMLTextAreaElement.prototype, 'value'
+            ).set;
+            setter.call(el, value);
+            ['focus','input','change','keyup','blur'].forEach(t =>
+                el.dispatchEvent(new Event(t, { bubbles: true }))
+            );
+            return true;
+        }""",
+        [xpath, value],
+    )
+
+
+async def _react_set_select(page: Any, xpath: str, value: str) -> bool:
+    """通过原生 setter + change 事件写入 select 值。"""
+    return await page.evaluate(
+        """([xpath, value]) => {
+            let el = null;
+            try {
+                el = document.evaluate(
+                    xpath, document, null,
+                    XPathResult.FIRST_ORDERED_NODE_TYPE, null
+                ).singleNodeValue;
+            } catch(e) {}
+            if (!el) return false;
+            const setter = Object.getOwnPropertyDescriptor(
+                window.HTMLSelectElement.prototype, 'value'
+            ).set;
+            setter.call(el, value);
+            el.dispatchEvent(new Event('change', { bubbles: true }));
+            return true;
+        }""",
+        [xpath, value],
+    )
+
+
 # ──────────────────────────── 主函数 ────────────────────────────────────── #
 
 async def post_to_market(
@@ -107,29 +252,37 @@ async def post_to_market(
     name: str = "",
     description: str = "",
     image_urls: Sequence[str] = (),
+    # 类别（来自 product_type_category_mappings 表的 position 字段）
+    category_level1_pos: Optional[int] = None,
+    category_level2_pos: Optional[int] = None,
+    category_level3_pos: Optional[int] = None,
+    product_type_pos: Optional[int] = None,
+    # 商品状態：new_unused / almost_unused / good / fair / used
+    status: str = "",
+    # 快递費負担：seller(出品者負担) / buyer(購入者負担)
+    shipping_payer: str = "seller",
+    # 配送方法：undecided / rakuraku / yuuyu / tanome / regular_mail
+    shipping_method: str = "undecided",
+    # 販売タイプ + 价格
+    sale_type: str = "instant_buy",   # "instant_buy" | "negotiable"
+    price: int = 0,
+    # 发货
+    shipping_days: str = "2_3_days",  # "1_2_days" | "2_3_days" | "4_7_days"
+    shipping_from_area_id: str = "",  # "1"~"47","99"
+    # 代理 / 超时
     proxy_server: Optional[str] = None,
     page_load_timeout_ms: int = 30_000,
     element_timeout_ms: int = 20_000,
 ) -> Dict[str, Any]:
     """
-    自动填写 Mercari 出品表单（第一步：图片上传 + 商品名 + 商品说明）。
-
-    参数：
-        manager         EdgeWebDriveManager 实例
-        account_key     账号标识（如 meilu_1）
-        name            商品名称
-        description     商品说明（已含管理番号行）
-        image_urls      图片路径列表：/imges/xxx.jpg 或 http(s):// URL
-        proxy_server    MITM 代理地址（不填则取 runner.default_mitm_proxy_url）
-        page_load_timeout_ms  页面加载超时
-        element_timeout_ms    元素等待超时
+    自动填写 Mercari 出品表单的全部步骤。
     """
-    from ..manager import EdgeWebDriveManager  # 避免循环引用
+    from ..manager import EdgeWebDriveManager
 
     if not isinstance(manager, EdgeWebDriveManager):
         raise TypeError("manager 须为 EdgeWebDriveManager 实例")
 
-    # ── 1. 解析代理地址 ──────────────────────────────────────────────────── #
+    # ── 解析代理地址 ─────────────────────────────────────────────────────── #
     ps = (proxy_server or "").strip()
     if not ps:
         try:
@@ -138,7 +291,7 @@ async def post_to_market(
         except Exception:
             ps = "http://127.0.0.1:8890"
 
-    # ── 2. 解析图片为本地路径 ────────────────────────────────────────────── #
+    # ── 解析图片为本地路径 ───────────────────────────────────────────────── #
     local_images: List[str] = []
     for u in image_urls:
         p = _resolve_image_to_local(u)
@@ -147,7 +300,7 @@ async def post_to_market(
         else:
             log.warning("无法解析图片路径，跳过: %s", u)
 
-    # ── 3. 确保会话已启动，并导航到出品页 ──────────────────────────────── #
+    # ── 1. 启动/复用会话并导航到出品页 ──────────────────────────────────── #
     await manager.open_session(
         account_key,
         headless=False,
@@ -161,7 +314,7 @@ async def post_to_market(
             raise RuntimeError(f"会话启动失败: {account_key}")
         page = ctx.pages[-1] if ctx.pages else await ctx.new_page()
 
-    # ── 4. 等待页面可交互 ────────────────────────────────────────────────── #
+    # ── 2. 等待页面可交互 ────────────────────────────────────────────────── #
     try:
         await page.wait_for_load_state("networkidle", timeout=page_load_timeout_ms)
     except Exception:
@@ -178,36 +331,33 @@ async def post_to_market(
         "images_uploaded": 0,
         "name_filled": False,
         "description_filled": False,
+        "category_selected": False,
+        "condition_set": False,
+        "shipping_payer_set": False,
+        "shipping_method_set": False,
+        "sale_type_set": False,
+        "price_filled": False,
+        "shipping_days_set": False,
+        "shipping_from_set": False,
     }
 
-    # ── 5. 确保 Switch 开关处于 false（关闭）状态 ────────────────────────── #
+    # ── 3. 确保 Switch 开关处于 false ───────────────────────────────────── #
     try:
         switch_loc = page.locator(f"xpath={SWITCH_INPUT_XPATH}")
         await switch_loc.first.wait_for(state="attached", timeout=element_timeout_ms)
-
-        # 读取 aria-checked 属性（值为字符串 "true" / "false"）
         aria_checked = await switch_loc.first.get_attribute("aria-checked")
         result["switch_checked"] = aria_checked
-        log.info("[post_to_market] Switch aria-checked = %s", aria_checked)
-
         if (aria_checked or "").lower() == "true":
-            # 点击父级 label 触发切换（input[type=checkbox][disabled] 不可直接 click）
             label_loc = page.locator(
                 'xpath=//*[@id="main"]/form/section[1]/div/div[2]/label'
             )
             await label_loc.first.click(timeout=element_timeout_ms)
             result["switch_clicked"] = True
-            log.info("[post_to_market] Switch 已由 true 切换为 false")
-
-            # 等待 aria-checked 变为 false
             try:
                 await page.wait_for_function(
                     """(xpath) => {
-                        const r = document.evaluate(
-                            xpath, document, null,
-                            XPathResult.FIRST_ORDERED_NODE_TYPE, null
-                        );
-                        const el = r.singleNodeValue;
+                        const el = document.evaluate(xpath, document, null,
+                            XPathResult.FIRST_ORDERED_NODE_TYPE, null).singleNodeValue;
                         return el && el.getAttribute('aria-checked') !== 'true';
                     }""",
                     SWITCH_INPUT_XPATH,
@@ -216,25 +366,21 @@ async def post_to_market(
             except Exception:
                 pass
     except Exception as exc:
-        log.warning("[post_to_market] 检查/切换 Switch 失败: %s", exc)
+        log.warning("[post_to_market] Switch 检查失败: %s", exc)
         result["switch_error"] = str(exc)
 
-    # ── 6. 图片上传 ──────────────────────────────────────────────────────── #
+    # ── 4. 图片上传 ──────────────────────────────────────────────────────── #
     if local_images:
         try:
-            btn_locator = page.locator(f"xpath={PHOTO_ADD_BUTTON_XPATH}")
-            await btn_locator.first.wait_for(state="visible", timeout=element_timeout_ms)
-
-            # 每次点击只能选一次文件；Mercari 支持多选
+            btn_loc = page.locator(f"xpath={PHOTO_ADD_BUTTON_XPATH}")
+            await btn_loc.first.wait_for(state="visible", timeout=element_timeout_ms)
             async with page.expect_file_chooser(timeout=element_timeout_ms) as fc_info:
-                await btn_locator.first.click()
-            file_chooser = await fc_info.value
-            await file_chooser.set_files(local_images)
-
+                await btn_loc.first.click()
+            fc = await fc_info.value
+            await fc.set_files(local_images)
             result["images_uploaded"] = len(local_images)
-            log.info("[post_to_market] 图片已上传：%d 张", len(local_images))
 
-            # 等待上传缩略图出现（最多 10 秒）
+            # 等待缩略图
             try:
                 await page.wait_for_selector(
                     "img[alt*='写真'], img[alt*='photo'], section img",
@@ -243,143 +389,449 @@ async def post_to_market(
             except Exception:
                 pass
 
-            # 点击「完了」按钮关闭图像选择弹窗
-            try:
-                close_btn = page.locator(
-                    'xpath=//*[@id="modal"]/div[3]/div/button'
-                )
-                await close_btn.first.wait_for(state="visible", timeout=element_timeout_ms)
-                await close_btn.first.click()
-                log.info("[post_to_market] 图像选择弹窗已关闭")
-                # 等待弹窗消失
-                try:
-                    await close_btn.first.wait_for(state="hidden", timeout=5_000)
-                except Exception:
-                    pass
-            except Exception as exc:
-                log.warning("[post_to_market] 关闭图像选择弹窗失败（可能已自动关闭）: %s", exc)
-                result["modal_close_warning"] = str(exc)
+            # 关闭图像选择弹窗（暂时注释，弹窗可能已自动关闭或 XPath 需确认）
+            # try:
+            #     close_btn = page.locator('xpath=//*[@id="modal"]/div[3]/div/button')
+            #     await close_btn.first.wait_for(state="visible", timeout=element_timeout_ms)
+            #     await close_btn.first.click()
+            #     try:
+            #         await close_btn.first.wait_for(state="hidden", timeout=5_000)
+            #     except Exception:
+            #         pass
+            # except Exception as exc:
+            #     log.warning("[post_to_market] 关闭图像弹窗失败: %s", exc)
+            #     result["modal_close_warning"] = str(exc)
         except Exception as exc:
             log.error("[post_to_market] 图片上传失败: %s", exc)
             result["images_error"] = str(exc)
 
-    # ── 7. 填写商品名称 ──────────────────────────────────────────────────── #
+    # ── 5. 填写商品名称 ──────────────────────────────────────────────────── #
     name_str = (name or "").strip()
     if name_str:
         try:
-            name_loc = page.locator(
-                f"xpath={NAME_INPUT_XPATH}"
-            ).or_(page.locator('input[name="name"]')).or_(
-                page.locator('[data-testid="input-name"] input')
-            )
+            name_loc = page.locator(f"xpath={NAME_INPUT_XPATH}").or_(
+                page.locator('input[name="name"]')
+            ).or_(page.locator('[data-testid="input-name"] input'))
             await name_loc.first.wait_for(state="visible", timeout=element_timeout_ms)
             await name_loc.first.scroll_into_view_if_needed()
             await name_loc.first.click()
             await page.wait_for_timeout(100)
-
-            # React 受控 input：原生 setter + 完整事件链
-            filled = await page.evaluate(
-                """([xpath, value]) => {
-                    let el = null;
-                    try {
-                        const r = document.evaluate(
-                            xpath, document, null,
-                            XPathResult.FIRST_ORDERED_NODE_TYPE, null
-                        );
-                        el = r.singleNodeValue;
-                    } catch(e) {}
-                    if (!el) el = document.querySelector('input[name="name"]');
-                    if (!el) el = document.querySelector('[data-testid="input-name"] input');
-                    if (!el) return false;
-
-                    el.focus();
-                    const setter = Object.getOwnPropertyDescriptor(
-                        window.HTMLInputElement.prototype, 'value'
-                    ).set;
-                    setter.call(el, value);
-                    el.dispatchEvent(new Event('focus',  { bubbles: true }));
-                    el.dispatchEvent(new Event('input',  { bubbles: true }));
-                    el.dispatchEvent(new Event('change', { bubbles: true }));
-                    el.dispatchEvent(new Event('keyup',  { bubbles: true }));
-                    el.dispatchEvent(new Event('blur',   { bubbles: true }));
-                    return true;
-                }""",
-                [NAME_INPUT_XPATH, name_str],
-            )
-
+            filled = await _react_set_input(page, NAME_INPUT_XPATH, name_str)
             if not filled:
-                log.warning("[post_to_market] 方法A未定位到名称框，改用键盘输入")
                 await name_loc.first.focus()
                 await page.keyboard.press("Control+a")
                 await page.keyboard.type(name_str, delay=0)
-
             result["name_filled"] = True
-            log.info("[post_to_market] 商品名称已填写")
         except Exception as exc:
             log.error("[post_to_market] 填写商品名称失败: %s", exc)
             result["name_error"] = str(exc)
 
-    # ── 8. 填写商品说明 ──────────────────────────────────────────────────── #
+    # ── 6. 填写商品说明 ──────────────────────────────────────────────────── #
     desc_str = (description or "").strip()
     if desc_str:
         try:
-            # 优先通过 XPath 定位；同时提供 name/data-testid 兜底选择器
-            desc_loc = page.locator(
-                f"xpath={DESCRIPTION_TEXTAREA_XPATH}"
-            ).or_(page.locator('textarea[name="description"]')).or_(
-                page.locator('[data-testid="input-description"] textarea')
-            )
+            desc_loc = page.locator(f"xpath={DESCRIPTION_TEXTAREA_XPATH}").or_(
+                page.locator('textarea[name="description"]')
+            ).or_(page.locator('[data-testid="input-description"] textarea'))
             await desc_loc.first.wait_for(state="visible", timeout=element_timeout_ms)
-
-            # 滚动到视图内，确保元素可交互
             await desc_loc.first.scroll_into_view_if_needed()
-
-            # 点击 → focus，等 React 完成 focus 处理
             await desc_loc.first.click()
             await page.wait_for_timeout(150)
-
-            # 方法 A：React 原生 setter + 完整事件链（focus→input→change→blur）
-            filled = await page.evaluate(
-                """([xpath, value]) => {
-                    // 多策略定位元素
-                    let el = null;
-                    try {
-                        const r = document.evaluate(
-                            xpath, document, null,
-                            XPathResult.FIRST_ORDERED_NODE_TYPE, null
-                        );
-                        el = r.singleNodeValue;
-                    } catch(e) {}
-                    if (!el) el = document.querySelector('textarea[name="description"]');
-                    if (!el) el = document.querySelector('[data-testid="input-description"] textarea');
-                    if (!el) return false;
-
-                    el.focus();
-                    const setter = Object.getOwnPropertyDescriptor(
-                        window.HTMLTextAreaElement.prototype, 'value'
-                    ).set;
-                    setter.call(el, value);
-                    el.dispatchEvent(new Event('focus',  { bubbles: true }));
-                    el.dispatchEvent(new Event('input',  { bubbles: true }));
-                    el.dispatchEvent(new Event('change', { bubbles: true }));
-                    el.dispatchEvent(new Event('keyup',  { bubbles: true }));
-                    el.dispatchEvent(new Event('blur',   { bubbles: true }));
-                    return true;
-                }""",
-                [DESCRIPTION_TEXTAREA_XPATH, desc_str],
-            )
-
+            filled = await _react_set_textarea(page, DESCRIPTION_TEXTAREA_XPATH, desc_str)
             if not filled:
-                # 方法 B 兜底：全选后键盘逐字输入（慢但最可靠）
-                log.warning("[post_to_market] 方法A未定位到描述框，改用键盘输入")
                 await desc_loc.first.focus()
                 await page.keyboard.press("Control+a")
                 await page.keyboard.type(desc_str, delay=0)
-
             result["description_filled"] = True
-            log.info("[post_to_market] 商品说明已填写")
         except Exception as exc:
             log.error("[post_to_market] 填写商品说明失败: %s", exc)
             result["description_error"] = str(exc)
 
+    # ── 7. 商品类型选择 ──────────────────────────────────────────────────── #
+    if any(p is not None for p in [
+        category_level1_pos, category_level2_pos,
+        category_level3_pos, product_type_pos,
+    ]):
+        try:
+            await _select_category(
+                page,
+                category_level1_pos,
+                category_level2_pos,
+                category_level3_pos,
+                product_type_pos,
+                element_timeout_ms=element_timeout_ms,
+                page_load_timeout_ms=page_load_timeout_ms,
+            )
+            result["category_selected"] = True
+        except Exception as exc:
+            log.error("[post_to_market] 商品类型选择失败: %s", exc)
+            result["category_error"] = str(exc)
+
+    # ── 8. 商品状態選択 ──────────────────────────────────────────────────── #
+    if status:
+        try:
+            await _select_condition(
+                page, status,
+                element_timeout_ms=element_timeout_ms,
+                page_load_timeout_ms=page_load_timeout_ms,
+            )
+            result["condition_set"] = True
+        except Exception as exc:
+            log.error("[post_to_market] 商品状態選択失败: %s", exc)
+            result["condition_error"] = str(exc)
+
+    # ── 9. 快递費負担 ────────────────────────────────────────────────────── #
+    if shipping_payer:
+        try:
+            await _set_shipping_payer(
+                page, shipping_payer,
+                element_timeout_ms=element_timeout_ms,
+            )
+            result["shipping_payer_set"] = True
+        except Exception as exc:
+            log.error("[post_to_market] 快递費負担设置失败: %s", exc)
+            result["shipping_payer_error"] = str(exc)
+
+    # ── 10. 配送方法 ─────────────────────────────────────────────────────── #
+    if shipping_method:
+        try:
+            await _select_shipping_method(
+                page, shipping_method,
+                element_timeout_ms=element_timeout_ms,
+                page_load_timeout_ms=page_load_timeout_ms,
+            )
+            result["shipping_method_set"] = True
+        except Exception as exc:
+            log.error("[post_to_market] 配送方法设置失败: %s", exc)
+            result["shipping_method_error"] = str(exc)
+
+    # ── 11. 販売タイプ + 价格 ────────────────────────────────────────────── #
+    try:
+        await _set_sale_type_and_price(
+            page, sale_type, price,
+            element_timeout_ms=element_timeout_ms,
+        )
+        result["sale_type_set"] = True
+        result["price_filled"] = True
+    except Exception as exc:
+        log.error("[post_to_market] 销售类型/价格设置失败: %s", exc)
+        result["sale_price_error"] = str(exc)
+
+    # ── 12. 最大发货天数 ─────────────────────────────────────────────────── #
+    if shipping_days:
+        try:
+            await _set_shipping_days(
+                page, shipping_days,
+                element_timeout_ms=element_timeout_ms,
+            )
+            result["shipping_days_set"] = True
+        except Exception as exc:
+            log.error("[post_to_market] 发货天数设置失败: %s", exc)
+            result["shipping_days_error"] = str(exc)
+
+    # ── 13. 发货地址 ─────────────────────────────────────────────────────── #
+    if shipping_from_area_id:
+        try:
+            await _set_shipping_from(
+                page, shipping_from_area_id,
+                element_timeout_ms=element_timeout_ms,
+            )
+            result["shipping_from_set"] = True
+        except Exception as exc:
+            log.error("[post_to_market] 发货地址设置失败: %s", exc)
+            result["shipping_from_error"] = str(exc)
+
     return result
+
+
+# ──────────────────────── 子步骤实现 ────────────────────────────────────── #
+
+async def _select_category(
+    page: Any,
+    level1_pos: Optional[int],
+    level2_pos: Optional[int],
+    level3_pos: Optional[int],
+    product_type_pos: Optional[int],
+    *,
+    element_timeout_ms: int,
+    page_load_timeout_ms: int,
+) -> None:
+    """
+    点击商品类型入口 → 依次按各级 position（1-based a[x]）在类别页面中导航并点击。
+    Mercari 类别选择页面每次点击都会刷新列表，需等待新内容出现。
+    """
+    # 点击表单内的「カテゴリー」链接，进入类别选择页面
+    cat_link = page.locator(f"xpath={CATEGORY_LINK_XPATH}")
+    await cat_link.first.wait_for(state="visible", timeout=element_timeout_ms)
+    await cat_link.first.click()
+    await page.wait_for_load_state("domcontentloaded", timeout=page_load_timeout_ms)
+
+    # 按层级依次点击
+    levels = [
+        ("level1", level1_pos),
+        ("level2", level2_pos),
+        ("level3", level3_pos),
+        ("product_type", product_type_pos),
+    ]
+    for level_name, pos in levels:
+        if pos is None:
+            continue
+        xpath = CATEGORY_ITEM_XPATH_TPL.format(pos=pos)
+        loc = page.locator(f"xpath={xpath}")
+        try:
+            await loc.first.wait_for(state="visible", timeout=element_timeout_ms)
+        except Exception:
+            # 该层级可能不存在（如只有2级），跳过
+            log.info("[category] %s pos=%s 元素未出现，跳过", level_name, pos)
+            continue
+        await loc.first.click()
+        log.info("[category] 已点击 %s pos=%s", level_name, pos)
+        # 等待页面更新（下一级列表或返回表单）
+        await asyncio.sleep(0.5)
+        try:
+            await page.wait_for_load_state("domcontentloaded", timeout=page_load_timeout_ms)
+        except Exception:
+            pass
+
+
+async def _set_sale_type_and_price(
+    page: Any,
+    sale_type: str,
+    price: int,
+    *,
+    element_timeout_ms: int,
+) -> None:
+    """
+    选择販売タイプ（即购 / 价格可谈）并填写价格。
+    选中对应 radio → 用 React 原生 setter 写入价格输入框。
+    """
+    is_instant = (sale_type or "instant_buy") == "instant_buy"
+    radio_xpath = SALE_INSTANT_RADIO_XPATH if is_instant else SALE_NEGO_RADIO_XPATH
+    price_xpath = SALE_INSTANT_PRICE_XPATH if is_instant else SALE_NEGO_PRICE_XPATH
+
+    # 点击 radio（label 包裹的 input，直接 click 即可）
+    radio_loc = page.locator(f"xpath={radio_xpath}")
+    await radio_loc.first.wait_for(state="attached", timeout=element_timeout_ms)
+    await radio_loc.first.scroll_into_view_if_needed()
+    try:
+        await radio_loc.first.click(timeout=element_timeout_ms, force=True)
+    except Exception:
+        # 部分 radio 已选中时 click 可能抛出，忽略
+        pass
+    await page.wait_for_timeout(200)
+
+    # 填写价格
+    price_str = str(max(0, int(price)))
+    price_loc = page.locator(f"xpath={price_xpath}")
+    await price_loc.first.wait_for(state="visible", timeout=element_timeout_ms)
+    await price_loc.first.scroll_into_view_if_needed()
+    await price_loc.first.click()
+    await page.wait_for_timeout(100)
+    filled = await _react_set_input(page, price_xpath, price_str)
+    if not filled:
+        await price_loc.first.focus()
+        await page.keyboard.press("Control+a")
+        await page.keyboard.type(price_str, delay=0)
+    log.info("[sale] type=%s price=%s 已设置", sale_type, price_str)
+
+
+async def _set_shipping_days(
+    page: Any,
+    shipping_days: str,
+    *,
+    element_timeout_ms: int,
+) -> None:
+    """
+    选择「発送までの日数」select。
+    option[2]=1~2日  option[3]=2~3日  option[4]=4~7日
+    """
+    opt_index = SHIPPING_DAYS_OPTION_INDEX.get(shipping_days)
+    if opt_index is None:
+        log.warning("[shipping_days] 未知的值: %s，跳过", shipping_days)
+        return
+
+    select_loc = page.locator(f"xpath={SHIPPING_DAYS_SELECT_XPATH}")
+    await select_loc.first.wait_for(state="visible", timeout=element_timeout_ms)
+    await select_loc.first.scroll_into_view_if_needed()
+
+    # 先尝试 Playwright select_option（by index）
+    try:
+        # Playwright index 是 0-based；XPath option[2] 对应 index=1
+        await select_loc.first.select_option(index=opt_index - 1, timeout=element_timeout_ms)
+        log.info("[shipping_days] 已选 option[%s] (%s)", opt_index, shipping_days)
+        return
+    except Exception:
+        pass
+
+    # 兜底：JavaScript 通过 option value 设置
+    opt_xpath = f"{SHIPPING_DAYS_SELECT_XPATH}/option[{opt_index}]"
+    opt_value = await page.evaluate(
+        """(xpath) => {
+            const el = document.evaluate(xpath, document, null,
+                XPathResult.FIRST_ORDERED_NODE_TYPE, null).singleNodeValue;
+            return el ? el.value : null;
+        }""",
+        opt_xpath,
+    )
+    if opt_value is not None:
+        await _react_set_select(page, SHIPPING_DAYS_SELECT_XPATH, str(opt_value))
+        log.info("[shipping_days] JS设置 option value=%s", opt_value)
+
+
+async def _set_shipping_from(
+    page: Any,
+    area_id: str,
+    *,
+    element_timeout_ms: int,
+) -> None:
+    """
+    选择「発送元」select。
+    select 的 option value 与 Mercari areas[].id 一致（纯数字字符串）。
+    """
+    aid = str(area_id).strip()
+    if not aid:
+        return
+
+    select_loc = page.locator(f"xpath={SHIPPING_FROM_SELECT_XPATH}")
+    await select_loc.first.wait_for(state="visible", timeout=element_timeout_ms)
+    await select_loc.first.scroll_into_view_if_needed()
+
+    # 先尝试 Playwright select_option（by value）
+    try:
+        await select_loc.first.select_option(value=aid, timeout=element_timeout_ms)
+        log.info("[shipping_from] 已选 area_id=%s", aid)
+        return
+    except Exception:
+        pass
+
+    # 兜底：JavaScript
+    await _react_set_select(page, SHIPPING_FROM_SELECT_XPATH, aid)
+    log.info("[shipping_from] JS设置 area_id=%s", aid)
+
+
+# ─────────────── 商品状態 / 快递費負担 / 配送方法 子步骤 ─────────────────── #
+
+async def _select_condition(
+    page: Any,
+    status: str,
+    *,
+    element_timeout_ms: int,
+    page_load_timeout_ms: int,
+) -> None:
+    """
+    点击商品状態入口链接 → 在新页面中点击对应列表项。
+    status 映射到 li 位置（1-based）：
+      new_unused=1 / almost_unused=2 / good=3 / fair=4 / used=5
+    """
+    pos = CONDITION_POS.get(status)
+    if pos is None:
+        log.warning("[condition] 未知状态值: %s，跳过", status)
+        return
+
+    # 点击表单内的「商品の状態」链接
+    link_loc = page.locator(f"xpath={CONDITION_LINK_XPATH}")
+    await link_loc.first.wait_for(state="visible", timeout=element_timeout_ms)
+    await link_loc.first.click()
+    await page.wait_for_load_state("domcontentloaded", timeout=page_load_timeout_ms)
+
+    # 点击对应 li
+    item_xpath = CONDITION_ITEM_XPATH_TPL.format(pos=pos)
+    item_loc = page.locator(f"xpath={item_xpath}")
+    await item_loc.first.wait_for(state="visible", timeout=element_timeout_ms)
+    await item_loc.first.click()
+    log.info("[condition] 已选 status=%s (li[%s])", status, pos)
+
+    # 等待返回表单页
+    await asyncio.sleep(0.5)
+    try:
+        await page.wait_for_load_state("domcontentloaded", timeout=page_load_timeout_ms)
+    except Exception:
+        pass
+
+
+async def _set_shipping_payer(
+    page: Any,
+    shipping_payer: str,
+    *,
+    element_timeout_ms: int,
+) -> None:
+    """
+    选择「配送料の負担」select。
+    seller → value "2"（送料込み / 出品者負担）
+    buyer  → value "1"（着払い / 購入者負担）
+    """
+    value = SHIPPING_PAYER_VALUE.get(shipping_payer)
+    if value is None:
+        log.warning("[shipping_payer] 未知值: %s，跳过", shipping_payer)
+        return
+
+    select_loc = page.locator(f"xpath={SHIPPING_PAYER_SELECT_XPATH}")
+    await select_loc.first.wait_for(state="visible", timeout=element_timeout_ms)
+    await select_loc.first.scroll_into_view_if_needed()
+
+    try:
+        await select_loc.first.select_option(value=value, timeout=element_timeout_ms)
+        log.info("[shipping_payer] 已选 %s (value=%s)", shipping_payer, value)
+        return
+    except Exception:
+        pass
+
+    # 兜底：JavaScript
+    await _react_set_select(page, SHIPPING_PAYER_SELECT_XPATH, value)
+    log.info("[shipping_payer] JS设置 value=%s", value)
+
+
+async def _select_shipping_method(
+    page: Any,
+    shipping_method: str,
+    *,
+    element_timeout_ms: int,
+    page_load_timeout_ms: int,
+) -> None:
+    """
+    点击配送方法入口链接 → 在新页面中点击对应 radio → 点击确认按钮。
+
+    支持方法：
+      undecided   → 未定
+      rakuraku    → らくらくメルカリ便
+      yuuyu       → ゆうゆうメルカリ便
+      tanome      → 梱包・発送たのメル便
+      regular_mail→ 跳过（XPath 未确认）
+    """
+    radio_xpath = SHIPPING_METHOD_XPATH.get(shipping_method, "")
+    if not radio_xpath:
+        log.warning("[shipping_method] 未知或未支持方法: %s，跳过", shipping_method)
+        return
+
+    # 点击表单内的「配送の方法」链接
+    link_loc = page.locator(f"xpath={SHIPPING_METHOD_LINK_XPATH}")
+    await link_loc.first.wait_for(state="visible", timeout=element_timeout_ms)
+    await link_loc.first.click()
+    await page.wait_for_load_state("domcontentloaded", timeout=page_load_timeout_ms)
+
+    # 点击 radio
+    radio_loc = page.locator(f"xpath={radio_xpath}")
+    await radio_loc.first.wait_for(state="attached", timeout=element_timeout_ms)
+    await radio_loc.first.scroll_into_view_if_needed()
+    try:
+        await radio_loc.first.click(force=True, timeout=element_timeout_ms)
+    except Exception:
+        pass
+    log.info("[shipping_method] 已选 %s", shipping_method)
+    await page.wait_for_timeout(300)
+
+    # 点击确认按钮
+    confirm_loc = page.locator(f"xpath={SHIPPING_METHOD_CONFIRM_XPATH}")
+    try:
+        await confirm_loc.first.wait_for(state="visible", timeout=element_timeout_ms)
+        await confirm_loc.first.click()
+        log.info("[shipping_method] 已点击确认按钮")
+    except Exception as exc:
+        log.warning("[shipping_method] 确认按钮点击失败: %s", exc)
+
+    # 等待返回表单页
+    await asyncio.sleep(0.5)
+    try:
+        await page.wait_for_load_state("domcontentloaded", timeout=page_load_timeout_ms)
+    except Exception:
+        pass

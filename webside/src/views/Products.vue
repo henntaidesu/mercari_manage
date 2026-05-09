@@ -1912,6 +1912,16 @@ async function onListingFormSaved(data) {
       name: data.name || '',
       description: listing_body,
       image_urls: imageUrls,
+      category_mapping_id: data.category_mapping_id != null
+        ? String(data.category_mapping_id)
+        : null,
+      status: data.status || '',
+      shipping_payer: data.shipping_payer || 'seller',
+      shipping_method: data.shipping_method || 'undecided',
+      sale_type: data.sale_type || 'instant_buy',
+      price: safePrice,
+      shipping_days: data.shipping_days || '2_3_days',
+      shipping_from_area_id: data.shipping_from ? String(data.shipping_from) : '',
       use_mitm_proxy: true
     })
     if (res?.success) {
@@ -1920,6 +1930,13 @@ async function onListingFormSaved(data) {
       if (d.images_uploaded) parts.push(`已上传 ${d.images_uploaded} 张图片`)
       if (d.name_filled) parts.push('商品名已填写')
       if (d.description_filled) parts.push('商品说明已填写')
+      if (d.category_selected) parts.push('商品类型已选择')
+      if (d.condition_set) parts.push('商品状态已选择')
+      if (d.shipping_payer_set) parts.push('快递费负担已设置')
+      if (d.shipping_method_set) parts.push('配送方法已设置')
+      if (d.sale_type_set && d.price_filled) parts.push('销售方式与价格已填写')
+      if (d.shipping_days_set) parts.push('发货天数已设置')
+      if (d.shipping_from_set) parts.push('发货地址已设置')
       ElMessage.success(
         parts.length ? `出品页填写完成：${parts.join('、')}` : '浏览器已打开出品页'
       )
