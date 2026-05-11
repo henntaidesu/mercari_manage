@@ -17,6 +17,7 @@ from .get_order.get_on_sale.on_sale_list import fetch_on_sale_list_items
 from .sync_data import _resolve_account_and_seller
 from ..db_manage.models.on_sale_item import OnSaleItemModel
 from ..db_manage.database import DatabaseManager
+from ..ssl_mitm_proxy.capture_config import canonical_mercari_item_id
 
 _MERCARI_ID_SEP_RE = re.compile(r"[\n,，、\s]+")
 
@@ -80,6 +81,74 @@ def _apply_inventory_on_sale_delta_by_item_ids(item_ids: set[str], delta: int) -
         )
         affected += int(changed or 0)
     return affected
+
+
+def _join_mercari_item_ids(ids: List[str]) -> Optional[str]:
+    arr = []
+    seen = set()
+    for v in ids:
+        t = str(v or "").strip()
+        if not t or t in seen:
+            continue
+        seen.add(t)
+        arr.append(t)
+    return "、".join(arr) if arr else None
+
+
+def _strip_mercari_item_ids_from_inventory(strip_ids: set[str]) -> int:
+    """
+    从 inventory.mercari_item_id 中移除指定煤炉商品 ID（同步后非出售中、或已从 API 消失时），
+    供库存页二级列表不再展示已下架/非出售中链接。与 _apply_inventory_on_sale_delta 配合：先调数量再调本函数。
+    """
+    if not strip_ids:
+        return 0
+    wanted_drop: set[str] = set()
+    for x in strip_ids:
+        s = str(x).strip()
+        if not s:
+            continue
+        wanted_drop.add(s)
+        c = canonical_mercari_item_id(s)
+        if c:
+            wanted_drop.add(c)
+
+    def should_remove(mid: str) -> bool:
+        t = str(mid or "").strip()
+        if not t:
+            return False
+        if t in wanted_drop:
+            return True
+        ct = canonical_mercari_item_id(t)
+        return bool(ct and ct in wanted_drop)
+
+    db = DatabaseManager()
+    rows = db.execute_query(
+        """
+        SELECT [id], [mercari_item_id], [on_sale_quantity]
+        FROM [inventory]
+        WHERE TRIM(IFNULL([mercari_item_id], '')) != ''
+        """
+    )
+    updated = 0
+    for iid_raw, mids_raw, osq_raw in rows:
+        mids = _split_mercari_item_ids(mids_raw)
+        if not mids:
+            continue
+        next_mids = [m for m in mids if not should_remove(m)]
+        if len(next_mids) == len(mids):
+            continue
+        next_text = _join_mercari_item_ids(next_mids)
+        next_osq = 0 if not next_mids else int(osq_raw or 0)
+        db.execute_update(
+            """
+            UPDATE [inventory]
+            SET [mercari_item_id] = ?, [on_sale_quantity] = ?
+            WHERE [id] = ?
+            """,
+            (next_text, next_osq, int(iid_raw)),
+        )
+        updated += 1
+    return updated
 
 
 def _opt_int(v: Any) -> Optional[int]:
@@ -336,6 +405,22 @@ def sync_on_sale_items_from_mercari(account_id: Optional[int] = None) -> Dict[st
         stats["inventory_on_sale_inc"] = _apply_inventory_on_sale_delta_by_item_ids(
             activated_item_ids, +1
         )
+
+    # 库存页二级列表：非出售中（含暂停、交易中、已从出品一覧消失等）不再保留 mercari_item_id 关联
+    strip_ids: set[str] = set()
+    for item in items:
+        iid_key = str(item.get("id") or "").strip()
+        if not iid_key:
+            continue
+        st = item.get("status")
+        st_s = (str(st).strip() if st is not None else "") or None
+        if not _is_active_on_sale(st_s, 0):
+            strip_ids.add(iid_key)
+    strip_ids.update(soft_deleted_ids)
+    stats["inventory_strip_item_ids_count"] = len(strip_ids)
+    stats["inventory_mercari_id_stripped_rows"] = _strip_mercari_item_ids_from_inventory(
+        strip_ids
+    )
 
     stats["marked_deleted"] = marked_deleted
     stats["restored"] = restored

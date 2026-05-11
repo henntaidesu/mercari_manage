@@ -447,7 +447,7 @@
           <el-col :xs="24" :sm="12">
             <el-form-item prop="image_front" style="display:block">
               <div class="img-label">正面图</div>
-              <div class="image-upload-area large" @click="triggerUpload('front')">
+              <div class="image-upload-area large" @click="openProductImageSource('front')">
                 <img v-if="form.image_front" :src="form.image_front" class="preview-img" />
                 <div v-else class="upload-placeholder">
                   <el-icon size="36" color="#4a5a72"><Camera /></el-icon>
@@ -458,7 +458,7 @@
                 ref="fileInputFront"
                 type="file"
                 accept="image/*"
-                :capture="canPickImageWithCamera ? 'environment' : undefined"
+                :capture="isIOS ? 'environment' : undefined"
                 style="display:none"
                 @change="handleImageUpload($event, 'front')"
               />
@@ -471,7 +471,7 @@
           <el-col :xs="24" :sm="12">
             <el-form-item style="display:block">
               <div class="img-label">背面图（选填）</div>
-              <div class="image-upload-area large" @click="triggerUpload('back')">
+              <div class="image-upload-area large" @click="openProductImageSource('back')">
                 <img v-if="form.image_back" :src="form.image_back" class="preview-img" />
                 <div v-else class="upload-placeholder">
                   <el-icon size="36" color="#4a5a72"><Camera /></el-icon>
@@ -482,7 +482,7 @@
                 ref="fileInputBack"
                 type="file"
                 accept="image/*"
-                :capture="canPickImageWithCamera ? 'environment' : undefined"
+                :capture="isIOS ? 'environment' : undefined"
                 style="display:none"
                 @change="handleImageUpload($event, 'back')"
               />
@@ -543,6 +543,50 @@
             <el-button type="primary" @click="submit" :loading="submitting">保存</el-button>
           </div>
         </div>
+      </template>
+    </el-dialog>
+
+    <!-- 桌面端正/背面：getUserMedia 预览；先「拍照」预览，再「确认拍照」才写入表单 -->
+    <el-dialog
+      v-model="productImgCameraVisible"
+      :title="productImgCameraSide === 'front' ? '拍摄正面图' : '拍摄背面图'"
+      :width="isMobile ? '94vw' : '560px'"
+      class="scan-dialog"
+      destroy-on-close
+      @closed="onProductImgCameraClosed"
+    >
+      <div class="scan-box">
+        <video
+          v-show="!productImgPreviewUrl"
+          ref="productImgVideoRef"
+          class="scan-video"
+          autoplay
+          playsinline
+          muted
+        />
+        <img
+          v-show="productImgPreviewUrl"
+          :src="productImgPreviewUrl || undefined"
+          class="scan-video product-img-preview-still"
+          alt="预览"
+        />
+        <div class="scan-tip">
+          {{
+            productImgPreviewUrl
+              ? '确认效果后点击「确认拍照」保存，或「重新拍摄」'
+              : '对准商品后点击「拍照」生成预览，满意后再确认'
+          }}
+        </div>
+      </div>
+      <template #footer>
+        <template v-if="!productImgPreviewUrl">
+          <el-button @click="productImgCameraVisible = false">取消</el-button>
+          <el-button type="primary" :loading="productImgCapturing" @click="takeProductImgDraft">拍照</el-button>
+        </template>
+        <template v-else>
+          <el-button @click="retakeProductImg">重新拍摄</el-button>
+          <el-button type="primary" :loading="productImgCapturing" @click="applyProductImgConfirm">确认拍照</el-button>
+        </template>
       </template>
     </el-dialog>
 
@@ -813,6 +857,13 @@ const submitting = ref(false)
 const formRef = ref()
 const fileInputFront = ref()
 const fileInputBack = ref()
+/** 编辑弹窗：桌面端摄像头拍正/背面 */
+const productImgCameraVisible = ref(false)
+const productImgCameraSide = ref('front')
+const productImgVideoRef = ref()
+const productImgPreviewUrl = ref(null)
+const productImgCapturing = ref(false)
+let productImgStream = null
 const listingDialogVisible = ref(false)
 const listingSeedData = ref(null)
 /** 组合出品独立弹窗 */
@@ -2132,9 +2183,103 @@ async function confirmListingPick() {
   combinedListingDialogVisible.value = true
 }
 
-function triggerUpload(side) {
+function triggerFileInputOnly(side) {
   if (side === 'front') fileInputFront.value?.click()
   else fileInputBack.value?.click()
+}
+
+function stopProductImgCameraStream() {
+  if (productImgStream) {
+    productImgStream.getTracks().forEach((t) => t.stop())
+    productImgStream = null
+  }
+  const el = productImgVideoRef.value
+  if (el) el.srcObject = null
+}
+
+function onProductImgCameraClosed() {
+  productImgPreviewUrl.value = null
+  stopProductImgCameraStream()
+}
+
+/**
+ * 正/背面图：PC/Android（非 iOS）且支持 getUserMedia 时打开摄像头弹窗抓拍；
+ * iOS 或无 API 时用隐藏 file（iOS 带 capture）。
+ */
+async function openProductImageSource(side) {
+  const canStream = typeof navigator.mediaDevices?.getUserMedia === 'function'
+  if (canStream && !isIOS.value) {
+    productImgCameraSide.value = side
+    productImgPreviewUrl.value = null
+    productImgCameraVisible.value = true
+    await nextTick()
+    stopProductImgCameraStream()
+    try {
+      const saved = readSavedInventoryCameraDeviceId()
+      productImgStream = await getInventoryCameraStream(saved)
+      const v = productImgVideoRef.value
+      if (!v) return
+      v.srcObject = productImgStream
+      await new Promise((resolve) => {
+        v.onloadedmetadata = () => resolve()
+      })
+      const curDev = productImgStream.getVideoTracks()[0]?.getSettings?.()?.deviceId
+      if (curDev) writeSavedInventoryCameraDeviceId(curDev)
+    } catch {
+      ElMessage.error('无法打开摄像头，将改为从本机选择图片')
+      productImgCameraVisible.value = false
+      stopProductImgCameraStream()
+      triggerFileInputOnly(side)
+    }
+    return
+  }
+  triggerFileInputOnly(side)
+}
+
+/** 从当前预览流生成静态预览，不写入表单 */
+async function takeProductImgDraft() {
+  productImgCapturing.value = true
+  try {
+    const blob = await captureFrame(productImgVideoRef)
+    if (!blob) {
+      ElMessage.warning('请等待摄像头画面就绪后再拍')
+      return
+    }
+    const dataUrl = await new Promise((resolve, reject) => {
+      const reader = new FileReader()
+      reader.onload = () => resolve(reader.result)
+      reader.onerror = () => reject(new Error('read'))
+      reader.readAsDataURL(blob)
+    })
+    productImgPreviewUrl.value = dataUrl
+  } catch {
+    ElMessage.warning('读取照片失败，请重试')
+  } finally {
+    productImgCapturing.value = false
+  }
+}
+
+function retakeProductImg() {
+  productImgPreviewUrl.value = null
+}
+
+/** 用户确认后写入正/背面并关闭 */
+async function applyProductImgConfirm() {
+  const url = productImgPreviewUrl.value
+  if (!url) return
+  productImgCapturing.value = true
+  try {
+    const side = productImgCameraSide.value
+    if (side === 'front') {
+      form.value.image_front = url
+      formRef.value?.validateField('image_front')
+    } else {
+      form.value.image_back = url
+    }
+    productImgCameraVisible.value = false
+  } finally {
+    productImgCapturing.value = false
+  }
 }
 
 function handleImageUpload(e, side) {
@@ -2482,6 +2627,7 @@ onBeforeUnmount(() => {
   window.removeEventListener('resize', updateViewportState)
   stopScan()
   stopContScan()
+  onProductImgCameraClosed()
 })
 </script>
 
@@ -2767,6 +2913,10 @@ onBeforeUnmount(() => {
   border-radius: 8px;
   background: #000;
   border: 1px solid #2a3446;
+}
+.product-img-preview-still {
+  object-fit: contain;
+  display: block;
 }
 .scan-tip { color: #9aa7be; font-size: 13px; text-align: center; }
 

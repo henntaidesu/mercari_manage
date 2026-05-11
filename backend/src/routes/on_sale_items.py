@@ -14,7 +14,10 @@ from ..web_drive.account_serial_queue import (
     run_meilu_serial,
 )
 from ..operation_mercari.on_sale_item_detail_sync import fetch_detail_and_sync_inventory
-from ..operation_mercari.on_sale_items_sync import sync_on_sale_items_from_mercari
+from ..operation_mercari.on_sale_items_sync import (
+    _is_active_on_sale,
+    sync_on_sale_items_from_mercari,
+)
 from ..operation_mercari.sync_data import resolve_account_id_by_seller_id
 
 router = APIRouter(prefix="/api/on-sale-items", tags=["on-sale-items"])
@@ -298,6 +301,12 @@ def list_on_sale_by_item_ids(item_ids: str):
     if not ids:
         raise HTTPException(status_code=400, detail="item_ids 不能为空")
     items = OnSaleItemModel.find_all_by_item_ids(ids)
+    # 库存页二级列表：仅展示煤炉侧仍为「出售中」的行（同步后非出售中已从 inventory 解绑，此处作兜底过滤）
+    items = [
+        r
+        for r in items
+        if _is_active_on_sale(r.get("status"), int(r.get("is_delete") or 0))
+    ]
     _attach_seller_name(items)
     _attach_inventory_by_item_id(items)
     return {"item_ids": ids, "total": len(items), "items": items}
