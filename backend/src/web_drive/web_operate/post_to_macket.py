@@ -7,7 +7,7 @@ Mercari 出品自动化：打开 https://jp.mercari.com/sell/create 并填写表
    1.  图片上传（写真を追加）
    2.  填写商品名称
    3.  选择商品类型（按 DB position 逐级点击；若进入 /sell/wizard 则点击「出品画面に戻る」返回）
-   4.  选择商品状態
+   4.  选择商品状態（选完 li 后若进入 /sell/wizard 同样点击「出品画面に戻る」返回）
    5.  填写商品说明
    6.  选择快递費負担
    7.  选择配送方法
@@ -22,6 +22,7 @@ from __future__ import annotations
 import asyncio
 import logging
 import os
+import re
 import tempfile
 import urllib.request
 from typing import Any, Callable, Dict, List, Optional, Sequence, Tuple
@@ -100,27 +101,28 @@ SHIPPING_METHOD_UNDECIDED_EXPAND_XPATH = '//*[@id="main"]/div/div[4]/div'
 # 配送方法选择完成后的「確認」按钮
 SHIPPING_METHOD_CONFIRM_XPATH = '/html/body/div[4]/div/div/button'
 
-# 販売タイプ — 即購（定価）
+# 販売タイプ — 即購（定価）（body 下绝对路径，与煤炉当前 DOM 一致）
 SALE_INSTANT_RADIO_XPATH = (
-    '//*[@id="main"]/form/section[5]/div[2]/div/div/div[2]/div[1]/label/input'
+    "/html/body/div[2]/div[2]/main/form/section[5]/div[2]/div/div/div[2]/div[1]/label/input"
 )
 SALE_INSTANT_PRICE_XPATH = (
-    '//*[@id="main"]/form/section[5]/div[2]/div/div/div[2]/div[2]/div[1]/div/div/div[1]/input'
+    "/html/body/div[2]/div[2]/main/form/section[5]/div[2]/div/div/div[2]/div[2]/div[1]/div/div/input"
 )
 
 # 販売タイプ — 拍卖（オークション）
 SALE_AUCTION_RADIO_XPATH = (
-    '//*[@id="main"]/form/section[5]/div[2]/div/div/div[1]/div[1]/label/input'
+    "/html/body/div[2]/div[2]/main/form/section[5]/div[2]/div/div/div[1]/div[1]/label/input"
 )
 SALE_AUCTION_PRICE_XPATH = (
-    '//*[@id="main"]/form/section[5]/div[2]/div/div/div[1]/div[2]/div[3]/div/div/div[1]/input'
+    "/html/body/div[2]/div[2]/main/form/section[5]/div[2]/div/div/div[1]/div[2]/div[3]/div/div/input"
 )
-# 拍卖时长选项：通常 / 三小时
+# 拍卖时长：通常 / 三小时（与「通常」同级 div[1]/div[2]）
 SALE_AUCTION_DURATION_NORMAL_XPATH = (
-    '//*[@id="main"]/form/section[5]/div[2]/div/div/div[1]/div[2]/div[1]/div/div/div[1]'
+    "/html/body/div[2]/div[2]/main/form/section[5]/div[2]/div/div/div[1]/div[2]/div[1]/div/div/div[1]"
 )
+# 拍卖时长「三小时」：点击选项区内的 svg（煤炉用图标切换）
 SALE_AUCTION_DURATION_3H_XPATH = (
-    '//*[@id="main"]/form/section[5]/div[2]/div/div/div[1]/div[2]/div[1]/div/div/div[2]'
+    "/html/body/div[2]/div[2]/main/form/section[5]/div[2]/div/div/div[1]/div[2]/div[1]/div/div/div[2]/svg"
 )
 
 # 発送までの日数 select
@@ -179,6 +181,24 @@ def _resolve_image_to_local(url_or_path: str) -> Optional[str]:
             return None
 
     return None
+
+
+async def _react_fill_input_locator(loc: Any, value: str) -> None:
+    """对已定位的 input 节点用 React 友好方式写入值（不依赖 XPath）。"""
+    await loc.first.evaluate(
+        """(el, val) => {
+            if (!el || el.tagName !== 'INPUT') return;
+            el.focus();
+            const setter = Object.getOwnPropertyDescriptor(
+                window.HTMLInputElement.prototype, 'value'
+            ).set;
+            setter.call(el, String(val));
+            ['focus','input','change','keyup','blur'].forEach(t =>
+                el.dispatchEvent(new Event(t, { bubbles: true }))
+            );
+        }""",
+        value,
+    )
 
 
 async def _react_set_input(page: Any, xpath: str, value: str) -> bool:
@@ -292,6 +312,7 @@ async def _leave_sell_wizard_if_present(
 ) -> bool:
     """
     若当前为 https://jp.mercari.com/sell/wizard ，点击「出品画面に戻る」返回出品表单。
+    会在「选完商品类型」或「选完商品状态」等步骤后被调用（煤炉可能插入製品情報向导）。
     优先 [data-testid=back-to-listing-button]，其次 main 下固定 XPath，再文案/role 兜底。
     返回 True 表示检测到向导页并已尝试点击返回。
     """
@@ -666,9 +687,12 @@ async def post_to_market(
     report("sale_price", "正在设置销售方式与价格…")
     try:
         await _set_sale_type_and_price(
-            page, sale_type, price,
+            page,
+            sale_type,
+            price,
             auction_duration=auction_duration,
             element_timeout_ms=element_timeout_ms,
+            report=report,
         )
         result["sale_type_set"] = True
         result["price_filled"] = True
@@ -799,6 +823,43 @@ async def _select_category(
     )
 
 
+async def _pick_visible_price_locator(
+    page: Any,
+    price_xpath: str,
+    *,
+    element_timeout_ms: int,
+) -> Any:
+    """
+    販売価格 input：主 XPath 易随版式失效，依次尝试多种选择器。
+    """
+    per = min(10_000, max(4_000, element_timeout_ms // 2))
+    candidates: List[Any] = [
+        page.locator(f"xpath={price_xpath}"),
+        page.locator('#main input[name="price"]'),
+        page.locator('[data-testid="input-price"] input'),
+        page.locator('[data-testid="price-input"] input'),
+        page.get_by_placeholder(re.compile(r"半角|数字|円", re.I)),
+    ]
+    last_exc: Optional[BaseException] = None
+    for loc in candidates:
+        try:
+            await loc.first.wait_for(state="visible", timeout=per)
+            return loc
+        except Exception as exc:
+            last_exc = exc
+            continue
+    # 兜底：表单内靠后的数字输入（出品价通常在页面中下部）
+    try:
+        loc = page.locator('#main form input[inputmode="numeric"]').last
+        await loc.wait_for(state="visible", timeout=per)
+        return loc
+    except Exception as exc:
+        last_exc = exc
+    if last_exc:
+        raise last_exc
+    raise RuntimeError("未找到販売価格输入框")
+
+
 async def _set_sale_type_and_price(
     page: Any,
     sale_type: str,
@@ -806,24 +867,48 @@ async def _set_sale_type_and_price(
     *,
     auction_duration: str = "normal",
     element_timeout_ms: int,
+    report: Optional[Callable[[str, str], None]] = None,
 ) -> None:
     """
     选择販売タイプ（即购 / 拍卖）并填写价格。
     拍卖时额外点击时长选项（通常 / 三小时）。
     """
+    await _leave_sell_wizard_if_present(
+        page,
+        element_timeout_ms=min(15_000, element_timeout_ms),
+        report=report,
+    )
+
     is_instant = (sale_type or "instant_buy") == "instant_buy"
     radio_xpath = SALE_INSTANT_RADIO_XPATH if is_instant else SALE_AUCTION_RADIO_XPATH
     price_xpath = SALE_INSTANT_PRICE_XPATH if is_instant else SALE_AUCTION_PRICE_XPATH
 
-    # 点击 radio
-    radio_loc = page.locator(f"xpath={radio_xpath}")
-    await radio_loc.first.wait_for(state="attached", timeout=element_timeout_ms)
-    await radio_loc.first.scroll_into_view_if_needed()
     try:
-        await radio_loc.first.click(timeout=element_timeout_ms, force=True)
+        main_form = page.locator("#main")
+        await main_form.first.wait_for(state="attached", timeout=element_timeout_ms)
+        await main_form.first.scroll_into_view_if_needed()
     except Exception:
         pass
-    await page.wait_for_timeout(200)
+
+    # 点击 radio（主 XPath + 文案兜底）
+    radio_loc = page.locator(f"xpath={radio_xpath}")
+    try:
+        await radio_loc.first.wait_for(state="attached", timeout=min(12_000, element_timeout_ms))
+        await radio_loc.first.scroll_into_view_if_needed()
+        await radio_loc.first.click(timeout=element_timeout_ms, force=True)
+    except Exception:
+        log.info("[sale] 主 XPath 点 radio 失败，尝试即购/拍卖文案")
+        try:
+            if is_instant:
+                alt = page.locator("#main label").filter(has_text=re.compile(r"即購|定価|すぐ購入", re.I)).locator("input").first
+            else:
+                alt = page.locator("#main label").filter(has_text=re.compile(r"オークション|競り", re.I)).locator("input").first
+            await alt.wait_for(state="attached", timeout=min(12_000, element_timeout_ms))
+            await alt.scroll_into_view_if_needed()
+            await alt.click(timeout=element_timeout_ms, force=True)
+        except Exception as exc:
+            log.warning("[sale] radio 兜底失败: %s", exc)
+    await page.wait_for_timeout(250)
 
     # 拍卖时选择时长（通常 / 三小时）
     if not is_instant:
@@ -842,18 +927,26 @@ async def _set_sale_type_and_price(
         except Exception as exc:
             log.warning("[sale] 拍卖时长选择失败: %s", exc)
 
-    # 填写价格
+    # 填写价格（多选择器 + evaluate 写入）
     price_str = str(max(0, int(price)))
-    price_loc = page.locator(f"xpath={price_xpath}")
-    await price_loc.first.wait_for(state="visible", timeout=element_timeout_ms)
+    price_loc = await _pick_visible_price_locator(
+        page, price_xpath, element_timeout_ms=element_timeout_ms
+    )
     await price_loc.first.scroll_into_view_if_needed()
-    await price_loc.first.click()
-    await page.wait_for_timeout(100)
+    await price_loc.first.click(timeout=element_timeout_ms)
+    await page.wait_for_timeout(120)
+    try:
+        await _react_fill_input_locator(price_loc, price_str)
+    except Exception as exc:
+        log.info("[sale] evaluate 写入价格失败，尝试 XPath/React: %s", exc)
     filled = await _react_set_input(page, price_xpath, price_str)
     if not filled:
-        await price_loc.first.focus()
-        await page.keyboard.press("Control+a")
-        await page.keyboard.type(price_str, delay=0)
+        try:
+            await _react_fill_input_locator(price_loc, price_str)
+        except Exception:
+            await price_loc.first.focus()
+            await page.keyboard.press("Control+a")
+            await page.keyboard.type(price_str, delay=0)
     log.info("[sale] type=%s duration=%s price=%s 已设置", sale_type, auction_duration, price_str)
 
 
@@ -945,6 +1038,7 @@ async def _select_condition(
     点击商品状態入口链接 → 在新页面中点击对应列表项。
     status 映射到 li 位置（1-based）：
       new_unused=1 / almost_unused=2 / good=3 / fair=4 / used=5
+    选完 li 后有时会进入 /sell/wizard（製品情報案内），与选类型后相同，须再点「出品画面に戻る」。
     """
     pos = CONDITION_POS.get(status)
     if pos is None:
@@ -989,12 +1083,32 @@ async def _select_condition(
     await item_loc.first.click()
     log.info("[condition] 已选 status=%s (li[%s])", status, pos)
 
-    # 等待返回表单页
+    # 等待返回表单页（或异步跳转到 sell/wizard）
     await asyncio.sleep(0.5)
     try:
         await page.wait_for_load_state("domcontentloaded", timeout=page_load_timeout_ms)
     except Exception:
         pass
+
+    await asyncio.sleep(0.4)
+    try:
+        await page.wait_for_function(
+            """() => {
+                const p = location.pathname || '';
+                const href = location.href || '';
+                return href.includes('sell/wizard') || p.includes('/sell/wizard')
+                    || href.includes('sell/create') || p.includes('/sell/create');
+            }""",
+            timeout=min(22_000, page_load_timeout_ms),
+        )
+    except Exception:
+        log.info("[condition] 选择后等待路径进入 create 或 wizard 超时，仍检测向导页")
+
+    await _leave_sell_wizard_if_present(
+        page,
+        element_timeout_ms=element_timeout_ms,
+        report=report,
+    )
 
 
 async def _set_shipping_payer(
