@@ -193,7 +193,10 @@ export const webDriveApi = {
  */
 export const listingApi = {
   postToMarket: (data, axiosConfig = {}) =>
-    http.post('/web-drive/listing/post-to-market', data, { timeout: 0, ...axiosConfig })
+    http.post('/web-drive/listing/post-to-market', data, { timeout: 0, ...axiosConfig }),
+  /** 与 postToMarket 的 progress_job_id 配合，轮询当前自动化步骤 */
+  getPostProgress: (jobId, axiosConfig = {}) =>
+    http.get(`/web-drive/listing/post-progress/${encodeURIComponent(jobId)}`, axiosConfig)
 }
 
 // OCR 识别

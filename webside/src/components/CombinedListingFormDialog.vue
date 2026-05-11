@@ -16,13 +16,13 @@
       class="listing-dialog-form"
       scroll-to-error
     >
-      <el-form-item label="关联库存" prop="inventory_ids">
+      <el-form-item label="关联库存" prop="inventory_ids" required>
         <span v-if="form.inventory_ids?.length" class="listing-inv-count"
           >已选 {{ form.inventory_ids.length }} 条库存条目（组合出品）</span
         >
         <span v-else class="listing-inv-count listing-inv-count--warn">未关联库存条目</span>
       </el-form-item>
-      <el-form-item label="商品图片" prop="combined_listing_images" class="listing-form-item--images">
+      <el-form-item label="商品图片" prop="combined_listing_images" class="listing-form-item--images" required>
         <div class="listing-field-full listing-combined-images-wrap">
           <div v-if="!combinedPreviewImages.length" class="listing-combined-empty">暂无商品图片数据</div>
           <div v-else class="listing-combined-gallery">
@@ -64,17 +64,17 @@
           </div>
         </div>
       </el-form-item>
-      <el-form-item label="出品标题" prop="listing_title" class="listing-form-item--name">
+      <el-form-item label="出品标题" prop="listing_title" class="listing-form-item--name" required>
         <div class="listing-field-full">
           <el-input
             v-model="form.listing_title"
             class="listing-name-input"
-            placeholder="请输入出品标题"
+            placeholder="请输入出品标题（必填）"
             clearable
           />
         </div>
       </el-form-item>
-      <el-form-item label="商品说明" prop="description" class="listing-form-item--desc">
+      <el-form-item label="商品说明" prop="description" class="listing-form-item--desc" required>
         <div class="listing-field-full listing-desc-with-footer">
           <el-input
             v-model="form.description"
@@ -88,7 +88,7 @@
                 : 1000
             "
             show-word-limit
-            placeholder="请输入商品说明"
+            placeholder="请输入商品说明（必填）"
           />
           <div
             v-if="managementNumberLine"
@@ -99,29 +99,28 @@
           </div>
         </div>
       </el-form-item>
-      <el-form-item label="商品类型" prop="category_mapping_id">
+      <el-form-item label="商品类型" prop="category_mapping_id" required>
         <el-cascader
           v-model="form.category_mapping_path"
           :options="categoryTypeCascaderOptions"
           :props="categoryTypeCascaderProps"
           :show-all-levels="false"
-          clearable
           filterable
-          placeholder="请选择商品类型（1/2/3级）"
+          placeholder="请选择商品类型（必选）"
           style="width: 100%"
           popper-class="product-type-cascader-popper"
           @change="handleCategoryTypeChange"
         />
       </el-form-item>
-      <el-form-item label="商品状态" prop="status">
+      <el-form-item label="商品状态" prop="status" required>
         <el-select v-model="form.status" placeholder="请选择商品状态" style="width: 100%">
           <el-option v-for="s in listingStatusOptions" :key="s.value" :label="s.label" :value="s.value" />
         </el-select>
       </el-form-item>
-      <el-form-item label="出品账号" prop="meilu_account_id">
+      <el-form-item label="出品账号" prop="meilu_account_id" required>
         <el-select
           v-model="form.meilu_account_id"
-          placeholder="请选择煤炉账号（必选）"
+          placeholder="请选择煤炉账号"
           style="width: 100%"
           filterable
           :loading="meiluAccountsLoading"
@@ -134,55 +133,62 @@
           />
         </el-select>
       </el-form-item>
-      <el-form-item label="快递费负担" prop="shipping_payer">
+      <el-form-item label="快递费负担" prop="shipping_payer" required>
         <el-select v-model="form.shipping_payer" placeholder="请选择快递费负担" style="width: 100%">
           <el-option v-for="s in shippingPayerOptions" :key="s.value" :label="s.label" :value="s.value" />
         </el-select>
       </el-form-item>
-      <el-form-item label="配送方法" prop="shipping_method">
+      <el-form-item label="配送方法" prop="shipping_method" required>
         <el-select v-model="form.shipping_method" placeholder="请选择配送方法" style="width: 100%">
           <el-option v-for="s in shippingMethodOptions" :key="s.value" :label="s.label" :value="s.value" />
         </el-select>
       </el-form-item>
-      <el-form-item label="发货地址" prop="shipping_from">
+      <el-form-item label="发货地址" prop="shipping_from" required>
         <el-cascader
           v-model="form.shipping_from_path"
           :options="shippingFromCascaderOptions"
           :props="shippingFromCascaderProps"
           :show-all-levels="false"
-          clearable
           filterable
-          placeholder="请选择发货地（地区 / 都道府県）"
+          placeholder="请选择发货地（必选）"
           style="width: 100%"
           popper-class="product-type-cascader-popper"
           @change="handleShippingFromChange"
         />
       </el-form-item>
-      <el-form-item label="最大发货天数" prop="shipping_days">
+      <el-form-item label="最大发货天数" prop="shipping_days" required>
         <el-select v-model="form.shipping_days" placeholder="请选择最大发货天数" style="width: 100%">
           <el-option v-for="s in shippingDaysOptions" :key="s.value" :label="s.label" :value="s.value" />
         </el-select>
       </el-form-item>
-      <el-form-item label="出售方法" prop="sale_type">
+      <el-form-item label="出售方法" prop="sale_type" required>
         <div class="listing-compact-row">
-          <el-select v-model="form.sale_type" placeholder="请选择出售方法" class="listing-compact-control">
-            <el-option v-for="s in saleTypeOptions" :key="s.value" :label="s.label" :value="s.value" />
-          </el-select>
           <el-select
-            v-if="form.sale_type === 'auction'"
-            v-model="form.auction_duration"
-            class="listing-auction-duration-control"
+            v-model="form.sale_type"
+            placeholder="请选择出售方法"
+            class="listing-compact-control"
+            @change="onSaleTypeChange"
           >
-            <el-option label="通常" value="normal" />
-            <el-option label="三小时" value="3hours" />
+            <el-option v-for="s in saleTypeOptions" :key="s.value" :label="s.label" :value="s.value" />
           </el-select>
         </div>
       </el-form-item>
-      <el-form-item label="单价" prop="price" class="listing-form-item--price">
+      <el-form-item
+        v-if="form.sale_type === 'auction'"
+        label="拍卖时长"
+        prop="auction_duration"
+        required
+      >
+        <el-select v-model="form.auction_duration" placeholder="请选择拍卖时长" style="width: 100%">
+          <el-option label="通常" value="normal" />
+          <el-option label="三小时" value="3hours" />
+        </el-select>
+      </el-form-item>
+      <el-form-item label="商品单价" prop="price" class="listing-form-item--price" required>
         <div class="listing-compact-row">
           <el-input
             v-model="listingPriceEdit"
-            placeholder="整数（将同步到所选各条库存）"
+            placeholder="必填，日元整数且大于 0（同步到所选库存）"
             class="listing-price-input listing-compact-control"
             inputmode="numeric"
             @blur="applyListingPriceToForm"
@@ -200,7 +206,7 @@
 </template>
 
 <script setup>
-import { ref, watch, computed } from 'vue'
+import { ref, watch, computed, nextTick } from 'vue'
 import { meiluAccountApi } from '@/api/index.js'
 import {
   MERCARI_AREAS,
@@ -225,7 +231,7 @@ const listingFormRef = ref()
 const form = ref(getDefaultForm())
 /** 组合出品：各库存条目的正/背面图（仅展示，不参与提交） */
 const combinedPreviewImages = ref([])
-/** 单价：纯文本整数，blur / 提交前写回 form.price */
+/** 商品单价：纯文本整数，blur / 提交前写回 form.price */
 const listingPriceEdit = ref('0')
 
 const listingFormRules = {
@@ -268,10 +274,29 @@ const listingFormRules = {
     {
       validator: (_, val, cb) => {
         const n = Number(val)
-        if (Number.isNaN(n) || n < 0) cb(new Error('单价须为大于等于 0 的整数'))
-        else cb()
+        if (!Number.isFinite(n) || n <= 0 || !Number.isInteger(n)) {
+          cb(new Error('请输入商品单价（须为大于 0 的整数）'))
+          return
+        }
+        cb()
       },
-      trigger: 'blur'
+      trigger: ['blur', 'change']
+    }
+  ],
+  auction_duration: [
+    {
+      validator: (_, val, cb) => {
+        if (form.value.sale_type !== 'auction') {
+          cb()
+          return
+        }
+        if (val !== 'normal' && val !== '3hours') {
+          cb(new Error('请选择拍卖时长'))
+          return
+        }
+        cb()
+      },
+      trigger: 'change'
     }
   ],
   description: [
@@ -313,6 +338,15 @@ const listingFormRules = {
   ],
   shipping_days: [{ required: true, message: '请选择最大发货天数', trigger: 'change' }],
   sale_type: [{ required: true, message: '请选择出售方法', trigger: 'change' }]
+}
+
+function onSaleTypeChange() {
+  if (form.value.sale_type !== 'auction') {
+    form.value.auction_duration = 'normal'
+    nextTick(() => {
+      listingFormRef.value?.clearValidate?.(['auction_duration'])
+    })
+  }
 }
 
 function syncListingPriceFromForm() {

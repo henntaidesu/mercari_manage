@@ -1,5 +1,6 @@
 # -*- coding: utf-8 -*-
 import logging
+import re
 from typing import List, Optional
 
 from fastapi import APIRouter, HTTPException
@@ -9,6 +10,9 @@ from ..web_drive import get_web_drive_manager, profiles_root
 
 router = APIRouter(prefix="/api/web-drive", tags=["web-drive"])
 log = logging.getLogger(__name__)
+
+# 出品进度轮询 job_id：仅允许安全字符（前端 crypto.randomUUID() 等）
+_LISTING_JOB_ID_RE = re.compile(r"^[a-zA-Z0-9_.-]{1,128}$")
 
 
 class OpenSessionBody(PydanticModel):
@@ -104,6 +108,8 @@ class PostToMarketBody(PydanticModel):
     # 代理
     proxy_server: Optional[str] = None
     use_mitm_proxy: bool = True
+    # 可选：与 GET /listing/post-progress/{job_id} 配合展示当前步骤
+    progress_job_id: Optional[str] = Field(default=None, max_length=128)
 
 
 def _get_category_positions(mapping_id: Optional[str]) -> dict:
@@ -133,6 +139,20 @@ def _get_category_positions(mapping_id: Optional[str]) -> dict:
         return {}
 
 
+@router.get("/listing/post-progress/{job_id}")
+def listing_post_progress(job_id: str):
+    """出品自动化执行过程中轮询当前步骤（与 POST body.progress_job_id 对应）。"""
+    from ..web_drive.listing_progress import get_listing_progress
+
+    jid = (job_id or "").strip()
+    if not _LISTING_JOB_ID_RE.fullmatch(jid):
+        raise HTTPException(status_code=400, detail="invalid job_id")
+    row = get_listing_progress(jid)
+    if not row:
+        return {"success": True, "data": {"step": None, "label_zh": None, "ts": None}}
+    return {"success": True, "data": row}
+
+
 @router.post("/listing/post-to-market")
 async def post_to_market(body: PostToMarketBody):
     """
@@ -141,8 +161,13 @@ async def post_to_market(body: PostToMarketBody):
       · Switch 检查 → 图片上传 → 商品名/说明填写
       · 商品类型选择 → 販売タイプ+价格 → 发货天数 → 发货地址
     """
+    from ..web_drive.listing_progress import clear_listing_progress
     from ..web_drive.web_operate.post_to_macket import post_to_market as _do_post
     from ..ssl_mitm_proxy.runner import default_mitm_proxy_url
+
+    jid = (body.progress_job_id or "").strip() or None
+    if jid and not _LISTING_JOB_ID_RE.fullmatch(jid):
+        raise HTTPException(status_code=400, detail="invalid progress_job_id")
 
     try:
         proxy: Optional[str] = None
@@ -171,6 +196,7 @@ async def post_to_market(body: PostToMarketBody):
             shipping_days=body.shipping_days,
             shipping_from_area_id=body.shipping_from_area_id,
             proxy_server=proxy,
+            progress_job_id=jid,
         )
         return {"success": True, "data": data}
     except ValueError as exc:
@@ -180,3 +206,6 @@ async def post_to_market(body: PostToMarketBody):
     except Exception as exc:
         log.exception("post_to_market 异常")
         raise HTTPException(status_code=500, detail=str(exc)) from exc
+    finally:
+        if jid:
+            clear_listing_progress(jid)

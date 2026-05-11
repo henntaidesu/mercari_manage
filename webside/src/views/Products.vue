@@ -801,12 +801,29 @@
         <el-button @click="ocrVisible = false">取消</el-button>
       </template>
     </el-dialog>
+
+    <teleport to="body">
+      <div
+        v-show="listingPostOverlayVisible"
+        class="listing-post-overlay listing-post-overlay--dark"
+        :class="{ 'listing-post-overlay--failed': listingPostOverlayFailed }"
+        role="status"
+        aria-live="polite"
+      >
+        <div class="listing-post-overlay__box">
+          <el-icon class="is-loading listing-post-overlay__icon" :size="40"><Loading /></el-icon>
+          <div class="listing-post-overlay__title">{{ listingPostOverlayTitle }}</div>
+          <div class="listing-post-overlay__step">{{ listingPostProgressLabel || '请稍候…' }}</div>
+        </div>
+      </div>
+    </teleport>
   </div>
 </template>
 
 <script setup>
 import { ref, computed, watch, onMounted, onBeforeUnmount, nextTick } from 'vue'
 import { ElMessage } from 'element-plus'
+import { Loading } from '@element-plus/icons-vue'
 import { inventoryApi, categoryApi, warehouseApi, authApi, scanApi, ocrApi, transactionApi, productTypeCategoryMappingApi, onSaleItemApi, listingApi } from '@/api/index.js'
 import { warehouseShelfLabel } from '@/utils/warehouseLabel.js'
 import SingleListingFormDialog from '@/components/SingleListingFormDialog.vue'
@@ -874,6 +891,12 @@ const listingPickMode = ref(false)
 /** 已选中的库存 id 集合 */
 const listingPickIds = ref(new Set())
 const listingCategoryMappings = ref([])
+/** WebDriver 出品自动化：全屏等待与步骤文案（与 progress_job_id 轮询同步） */
+const listingPostOverlayVisible = ref(false)
+const listingPostOverlayTitle = ref('正在上架')
+const listingPostOverlayFailed = ref(false)
+const listingPostProgressLabel = ref('')
+let listingPostProgressTimer = null
 const productTypeCascaderPath = ref([])
 const inventoryExpandById = ref({})
 const scanVisible = ref(false)
@@ -1998,6 +2021,43 @@ function buildCombinedListingSeedFromInventoryRows(rows) {
   }
 }
 
+/** 煤炉 WebDriver 自动化返回的 *_error 字段 → 中文项目名（用于「上架失败」提示） */
+const WEB_DRIVE_LISTING_ERROR_LABELS = [
+  ['switch_error', '页面开关'],
+  ['images_error', '图片上传'],
+  ['name_error', '商品名称'],
+  ['category_error', '商品类型'],
+  ['condition_error', '商品状态'],
+  ['description_error', '商品说明'],
+  ['shipping_payer_error', '快递费负担'],
+  ['shipping_method_error', '配送方法'],
+  ['shipping_from_error', '发货地址'],
+  ['shipping_days_error', '发货天数'],
+  ['sale_price_error', '销售方式与价格'],
+  ['submit_error', '出品提交']
+]
+
+function collectWebDriveListingFailures(data) {
+  if (!data || typeof data !== 'object') return []
+  const out = []
+  for (const [key, label] of WEB_DRIVE_LISTING_ERROR_LABELS) {
+    const detail = data[key]
+    if (detail != null && String(detail).trim()) {
+      out.push({ key, label, detail: String(detail).trim() })
+    }
+  }
+  return out
+}
+
+function formatWebDriveListingFailureMessage(failures, maxEach = 180) {
+  return failures
+    .map(({ label, detail }) => {
+      const d = detail.length > maxEach ? `${detail.slice(0, maxEach)}…` : detail
+      return `${label}：${d}`
+    })
+    .join('；')
+}
+
 /** 出品表单保存：写回所选库存的出品标题、listing_body、price（与编辑商品一致） */
 async function onListingFormSaved(data) {
   const ids = (data.inventory_ids || []).map((id) => Number(id)).filter((x) => Number.isFinite(x))
@@ -2041,7 +2101,37 @@ async function onListingFormSaved(data) {
     if (data.image_back) imageUrls.push(data.image_back)
   }
 
-  ElMessage.info('正在启动浏览器并填写出品页，请稍候…')
+  const progressJobId =
+    typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function'
+      ? crypto.randomUUID()
+      : `job_${Date.now()}_${Math.random().toString(36).slice(2, 11)}`
+
+  let lastConsoleStep = ''
+  async function pollListingPostProgress() {
+    try {
+      const pr = await listingApi.getPostProgress(progressJobId)
+      const d = pr?.data
+      const zh = d?.label_zh
+      if (zh) {
+        listingPostProgressLabel.value = zh
+        if (zh !== lastConsoleStep) {
+          lastConsoleStep = zh
+          console.log('[出品自动化]', zh)
+        }
+      }
+    } catch {
+      /* 轮询失败忽略 */
+    }
+  }
+
+  listingPostOverlayTitle.value = '正在上架'
+  listingPostOverlayFailed.value = false
+  listingPostProgressLabel.value = '正在连接服务器…'
+  listingPostOverlayVisible.value = true
+  await pollListingPostProgress()
+  listingPostProgressTimer = setInterval(pollListingPostProgress, 400)
+
+  let listingPostHadStepErrors = false
   try {
     const res = await listingApi.postToMarket({
       account_key: accountKey,
@@ -2059,38 +2149,67 @@ async function onListingFormSaved(data) {
       price: safePrice,
       shipping_days: data.shipping_days || '2_3_days',
       shipping_from_area_id: data.shipping_from ? String(data.shipping_from) : '',
-      use_mitm_proxy: true
+      use_mitm_proxy: true,
+      progress_job_id: progressJobId
     })
     if (res?.success) {
       const d = res.data || {}
-      const parts = []
-      if (d.images_uploaded) parts.push(`已上传 ${d.images_uploaded} 张图片`)
-      if (d.name_filled) parts.push('出品标题已填写')
-      if (d.description_filled) parts.push('商品说明已填写')
-      if (d.category_selected) parts.push('商品类型已选择')
-      if (d.condition_set) parts.push('商品状态已选择')
-      if (d.shipping_payer_set) parts.push('快递费负担已设置')
-      if (d.shipping_method_set) parts.push('配送方法已设置')
-      if (d.sale_type_set && d.price_filled) parts.push('销售方式与价格已填写')
-      if (d.shipping_days_set) parts.push('发货天数已设置')
-      if (d.shipping_from_set) parts.push('发货地址已设置')
-      if (d.submitted === true) {
-        ElMessage.success('出品成功！' + (d.submit_message ? `（${d.submit_message}）` : ''))
-      } else if (d.submit_error) {
-        ElMessage.error(`出品按钮点击失败：${d.submit_error}`)
-      } else if (d.submitted === false && d.submit_message) {
-        ElMessage.warning(`出品提示异常：${d.submit_message}`)
+      const failures = collectWebDriveListingFailures(d)
+      if (failures.length) {
+        listingPostHadStepErrors = true
+        const detailMsg = formatWebDriveListingFailureMessage(failures)
+        listingPostOverlayTitle.value = '上架失败'
+        listingPostOverlayFailed.value = true
+        listingPostProgressLabel.value = detailMsg
+        console.error('[出品自动化] 上架失败', failures)
+        ElMessage.error(`上架失败：${detailMsg}`)
       } else {
-        ElMessage.success(
-          parts.length ? `出品页填写完成：${parts.join('、')}` : '浏览器已打开出品页'
-        )
+        const parts = []
+        if (d.images_uploaded) parts.push(`已上传 ${d.images_uploaded} 张图片`)
+        if (d.name_filled) parts.push('出品标题已填写')
+        if (d.description_filled) parts.push('商品说明已填写')
+        if (d.category_selected) parts.push('商品类型已选择')
+        if (d.sell_wizard_back_clicked) parts.push('已从煤炉出品向导返回表单')
+        if (d.condition_set) parts.push('商品状态已选择')
+        if (d.shipping_payer_set) parts.push('快递费负担已设置')
+        if (d.shipping_method_set) parts.push('配送方法已设置')
+        if (d.sale_type_set && d.price_filled) parts.push('销售方式与价格已填写')
+        if (d.shipping_days_set) parts.push('发货天数已设置')
+        if (d.shipping_from_set) parts.push('发货地址已设置')
+        if (d.submitted === true) {
+          ElMessage.success('出品成功！' + (d.submit_message ? `（${d.submit_message}）` : ''))
+        } else if (d.submitted === false && d.submit_message) {
+          ElMessage.warning(`出品提示异常：${d.submit_message}`)
+        } else {
+          ElMessage.success(
+            parts.length ? `出品页填写完成：${parts.join('、')}` : '浏览器已打开出品页'
+          )
+        }
       }
     }
   } catch {
     // axios 拦截器已弹窗，此处仅记录
+  } finally {
+    if (listingPostProgressTimer != null) {
+      clearInterval(listingPostProgressTimer)
+      listingPostProgressTimer = null
+    }
+    if (listingPostHadStepErrors) {
+      await new Promise((r) => setTimeout(r, 1200))
+    }
+    listingPostOverlayVisible.value = false
+    listingPostOverlayTitle.value = '正在上架'
+    listingPostOverlayFailed.value = false
+    listingPostProgressLabel.value = ''
   }
 
-  ElMessage.success('出品标题、商品说明与单价已保存到库存')
+  if (listingPostHadStepErrors) {
+    ElMessage.info(
+      '出品标题、商品说明与单价已写入本地库存。煤炉自动化有失败步骤，请根据上方红色提示在浏览器中补全或重试。'
+    )
+  } else {
+    ElMessage.success('出品标题、商品说明与单价已保存到库存')
+  }
   await load({ resetPage: false })
   loadInventoryStats()
 }
@@ -2628,6 +2747,10 @@ onBeforeUnmount(() => {
   stopScan()
   stopContScan()
   onProductImgCameraClosed()
+  if (listingPostProgressTimer != null) {
+    clearInterval(listingPostProgressTimer)
+    listingPostProgressTimer = null
+  }
 })
 </script>
 
@@ -3089,5 +3212,52 @@ onBeforeUnmount(() => {
 /* 选择模式下，整张表行的鼠标指针变为可点击 */
 .listing-pick-mode-active .el-table tbody tr {
   cursor: pointer;
+}
+
+/* 出品自动化全屏等待（teleport 到 body，须无 scoped；黑色主题） */
+.listing-post-overlay.listing-post-overlay--dark {
+  position: fixed;
+  inset: 0;
+  z-index: 3000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(0, 0, 0, 0.75);
+  backdrop-filter: blur(6px);
+}
+.listing-post-overlay--dark .listing-post-overlay__box {
+  min-width: 280px;
+  max-width: min(440px, 92vw);
+  padding: 28px 32px;
+  background: linear-gradient(165deg, #1c1c1f 0%, #121214 100%);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 14px;
+  text-align: center;
+  box-shadow:
+    0 0 0 1px rgba(255, 255, 255, 0.04) inset,
+    0 20px 50px rgba(0, 0, 0, 0.65);
+}
+.listing-post-overlay--dark .listing-post-overlay__icon {
+  color: #94a3b8;
+}
+.listing-post-overlay--dark .listing-post-overlay__title {
+  margin-top: 14px;
+  font-size: 17px;
+  font-weight: 600;
+  color: #f1f5f9;
+  letter-spacing: 0.02em;
+}
+.listing-post-overlay--dark.listing-post-overlay--failed .listing-post-overlay__title {
+  color: #f87171;
+}
+.listing-post-overlay--dark.listing-post-overlay--failed .listing-post-overlay__step {
+  color: #cbd5e1;
+}
+.listing-post-overlay--dark .listing-post-overlay__step {
+  margin-top: 10px;
+  font-size: 14px;
+  color: #94a3b8;
+  line-height: 1.55;
+  word-break: break-word;
 }
 </style>
