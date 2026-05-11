@@ -615,8 +615,8 @@
         <el-icon size="50" color="#4a5a72"><Camera /></el-icon>
         <p style="color:#8e9bb3;margin:12px 0">当前环境无法在网页内直接预览摄像头连续扫码。</p>
         <p v-if="contScanNeedsHttpsHint" class="cont-https-hint">
-          通过 <strong>HTTP + 非 localhost</strong> 访问时，浏览器不允许网页使用摄像头连续预览，因此只能选图/拍照。
-          若要在本机用摄像头预览，请改用 <strong>http://localhost:9600</strong> 打开。
+          当前为 <strong>HTTP</strong> 且非 localhost：浏览器不允许网页使用摄像头连续预览，只能选图/拍照。
+          若要用摄像头：请用 <strong>https://</strong> 打开本站（开发环境为自签名证书，在浏览器中选「高级 → 继续访问」），或使用 <strong>http://localhost:9600</strong>。
         </p>
         <p style="color:#8e9bb3;margin:12px 0">也可点击下方，从相册或相机拍摄条形码图片进行识别。</p>
         <el-button type="primary" @click="triggerContCapture">拍照 / 选图识别</el-button>
@@ -2175,7 +2175,7 @@ async function openScanDialog() {
   const canStream = typeof navigator.mediaDevices?.getUserMedia === 'function'
   if (!canStream) {
     if (!window.isSecureContext) {
-      ElMessage.warning('当前访问方式无法使用摄像头，已改为选图。需要预览请用 http://localhost:9600 在本机打开。')
+      ElMessage.warning('HTTP 非 localhost 无法使用摄像头，已改为选图。请用 https:// 打开（自签名证书点继续访问）或 http://localhost:9600。')
     }
     cameraInputRef.value.value = ''
     cameraInputRef.value.click()
