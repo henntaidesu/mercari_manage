@@ -251,6 +251,9 @@
               v-if="firstThumbUrl(row)"
               class="order-thumb"
               :src="firstThumbUrl(row)"
+              :preview-src-list="thumbnailPreviewList(row)"
+              preview-teleported
+              hide-on-click-modal
               fit="cover"
               referrerpolicy="no-referrer"
               lazy
@@ -1092,23 +1095,30 @@ function formatFeeShippingCell(row) {
   return `${left}/${right}`
 }
 
-/** thumbnails 为 JSON 字符串或数组时取首张图 URL */
-function firstThumbUrl(row) {
+/** thumbnails 为 JSON 字符串或数组时解析为 URL 列表（用于预览） */
+function thumbnailPreviewList(row) {
   const raw = row.thumbnails
-  if (raw == null || raw === '') return ''
+  if (raw == null || raw === '') return []
   if (Array.isArray(raw)) {
-    const u = raw[0]
-    return u ? String(u) : ''
+    return raw.map((u) => (u != null && u !== '' ? String(u) : '')).filter(Boolean)
   }
   if (typeof raw === 'string') {
     try {
       const arr = JSON.parse(raw)
-      if (Array.isArray(arr) && arr.length > 0 && arr[0]) return String(arr[0])
+      if (Array.isArray(arr)) {
+        return arr.map((u) => (u != null && u !== '' ? String(u) : '')).filter(Boolean)
+      }
     } catch {
-      return ''
+      return []
     }
   }
-  return ''
+  return []
+}
+
+/** thumbnails 为 JSON 字符串或数组时取首张图 URL */
+function firstThumbUrl(row) {
+  const list = thumbnailPreviewList(row)
+  return list.length ? list[0] : ''
 }
 
 const createDefaultForm = () => ({
@@ -1737,6 +1747,10 @@ onBeforeUnmount(() => {
   height: 48px;
   border-radius: 4px;
   display: block;
+  cursor: pointer;
+}
+.order-thumb :deep(.el-image__inner) {
+  cursor: pointer;
 }
 .thumb-fallback {
   color: #909399;

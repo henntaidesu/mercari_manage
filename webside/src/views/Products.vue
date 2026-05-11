@@ -49,14 +49,10 @@
           <template v-if="isIOS">
             <template v-if="!listingPickMode">
               <div class="search-actions-ios-row">
-                <el-button type="success" @click="openContScan('in')">条码入库</el-button>
-                <el-button type="danger" @click="openContScan('out')">条码出库</el-button>
-                <el-button type="danger" plain @click="openManualOutDialog">手动出库</el-button>
-                <el-button type="primary" @click="openLookupScan">条码寻找</el-button>
+                <el-button type="success" @click="openContScan">条码入库</el-button>
               </div>
               <div class="search-actions-ios-row">
-                <el-button type="info" @click="openImageFind">拍照寻找</el-button>
-                <el-button type="warning" @click="openNoBarcodeEntry">无码录入</el-button>
+                <el-button type="warning" @click="openNoBarcodeEntry">无码入库</el-button>
                 <el-button @click="enterListingPickMode()">组合出品</el-button>
               </div>
             </template>
@@ -70,12 +66,8 @@
           </template>
           <template v-else>
             <template v-if="!listingPickMode">
-              <el-button type="success" @click="openContScan('in')">条码入库</el-button>
-              <el-button type="danger" @click="openContScan('out')">条码出库</el-button>
-              <el-button type="danger" plain @click="openManualOutDialog">手动出库</el-button>
-              <el-button type="primary" @click="openLookupScan">条码寻找</el-button>
-              <el-button type="info" @click="openImageFind">拍照寻找</el-button>
-              <el-button type="warning" @click="openNoBarcodeEntry">无码录入</el-button>
+              <el-button type="success" @click="openContScan">条码入库</el-button>
+              <el-button type="warning" @click="openNoBarcodeEntry">无码入库</el-button>
               <el-button @click="enterListingPickMode()">组合出品</el-button>
             </template>
             <template v-else>
@@ -587,13 +579,30 @@
     <!-- ===== 连续扫码对话框 ===== -->
     <el-dialog
       v-model="contScanVisible"
-      :title="contAction === 'out' ? '条码出库' : '条码入库'"
+      title="条码入库"
       :width="isMobile ? '94vw' : '580px'"
       class="scan-dialog"
       @closed="stopContScan"
     >
-      <!-- 扫码中：显示摄像头 -->
+      <!-- 扫码中：显示摄像头（多摄像头时可选设备，选择会记住到本机） -->
       <div v-show="contState === 'scanning'" class="scan-box">
+        <div v-if="inventoryCameraDevices.length > 1" class="camera-device-row">
+          <span class="camera-device-label">摄像头</span>
+          <el-select
+            v-model="inventoryCameraSelectId"
+            filterable
+            placeholder="选择摄像头"
+            class="camera-device-select"
+            @change="onContCameraDeviceChanged"
+          >
+            <el-option
+              v-for="d in inventoryCameraDevices"
+              :key="d.deviceId"
+              :label="d.label"
+              :value="d.deviceId"
+            />
+          </el-select>
+        </div>
         <video ref="contVideoRef" class="scan-video" autoplay playsinline muted />
         <div class="scan-tip">
           <span v-if="contScanning" class="scanning-hint">识别中…</span>
@@ -604,8 +613,13 @@
       <!-- iOS / HTTP 降级：拍照按钮 -->
       <div v-if="contState === 'ios-fallback'" class="ios-fallback-box">
         <el-icon size="50" color="#4a5a72"><Camera /></el-icon>
-        <p style="color:#8e9bb3;margin:12px 0">当前环境不支持实时扫码，请拍照识别</p>
-        <el-button type="primary" @click="triggerContCapture">拍照识别</el-button>
+        <p style="color:#8e9bb3;margin:12px 0">当前环境无法在网页内直接预览摄像头连续扫码。</p>
+        <p v-if="contScanNeedsHttpsHint" class="cont-https-hint">
+          您正在使用 <strong>HTTP</strong> 访问：Chrome / Edge 不会向页面开放摄像头接口，因此会出现系统「打开文件」对话框。
+          请改用 <strong>https://</strong> 打开本站（开发环境运行 <code>npm run dev</code> 已默认开启 HTTPS），首次需在浏览器里信任自签名证书，即可在弹窗内选择摄像头并扫码入库。
+        </p>
+        <p style="color:#8e9bb3;margin:12px 0">也可点击下方，从相册或相机拍摄条形码图片进行识别。</p>
+        <el-button type="primary" @click="triggerContCapture">拍照 / 选图识别</el-button>
       </div>
 
       <!-- 找到商品（须同时有 contProduct，避免二次入库时 contState 仍为 found 但 product 已清空导致渲染报错、弹窗空白） -->
@@ -640,7 +654,7 @@
         <div class="cont-actions">
           <el-button @click="resumeContScan">继续扫码</el-button>
           <el-button type="primary" size="large" :loading="contConfirming" @click="confirmContAction">
-            {{ contAction === 'out' ? `确认出库 -${contQuantity}` : `确认入库 +${contQuantity}` }}
+            确认入库 +{{ contQuantity }}
           </el-button>
         </div>
       </div>
@@ -657,7 +671,7 @@
         </div>
         <div class="cont-actions">
           <el-button @click="resumeContScan">继续扫码</el-button>
-          <el-button v-if="contAction !== 'out'" type="primary" @click="openAddFromScan">新增商品</el-button>
+          <el-button type="primary" @click="openAddFromScan">新增商品</el-button>
         </div>
       </div>
 
@@ -665,67 +679,6 @@
         <el-button @click="contScanVisible = false">关闭</el-button>
       </template>
     </el-dialog>
-
-    <!-- 手动输入条形码出库 -->
-    <el-dialog
-      v-model="manualOutVisible"
-      title="手动出库"
-      :width="isMobile ? '94vw' : '420px'"
-      destroy-on-close
-      @closed="onManualOutClosed"
-    >
-      <p class="manual-out-hint">输入商品条形码，确认后出库 1 件（与扫码出库相同）。</p>
-      <el-input
-        v-model="manualOutBarcode"
-        placeholder="请输入条形码"
-        clearable
-        size="large"
-        @keyup.enter="submitManualOut"
-      />
-      <template #footer>
-        <el-button @click="manualOutVisible = false">取消</el-button>
-        <el-button type="danger" :loading="manualOutSubmitting" @click="submitManualOut">确认出库</el-button>
-      </template>
-    </el-dialog>
-
-    <!-- ===== 条形码寻找对话框 ===== -->
-    <el-dialog
-      v-model="lookupScanVisible"
-      title="条形码寻找"
-      :width="isMobile ? '94vw' : '640px'"
-      class="scan-dialog"
-      @closed="stopLookupScan"
-    >
-      <div class="scan-box">
-        <video ref="lookupVideoRef" class="scan-video" autoplay playsinline muted />
-        <div class="scan-tip">
-          <span v-if="lookupScanning" class="scanning-hint">识别中…</span>
-          <span v-else>扫描后自动定位该条形码物品</span>
-        </div>
-      </div>
-      <template #footer>
-        <el-button @click="triggerLookupCapture" v-if="lookupScanMode === 'fallback'">拍照识别</el-button>
-        <el-button @click="lookupScanVisible = false">关闭</el-button>
-      </template>
-    </el-dialog>
-
-    <input
-      ref="lookupCameraRef"
-      type="file"
-      accept="image/*"
-      capture="environment"
-      style="display:none"
-      @change="handleLookupCapture"
-    />
-
-    <input
-      ref="imageFindCameraRef"
-      type="file"
-      accept="image/*"
-      capture="environment"
-      style="display:none"
-      @change="handleImageFindCapture"
-    />
 
     <!-- 双 input 轮换：iOS 上同一 file 连续拍照/选图时 change 可能不触发，换节点可稳定再次唤起 -->
     <input
@@ -947,16 +900,12 @@ let mediaStream = null
 let scanTimer = null
 
 // ---- 连续扫码状态 ----
-const manualOutVisible = ref(false)
-const manualOutBarcode = ref('')
-const manualOutSubmitting = ref(false)
-
 const contScanVisible = ref(false)
+/** 桌面端无 getUserMedia（多为 HTTP）时在降级弹窗内提示改用 HTTPS */
+const contScanNeedsHttpsHint = ref(false)
 const contState = ref('scanning')   // 'scanning' | 'found' | 'notfound' | 'ios-fallback'
 const contBarcode = ref('')
 const contProduct = ref(null)
-const contAction = ref('in') // 'in' | 'out'
-const contWarehouseId = ref(null)
 const contQuantity = ref(1)
 const contScanning = ref(false)
 const contConfirming = ref(false)
@@ -969,15 +918,6 @@ let contCaptureUseA = true
 let contStream = null
 let contTimer = null
 
-// ---- 条形码寻找状态 ----
-const lookupScanVisible = ref(false)
-const lookupScanning = ref(false)
-const lookupVideoRef = ref()
-const lookupCameraRef = ref()
-const imageFindCameraRef = ref()
-const lookupScanMode = ref('stream') // 'stream' | 'fallback'
-let lookupStream = null
-let lookupTimer = null
 const SCAN_INTERVAL_MS = 500
 const CAMERA_CONSTRAINTS = {
   video: {
@@ -987,6 +927,118 @@ const CAMERA_CONSTRAINTS = {
     frameRate: { ideal: 30, max: 60 }
   },
   audio: false
+}
+
+/** 库存页扫码：用户选择的摄像头 deviceId（Windows 等多摄像头场景） */
+const INVENTORY_CAMERA_STORAGE_KEY = 'mercari.inventory.preferredCameraDeviceId'
+const inventoryCameraDevices = ref([])
+const inventoryCameraSelectId = ref('')
+
+function readSavedInventoryCameraDeviceId() {
+  try {
+    const s = localStorage.getItem(INVENTORY_CAMERA_STORAGE_KEY)
+    const t = s && String(s).trim()
+    return t || null
+  } catch {
+    return null
+  }
+}
+
+function writeSavedInventoryCameraDeviceId(deviceId) {
+  if (!deviceId) return
+  try {
+    localStorage.setItem(INVENTORY_CAMERA_STORAGE_KEY, String(deviceId))
+  } catch {
+    /* ignore */
+  }
+}
+
+function inventoryCameraBaseVideoConstraints() {
+  return {
+    width: { ideal: 1280 },
+    height: { ideal: 720 },
+    frameRate: { ideal: 30, max: 60 },
+  }
+}
+
+/**
+ * 按优先级尝试打开摄像头：用户保存的 deviceId → 默认约束（后置等）→ 任意摄像头
+ */
+async function getInventoryCameraStream(preferredDeviceId = null) {
+  const base = inventoryCameraBaseVideoConstraints()
+  const attempts = []
+  if (preferredDeviceId) {
+    attempts.push({ video: { ...base, deviceId: { exact: preferredDeviceId } }, audio: false })
+    attempts.push({ video: { ...base, deviceId: { ideal: preferredDeviceId } }, audio: false })
+  }
+  attempts.push(CAMERA_CONSTRAINTS)
+  attempts.push({ video: { ...base }, audio: false })
+  attempts.push({ video: true, audio: false })
+  let lastErr
+  for (const constraints of attempts) {
+    try {
+      return await navigator.mediaDevices.getUserMedia(constraints)
+    } catch (e) {
+      lastErr = e
+    }
+  }
+  throw lastErr
+}
+
+async function refreshInventoryCameraDeviceList() {
+  if (!navigator.mediaDevices?.enumerateDevices) {
+    inventoryCameraDevices.value = []
+    return
+  }
+  const list = await navigator.mediaDevices.enumerateDevices()
+  const inputs = list.filter((d) => d.kind === 'videoinput')
+  inventoryCameraDevices.value = inputs.map((d, i) => ({
+    deviceId: d.deviceId,
+    label: (d.label && String(d.label).trim()) ? d.label : `摄像头 ${i + 1}`,
+  }))
+}
+
+function syncInventoryCameraSelectFromStream(stream) {
+  const id = stream?.getVideoTracks?.()?.[0]?.getSettings?.()?.deviceId
+  if (id) inventoryCameraSelectId.value = id
+}
+
+async function onContCameraDeviceChanged(deviceId) {
+  if (!deviceId || contScanMode.value !== 'stream' || contState.value !== 'scanning') return
+  writeSavedInventoryCameraDeviceId(deviceId)
+  const videoEl = contVideoRef.value
+  if (!videoEl) return
+  if (contStream) {
+    contStream.getTracks().forEach((t) => t.stop())
+    contStream = null
+  }
+  try {
+    contStream = await getInventoryCameraStream(deviceId)
+    videoEl.srcObject = contStream
+    await new Promise((resolve) => {
+      videoEl.onloadedmetadata = resolve
+    })
+    await refreshInventoryCameraDeviceList()
+    syncInventoryCameraSelectFromStream(contStream)
+    const okDev = contStream.getVideoTracks()[0]?.getSettings?.()?.deviceId
+    if (okDev) writeSavedInventoryCameraDeviceId(okDev)
+  } catch {
+    ElMessage.error('无法切换到所选摄像头，将尝试默认摄像头')
+    try {
+      contStream = await getInventoryCameraStream(null)
+      videoEl.srcObject = contStream
+      await new Promise((resolve) => {
+        videoEl.onloadedmetadata = resolve
+      })
+      await refreshInventoryCameraDeviceList()
+      syncInventoryCameraSelectFromStream(contStream)
+      const fbDev = contStream.getVideoTracks()[0]?.getSettings?.()?.deviceId
+      if (fbDev) writeSavedInventoryCameraDeviceId(fbDev)
+    } catch {
+      ElMessage.error('无法打开摄像头')
+      contScanVisible.value = false
+    }
+  }
 }
 
 const form = ref({
@@ -2119,9 +2171,12 @@ async function openScanDialog() {
   stopScan()
   scanning.value = false
 
-  // 非安全上下文（HTTP + IP）或浏览器不支持 getUserMedia → 降级为拍照后送后端识别
-  const canStream = !!(navigator.mediaDevices?.getUserMedia) && !!window.isSecureContext
+  // HTTP 非安全上下文下 Chromium 不暴露 mediaDevices → 只能选图
+  const canStream = typeof navigator.mediaDevices?.getUserMedia === 'function'
   if (!canStream) {
+    if (!window.isSecureContext) {
+      ElMessage.warning('HTTP 访问时无法打开摄像头，已改为选图。请使用 https:// 打开本站后再试扫描。')
+    }
     cameraInputRef.value.value = ''
     cameraInputRef.value.click()
     return
@@ -2131,7 +2186,8 @@ async function openScanDialog() {
   await nextTick()
 
   try {
-    mediaStream = await navigator.mediaDevices.getUserMedia(CAMERA_CONSTRAINTS)
+    const savedCam = readSavedInventoryCameraDeviceId()
+    mediaStream = await getInventoryCameraStream(savedCam)
     videoRef.value.srcObject = mediaStream
 
     // 等视频就绪后再开始抓帧
@@ -2196,69 +2252,30 @@ async function handleCameraCapture(e) {
 
 // ============ 连续扫码函数 ============
 
-function openManualOutDialog() {
-  manualOutBarcode.value = ''
-  manualOutVisible.value = true
-}
-
-function onManualOutClosed() {
-  manualOutBarcode.value = ''
-}
-
-async function submitManualOut() {
-  const bc = String(manualOutBarcode.value || '').trim()
-  if (!bc) {
-    ElMessage.warning('请输入条形码')
-    return
-  }
-  if (manualOutSubmitting.value) return
-  manualOutSubmitting.value = true
-  try {
-    const res = await inventoryApi.findByBarcode(bc)
-    if (!res?.found || !res.product) {
-      ElMessage.warning('未找到该条形码对应的商品')
-      return
-    }
-    const p = res.product
-    if (!p.warehouse_id) {
-      ElMessage.warning('该商品未设置所属仓库，请先编辑商品后再操作')
-      return
-    }
-    if (Number(p.quantity || 0) < 1) {
-      ElMessage.warning('当前库存为 0，无法出库')
-      return
-    }
-    const outRes = await inventoryApi.stockOut(p.id, {
-      warehouse_id: p.warehouse_id,
-      quantity: 1,
-      remark: '手动输入出库',
-    })
-    ElMessage.success(`出库成功，当前库存：${outRes.new_quantity} 件`)
-    manualOutVisible.value = false
-    load()
-    loadInventoryStats()
-  } catch {
-    // 错误由 axios 拦截器统一提示
-  } finally {
-    manualOutSubmitting.value = false
-  }
-}
-
-async function openContScan(action = 'in') {
+async function openContScan() {
   stopContScan()
-  contAction.value = action === 'out' ? 'out' : 'in'
   contQuantity.value = 1
   contBarcode.value = ''
   contProduct.value = null
-  const canStream = !!(navigator.mediaDevices?.getUserMedia) && !!window.isSecureContext
-  // 与“条码寻找”保持同颗粒度：
-  // fallback 模式（iOS / 非安全上下文）直接唤起系统相机，不显示扫码弹窗
-  if (!canStream || isIOS.value) {
+  contScanNeedsHttpsHint.value = false
+
+  const canUseStream = typeof navigator.mediaDevices?.getUserMedia === 'function'
+
+  // iOS：仍直接唤起相册/相机，避免多余一步
+  if (isIOS.value) {
     contScanMode.value = 'fallback'
-    // 必须先离开 found，否则再次打开时会在 nextTick 内以 found + null product 渲染导致异常
     contState.value = 'ios-fallback'
     contScanVisible.value = false
     triggerContCapture()
+    return
+  }
+
+  // Windows / Android 桌面浏览器：HTTP 下无 mediaDevices，先显示说明弹窗，避免直接弹出「打开文件」
+  if (!canUseStream) {
+    contScanMode.value = 'fallback'
+    contState.value = 'ios-fallback'
+    contScanNeedsHttpsHint.value = !window.isSecureContext
+    contScanVisible.value = true
     return
   }
 
@@ -2268,9 +2285,14 @@ async function openContScan(action = 'in') {
   await nextTick()
 
   try {
-    contStream = await navigator.mediaDevices.getUserMedia(CAMERA_CONSTRAINTS)
+    const savedCam = readSavedInventoryCameraDeviceId()
+    contStream = await getInventoryCameraStream(savedCam)
     contVideoRef.value.srcObject = contStream
     await new Promise((resolve) => { contVideoRef.value.onloadedmetadata = resolve })
+    await refreshInventoryCameraDeviceList()
+    syncInventoryCameraSelectFromStream(contStream)
+    const curDev = contStream.getVideoTracks()[0]?.getSettings?.()?.deviceId
+    if (curDev) writeSavedInventoryCameraDeviceId(curDev)
     startContTimer()
   } catch {
     ElMessage.error('无法打开摄像头，请检查权限后重试')
@@ -2338,13 +2360,12 @@ async function confirmContAction() {
   contConfirming.value = true
   try {
     const quantity = Math.max(1, Math.round(Number(contQuantity.value) || 1))
-    const apiCall = contAction.value === 'out' ? inventoryApi.stockOut : inventoryApi.stockIn
-    const res = await apiCall(contProduct.value.id, {
+    const res = await inventoryApi.stockIn(contProduct.value.id, {
       warehouse_id: contProduct.value.warehouse_id,
       quantity,
-      remark: contAction.value === 'out' ? '连续扫码出库' : '连续扫码入库'
+      remark: '连续扫码入库'
     })
-    ElMessage.success(`${contAction.value === 'out' ? '出库' : '入库'}成功，当前库存：${res.new_quantity} 件`)
+    ElMessage.success(`入库成功，当前库存：${res.new_quantity} 件`)
     load()
     loadInventoryStats()
     contScanVisible.value = false
@@ -2366,6 +2387,7 @@ function openAddFromScan() {
 function stopContScan() {
   clearInterval(contTimer)
   contTimer = null
+  contScanNeedsHttpsHint.value = false
   if (contStream) {
     contStream.getTracks().forEach((t) => t.stop())
     contStream = null
@@ -2406,123 +2428,6 @@ async function handleContCapture(e) {
 
 // ============ 条形码寻找函数 ============
 
-async function openLookupScan() {
-  stopLookupScan()
-  const canStream = !!(navigator.mediaDevices?.getUserMedia) && !!window.isSecureContext
-  if (!canStream) {
-    lookupScanMode.value = 'fallback'
-    lookupScanVisible.value = false
-    triggerLookupCapture()
-    return
-  }
-  lookupScanMode.value = 'stream'
-  lookupScanVisible.value = true
-  await nextTick()
-
-  try {
-    lookupStream = await navigator.mediaDevices.getUserMedia(CAMERA_CONSTRAINTS)
-    lookupVideoRef.value.srcObject = lookupStream
-    await new Promise((resolve) => { lookupVideoRef.value.onloadedmetadata = resolve })
-    lookupTimer = setInterval(async () => {
-      if (!lookupScanVisible.value || lookupScanning.value) return
-      const blob = await captureFrame(lookupVideoRef)
-      if (!blob) return
-      lookupScanning.value = true
-      try {
-        const res = await scanApi.scanBarcode(blob)
-        if (res?.found && res.barcode) {
-          await handleLookupBarcode(res.barcode)
-        }
-      } catch {
-        // 静默失败，继续扫
-      } finally {
-        lookupScanning.value = false
-      }
-    }, SCAN_INTERVAL_MS)
-  } catch {
-    ElMessage.error('无法打开摄像头，请检查权限后重试')
-    lookupScanVisible.value = false
-  }
-}
-
-async function handleLookupBarcode(barcode) {
-  keyword.value = barcode
-  filterCat.value = null
-  filterProductType.value = null
-  filterProductTypePath.value = []
-  filterOwnerUserId.value = null
-  await load()
-  ElMessage.success(`已定位条形码：${barcode}`)
-  lookupScanVisible.value = false
-}
-
-function stopLookupScan() {
-  clearInterval(lookupTimer)
-  lookupTimer = null
-  if (lookupStream) {
-    lookupStream.getTracks().forEach((t) => t.stop())
-    lookupStream = null
-  }
-  lookupScanning.value = false
-}
-
-function triggerLookupCapture() {
-  lookupCameraRef.value.value = ''
-  lookupCameraRef.value.click()
-}
-
-async function handleLookupCapture(e) {
-  const file = e.target.files?.[0]
-  if (!file) return
-  e.target.value = ''
-  lookupScanning.value = true
-  try {
-    const res = await scanApi.scanBarcode(file)
-    if (res?.found && res.barcode) {
-      await handleLookupBarcode(res.barcode)
-    } else {
-      ElMessage.warning('未识别到条形码，请重拍')
-    }
-  } catch {
-    ElMessage.warning('识别失败，请重试')
-  } finally {
-    lookupScanning.value = false
-  }
-}
-
-function openImageFind() {
-  if (!imageFindCameraRef.value) return
-  imageFindCameraRef.value.value = ''
-  imageFindCameraRef.value.click()
-}
-
-async function handleImageFindCapture(e) {
-  const file = e.target.files?.[0]
-  if (!file) return
-  e.target.value = ''
-  loading.value = true
-  try {
-    const res = await inventoryApi.findByImage(file)
-    if (res?.found && res.product) {
-      keyword.value = res.product.barcode || res.product.name || ''
-      filterCat.value = null
-      filterProductType.value = null
-      filterProductTypePath.value = []
-      filterOwnerUserId.value = null
-      filterWarehouse.value = null
-      await load()
-      const distanceText = Number.isFinite(res.distance) ? `（相似度距离 ${res.distance}）` : ''
-      ElMessage.success(`已匹配到商品：${res.product.name || res.product.barcode}${distanceText}`)
-    } else {
-      ElMessage.warning('未找到匹配商品，请拍摄更清晰的正面图后重试')
-    }
-  } catch {
-    // 错误提示由拦截器处理
-  } finally {
-    loading.value = false
-  }
-}
-
 watch(isMobile, (mobile) => {
   if (!mobile) loadInventoryStats()
 })
@@ -2531,7 +2436,6 @@ watch(isMobile, (mobile) => {
 
 onBeforeUnmount(stopScan)
 onBeforeUnmount(stopContScan)
-onBeforeUnmount(stopLookupScan)
 
 onMounted(async () => {
   updateViewportState()
@@ -2555,7 +2459,6 @@ onBeforeUnmount(() => {
   window.removeEventListener('resize', updateViewportState)
   stopScan()
   stopContScan()
-  stopLookupScan()
 })
 </script>
 
@@ -2587,12 +2490,6 @@ onBeforeUnmount(() => {
 .inv-stat-value { font-size: 22px; font-weight: 700; color: #ecf2ff; }
 .inv-stat-label { font-size: 12px; color: #9ba8bf; margin-top: 2px; }
 .search-card { margin-bottom: 16px; border-radius: 8px; }
-.manual-out-hint {
-  margin: 0 0 12px;
-  font-size: 13px;
-  color: #8b9ab5;
-  line-height: 1.5;
-}
 .search-actions { display: flex; justify-content: flex-end; flex-wrap: wrap; gap: 8px; }
 .search-actions--ios {
   flex-direction: column;
@@ -2811,8 +2708,36 @@ onBeforeUnmount(() => {
 .cont-result { display: flex; flex-direction: column; align-items: center; padding: 8px 0 4px; }
 .cont-actions { display: flex; gap: 14px; margin-top: 20px; }
 .ios-fallback-box { display: flex; flex-direction: column; align-items: center; padding: 32px 0; }
+.cont-https-hint {
+  color: #e6a23c;
+  font-size: 13px;
+  line-height: 1.55;
+  text-align: left;
+  max-width: 100%;
+  margin: 0 0 12px;
+  padding: 10px 12px;
+  background: rgba(230, 162, 60, 0.12);
+  border-radius: 8px;
+  border: 1px solid rgba(230, 162, 60, 0.35);
+}
+.cont-https-hint code { font-size: 12px; }
 
 .scan-box { display: flex; flex-direction: column; gap: 10px; }
+.camera-device-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+}
+.camera-device-label {
+  flex-shrink: 0;
+  color: #9aa7be;
+  font-size: 13px;
+}
+.camera-device-select {
+  flex: 1;
+  min-width: 0;
+}
 .scan-video {
   width: 100%;
   max-height: 360px;
