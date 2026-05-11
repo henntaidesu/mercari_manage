@@ -430,10 +430,8 @@ def get_product(pid: int):
 def create_product(data: ProductCreate, claims: dict = Depends(require_auth)):
     if not (data.barcode or "").strip():
         raise HTTPException(status_code=400, detail="条形码必填")
-    if data.warehouse_id is None:
-        raise HTTPException(status_code=400, detail="所属仓库必填")
-    if not _warehouse_exists(data.warehouse_id):
-        raise HTTPException(status_code=400, detail="所属仓库不存在")
+    if data.warehouse_id is not None and not _warehouse_exists(data.warehouse_id):
+        raise HTTPException(status_code=400, detail="所属货架不存在")
     if data.owner_user_id is not None and not _is_system_admin(claims):
         raise HTTPException(status_code=403, detail="仅系统管理员可修改商品归属")
     if data.owner_user_id is not None and not _user_exists(data.owner_user_id):
@@ -505,11 +503,9 @@ def update_product(pid: int, data: ProductUpdate, claims: dict = Depends(require
         if old_back and old_back != new_back:
             delete_image_file(old_back)
     final_warehouse_id = update_data['warehouse_id'] if 'warehouse_id' in update_data else old_warehouse_id
-    if final_warehouse_id is None:
-        raise HTTPException(status_code=400, detail="所属仓库必填")
     if 'warehouse_id' in update_data:
-        if not _warehouse_exists(final_warehouse_id):
-            raise HTTPException(status_code=400, detail="所属仓库不存在")
+        if final_warehouse_id is not None and not _warehouse_exists(final_warehouse_id):
+            raise HTTPException(status_code=400, detail="所属货架不存在")
     if 'owner_user_id' in update_data:
         new_owner_user_id = update_data['owner_user_id']
         if new_owner_user_id != old_owner_user_id and not _is_system_admin(claims):

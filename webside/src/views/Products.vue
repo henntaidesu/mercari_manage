@@ -1195,15 +1195,6 @@ const form = ref({
 
 const rules = {
   barcode: [{ required: true, message: '请填写或扫描条形码', trigger: 'blur' }],
-  warehouse_id: [
-    {
-      validator: (_, val, cb) => {
-        if (val == null || val === '') cb(new Error('请选择所属货架（仓库 → 货架名称 → 货架号）'))
-        else cb()
-      },
-      trigger: 'change',
-    },
-  ],
   image_front: [{ validator: (_, val, cb) => val ? cb() : cb(new Error('请拍摄或上传正面图')), trigger: 'change' }],
   price: [
     {

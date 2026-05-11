@@ -569,8 +569,19 @@ async function confirmMigrateInventory() {
   try {
     const res = await warehouseApi.migrateInventory(sid, { target_warehouse_id: Number(tid) })
     const n = res?.moved ?? 0
-    ElMessage.success(n > 0 ? `已迁移 ${n} 条库存` : '当前货架无库存记录')
+    try {
+      await warehouseApi.remove(Number(sid))
+      ElMessage.success(n > 0 ? `已迁移 ${n} 条库存，并已删除原货架` : '已删除原货架')
+    } catch (e2) {
+      const msg = apiErrorMessage(e2)
+      ElMessage.warning(
+        n > 0
+          ? `已迁移 ${n} 条库存，但删除原货架失败：${msg}`
+          : `库存迁移完成，但删除原货架失败：${msg}`
+      )
+    }
     migrateInventoryDialogVisible.value = false
+    dialogVisible.value = false
     await load()
   } catch (e) {
     ElMessage.error(apiErrorMessage(e))

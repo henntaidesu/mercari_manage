@@ -186,7 +186,7 @@ def rename_shelf_name_group(data: RenameShelfNameGroupBody):
 
 @router.post("/{wid}/migrate-inventory")
 def migrate_inventory_to_shelf(wid: int, data: MigrateInventoryBody):
-    """将挂在该货架位（warehouses.id）上的全部库存改到目标货架位。"""
+    """将源货架位 ID 的业务关联整体迁移到目标货架位 ID。"""
     tid = int(data.target_warehouse_id)
     if tid == wid:
         raise HTTPException(status_code=400, detail="目标货架不能与当前相同")
@@ -194,11 +194,45 @@ def migrate_inventory_to_shelf(wid: int, data: MigrateInventoryBody):
     dst = WarehouseModel.find_by_id(id=tid)
     if not src or not dst:
         raise HTTPException(status_code=404, detail="货架不存在")
-    moved = db.execute_update(
-        "UPDATE [inventory] SET warehouse_id = ? WHERE warehouse_id = ?",
-        (tid, wid),
-    )
-    return {"moved": moved, "message": "迁移完成"}
+    try:
+        with db.get_connection() as conn:
+            cur = conn.cursor()
+            cur.execute("BEGIN IMMEDIATE")
+            # 库存归属迁移（库存管理主数据）
+            cur.execute(
+                "UPDATE [inventory] SET warehouse_id = ? WHERE warehouse_id = ?",
+                (tid, wid),
+            )
+            moved_inventory = cur.rowcount
+            # 出入库记录迁移：来源仓
+            cur.execute(
+                "UPDATE [transactions] SET warehouse_id = ? WHERE warehouse_id = ?",
+                (tid, wid),
+            )
+            moved_tx_from = cur.rowcount
+            # 出入库记录迁移：目标仓（transfer 场景）
+            cur.execute(
+                "UPDATE [transactions] SET target_warehouse_id = ? WHERE target_warehouse_id = ?",
+                (tid, wid),
+            )
+            moved_tx_to = cur.rowcount
+            # 成本记录归属迁移
+            cur.execute(
+                "UPDATE [cost_records] SET warehouse_id = ? WHERE warehouse_id = ?",
+                (tid, wid),
+            )
+            moved_cost = cur.rowcount
+            conn.commit()
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"迁移失败: {e}")
+    return {
+        "message": "迁移完成",
+        "moved": moved_inventory,
+        "moved_inventory": moved_inventory,
+        "moved_transactions_from": moved_tx_from,
+        "moved_transactions_to": moved_tx_to,
+        "moved_cost_records": moved_cost,
+    }
 
 
 @router.put("/{wid}")
@@ -234,11 +268,8 @@ def delete_warehouse(wid: int):
     wh = WarehouseModel.find_by_id(id=wid)
     if not wh:
         raise HTTPException(status_code=404, detail="仓库不存在")
-    has_tx = db.execute_query(
-        "SELECT 1 FROM [transactions] WHERE warehouse_id = ? OR target_warehouse_id = ? LIMIT 1",
-        (wid, wid),
-    )
-    if has_tx:
-        raise HTTPException(status_code=400, detail="仓库存在出入库记录，无法删除")
+    # 仅删除货架本身；业务数据不删除
+    # 库存中的关联置空，避免仍指向已删除货架
+    db.execute_update("UPDATE [inventory] SET warehouse_id = NULL WHERE warehouse_id = ?", (wid,))
     wh.delete()
-    return {"message": "删除成功"}
+    return {"message": "删除成功（已保留库存/出入库/成本记录）"}
