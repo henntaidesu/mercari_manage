@@ -11,7 +11,7 @@ from typing import Optional
 from PIL import Image, ImageOps
 from ..auth import require_auth
 from ..db_manage.database import DatabaseManager
-from ..image_storage import is_base64_image, save_base64_image, delete_image_file, get_image_root
+from ..image_storage import is_base64_image, save_base64_image, delete_image_file, get_image_root, save_upload_image
 
 router = APIRouter(prefix="/api/inventory", tags=["inventory"])
 # 公开路由：缩略图等无需登录即可访问（图片本身已通过静态文件公开）
@@ -346,6 +346,13 @@ async def find_by_image(file: UploadFile = File(...)):
     if not matched:
         return {"found": False, "product": None, "distance": best_distance}
     return {"found": True, "product": matched[0], "distance": best_distance}
+
+
+@router.post("/upload-image")
+async def upload_inventory_image(file: UploadFile = File(...)):
+    """无码入库等场景：先 multipart 上传落盘，再提交表单时只传 /imges/ 路径（避免保存时再传大体积 base64）。"""
+    path = await save_upload_image(file, prefix="inv_nb")
+    return {"path": path}
 
 
 @router.post("/{pid}/stock-in")

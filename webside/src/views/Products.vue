@@ -464,11 +464,17 @@
                 <el-button type="primary" plain size="small" @click="triggerProductImageFilePick('front')">上传图片</el-button>
               </div>
               <div class="image-upload-area large" @click="openProductImageSource('front')">
-                <img v-if="form.image_front" :src="form.image_front" class="preview-img" />
+                <img v-if="form.image_front" :src="inventoryFormImageSrc('front')" class="preview-img" />
                 <div v-else class="upload-placeholder">
                   <el-icon size="36" color="#4a5a72"><Camera /></el-icon>
                   <div class="upload-tip">{{ formImageUploadTip }}</div>
                 </div>
+              </div>
+              <div
+                v-if="noBarcodeEntryMode && !form.id && noBarcodeImgUpload.front.uploading"
+                class="nb-inventory-upload-progress"
+              >
+                <el-progress :percentage="noBarcodeImgUpload.front.percent" :stroke-width="10" />
               </div>
               <input
                 ref="fileInputFrontPick"
@@ -486,7 +492,7 @@
                 @change="handleImageUpload($event, 'front')"
               />
               <div class="img-actions">
-                <el-button v-if="form.image_front" size="small" type="danger" text @click="form.image_front = null">移除</el-button>
+                <el-button v-if="form.image_front" size="small" type="danger" text @click="clearProductFormImage('front')">移除</el-button>
                 <el-button v-if="form.image_front" size="small" type="primary" text @click="openOcr('front')">OCR识别名称</el-button>
               </div>
             </el-form-item>
@@ -498,11 +504,17 @@
                 <el-button type="primary" plain size="small" @click="triggerProductImageFilePick('back')">上传图片</el-button>
               </div>
               <div class="image-upload-area large" @click="openProductImageSource('back')">
-                <img v-if="form.image_back" :src="form.image_back" class="preview-img" />
+                <img v-if="form.image_back" :src="inventoryFormImageSrc('back')" class="preview-img" />
                 <div v-else class="upload-placeholder">
                   <el-icon size="36" color="#4a5a72"><Camera /></el-icon>
                   <div class="upload-tip">{{ formImageUploadTip }}</div>
                 </div>
+              </div>
+              <div
+                v-if="noBarcodeEntryMode && !form.id && noBarcodeImgUpload.back.uploading"
+                class="nb-inventory-upload-progress"
+              >
+                <el-progress :percentage="noBarcodeImgUpload.back.percent" :stroke-width="10" />
               </div>
               <input
                 ref="fileInputBackPick"
@@ -520,7 +532,7 @@
                 @change="handleImageUpload($event, 'back')"
               />
               <div class="img-actions">
-                <el-button v-if="form.image_back" size="small" type="danger" text @click="form.image_back = null">移除</el-button>
+                <el-button v-if="form.image_back" size="small" type="danger" text @click="clearProductFormImage('back')">移除</el-button>
                 <el-button v-if="form.image_back" size="small" type="primary" text @click="openOcr('back')">OCR识别名称</el-button>
               </div>
             </el-form-item>
@@ -573,7 +585,12 @@
           </div>
           <div class="product-dialog-footer__right">
             <el-button @click="dialogVisible = false">取消</el-button>
-            <el-button type="primary" @click="submit" :loading="submitting">保存</el-button>
+            <el-button
+              type="primary"
+              @click="submit"
+              :loading="submitting"
+              :disabled="inventorySaveBlockedByImageUpload"
+            >保存</el-button>
           </div>
         </div>
       </template>
@@ -628,6 +645,10 @@
               : '对准商品后点击「拍照」生成预览，满意后再确认'
           }}
         </div>
+        <div v-if="nbCameraUploading" class="nb-inventory-upload-progress nb-inventory-upload-progress--camera">
+          <el-progress :percentage="nbCameraUploadPercent" :stroke-width="10" />
+          <div class="nb-inventory-upload-hint">正在上传图片…</div>
+        </div>
       </div>
       <template #footer>
         <template v-if="!productImgPreviewUrl">
@@ -635,7 +656,7 @@
           <el-button type="primary" :loading="productImgCapturing" @click="takeProductImgDraft">拍照</el-button>
         </template>
         <template v-else>
-          <el-button @click="retakeProductImg">重新拍摄</el-button>
+          <el-button @click="retakeProductImg" :disabled="nbCameraUploading">重新拍摄</el-button>
           <el-button type="primary" :loading="productImgCapturing" @click="applyProductImgConfirm">确认拍照</el-button>
         </template>
       </template>
@@ -947,6 +968,18 @@ const listingPickMode = ref(false)
 const listingPickIds = ref(new Set())
 const listingCategoryMappings = ref([])
 const noBarcodeEntryMode = ref(false)
+/** 无码入库且新建：选图后立即上传服务器，保存时只提交 /imges/ 路径 */
+const isNoBarcodeNewInventory = computed(
+  () => Boolean(noBarcodeEntryMode.value && !form.value.id)
+)
+const noBarcodeImgUpload = ref({
+  front: { uploading: false, percent: 0 },
+  back: { uploading: false, percent: 0 },
+})
+const nbCameraUploading = ref(false)
+const nbCameraUploadPercent = ref(0)
+/** 无码新建：各侧正在进行的 multipart 请求，移除/重选时中止 */
+const noBarcodeUploadAbortBySide = { front: null, back: null }
 /** WebDriver 出品自动化：全屏等待与步骤文案（与 progress_job_id 轮询同步） */
 const listingPostOverlayVisible = ref(false)
 const listingPostOverlayTitle = ref('正在上架')
@@ -2017,6 +2050,56 @@ function thumbUrl(src, size = 200) {
   return `/api/inventory/image-thumb?path=${encodeURIComponent(src)}&size=${size}`
 }
 
+/** 编辑弹窗内正/背面预览：已落盘路径走缩略图接口，data URL 原样 */
+function inventoryFormImageSrc(side) {
+  const raw = side === 'front' ? form.value.image_front : form.value.image_back
+  if (!raw) return undefined
+  if (typeof raw === 'string' && raw.startsWith('/imges/')) return thumbUrl(raw, 560)
+  return raw
+}
+
+function abortNoBarcodeSideUpload(side) {
+  const c = noBarcodeUploadAbortBySide[side]
+  if (c) {
+    c.abort()
+    noBarcodeUploadAbortBySide[side] = null
+  }
+}
+
+function abortAllNoBarcodeInventoryUploads() {
+  abortNoBarcodeSideUpload('front')
+  abortNoBarcodeSideUpload('back')
+}
+
+function resetNoBarcodeImageUploadState() {
+  abortAllNoBarcodeInventoryUploads()
+  noBarcodeImgUpload.value = {
+    front: { uploading: false, percent: 0 },
+    back: { uploading: false, percent: 0 },
+  }
+  nbCameraUploading.value = false
+  nbCameraUploadPercent.value = 0
+}
+
+/** 无码新建：上传未结束时不可点保存 */
+const inventorySaveBlockedByImageUpload = computed(() => {
+  if (!isNoBarcodeNewInventory.value) return false
+  if (noBarcodeImgUpload.value.front.uploading || noBarcodeImgUpload.value.back.uploading) return true
+  if (nbCameraUploading.value) return true
+  return false
+})
+
+function clearProductFormImage(side) {
+  if (isNoBarcodeNewInventory.value) {
+    abortNoBarcodeSideUpload(side)
+    const slot = noBarcodeImgUpload.value[side]
+    slot.uploading = false
+    slot.percent = 0
+  }
+  if (side === 'front') form.value.image_front = null
+  else form.value.image_back = null
+}
+
 function mercariItemIds(row) {
   const raw = String(row?.mercari_item_id || '').trim()
   if (!raw) return []
@@ -2106,6 +2189,7 @@ const pagedList = computed(() => {
 })
 
 function openDialog(row = null) {
+  resetNoBarcodeImageUploadState()
   noBarcodeEntryMode.value = false
   categoryCreateMode.value = false
   warehouseCreateMode.value = false
@@ -2160,6 +2244,7 @@ function openDialog(row = null) {
 
 watch(dialogVisible, (visible) => {
   if (!visible) {
+    resetNoBarcodeImageUploadState()
     noBarcodeEntryMode.value = false
     categoryCreateMode.value = false
     warehouseCreateMode.value = false
@@ -2667,27 +2752,101 @@ async function applyProductImgConfirm() {
   const url = productImgPreviewUrl.value
   if (!url) return
   productImgCapturing.value = true
+  nbCameraUploadPercent.value = 0
+  const side = productImgCameraSide.value
   try {
-    const side = productImgCameraSide.value
-    if (side === 'front') {
-      form.value.image_front = url
-      formRef.value?.validateField('image_front')
+    if (isNoBarcodeNewInventory.value) {
+      nbCameraUploading.value = true
+      let blob
+      try {
+        const resFetch = await fetch(url)
+        blob = await resFetch.blob()
+      } catch {
+        ElMessage.warning('读取照片失败，请重试')
+        return
+      }
+      const mime = blob.type && blob.type.startsWith('image/') ? blob.type : 'image/jpeg'
+      const file = new File([blob], 'capture.jpg', { type: mime })
+      const res = await inventoryApi.uploadImage(file, (pe) => {
+        if (!pe.total) return
+        nbCameraUploadPercent.value = Math.min(100, Math.round((pe.loaded / pe.total) * 100))
+      })
+      const path = res?.path || ''
+      if (!path) {
+        ElMessage.error('上传失败：未返回路径')
+        return
+      }
+      if (side === 'front') {
+        form.value.image_front = path
+        formRef.value?.validateField('image_front')
+      } else {
+        form.value.image_back = path
+      }
+      productImgCameraVisible.value = false
     } else {
-      form.value.image_back = url
+      if (side === 'front') {
+        form.value.image_front = url
+        formRef.value?.validateField('image_front')
+      } else {
+        form.value.image_back = url
+      }
+      productImgCameraVisible.value = false
     }
-    productImgCameraVisible.value = false
+  } catch (err) {
+    if (err?.code === 'ERR_CANCELED' || err?.name === 'CanceledError') return
   } finally {
     productImgCapturing.value = false
+    nbCameraUploading.value = false
+    nbCameraUploadPercent.value = 0
   }
 }
 
-function handleImageUpload(e, side) {
+async function handleImageUpload(e, side) {
   const file = e.target.files?.[0]
+  if (e.target) e.target.value = ''
   if (!file) return
   if (file.size > 5 * 1024 * 1024) {
     ElMessage.warning('图片不能超过5MB')
     return
   }
+
+  if (isNoBarcodeNewInventory.value) {
+    abortNoBarcodeSideUpload(side)
+    const ac = new AbortController()
+    noBarcodeUploadAbortBySide[side] = ac
+    const slot = noBarcodeImgUpload.value[side]
+    slot.uploading = true
+    slot.percent = 0
+    try {
+      const res = await inventoryApi.uploadImage(
+        file,
+        (pe) => {
+          if (!pe.total) return
+          slot.percent = Math.min(100, Math.round((pe.loaded / pe.total) * 100))
+        },
+        ac.signal
+      )
+      const path = res?.path || ''
+      if (!path) {
+        ElMessage.error('上传失败：未返回路径')
+        return
+      }
+      if (side === 'front') {
+        form.value.image_front = path
+        formRef.value?.validateField('image_front')
+      } else {
+        form.value.image_back = path
+      }
+    } catch (err) {
+      if (err?.code === 'ERR_CANCELED' || err?.name === 'CanceledError') return
+    } finally {
+      slot.uploading = false
+      slot.percent = 0
+      if (noBarcodeUploadAbortBySide[side] === ac) noBarcodeUploadAbortBySide[side] = null
+    }
+    return
+  }
+
   const reader = new FileReader()
   reader.onload = (ev) => {
     if (side === 'front') {
@@ -2698,7 +2857,6 @@ function handleImageUpload(e, side) {
     }
   }
   reader.readAsDataURL(file)
-  e.target.value = ''
 }
 
 async function submit() {
@@ -3243,6 +3401,9 @@ onBeforeUnmount(() => {
 .img-label-row .img-label { margin-bottom: 0; flex: 1; min-width: 0; }
 .img-label { font-size: 13px; color: #8e9bb3; margin-bottom: 8px; }
 .img-actions { display: flex; gap: 6px; margin-top: 4px; flex-wrap: wrap; }
+.nb-inventory-upload-progress { margin-top: 10px; width: 100%; }
+.nb-inventory-upload-progress--camera { margin-top: 14px; }
+.nb-inventory-upload-hint { font-size: 12px; color: #909399; margin-top: 6px; text-align: center; }
 .scanning-hint { color: #409EFF; animation: pulse 1s infinite; }
 @keyframes pulse { 0%,100% { opacity:1; } 50% { opacity:0.4; } }
 

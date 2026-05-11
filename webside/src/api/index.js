@@ -18,6 +18,9 @@ http.interceptors.request.use((config) => {
 http.interceptors.response.use(
   (res) => res.data,
   (err) => {
+    if (err.code === 'ERR_CANCELED' || err.name === 'CanceledError') {
+      return Promise.reject(err)
+    }
     if (err.response?.status === 401) {
       localStorage.removeItem('auth_token')
       localStorage.removeItem('auth_user')
@@ -80,6 +83,16 @@ export const inventoryApi = {
     return http.post('/inventory/find-by-image', fd, {
       headers: { 'Content-Type': 'multipart/form-data' },
       timeout: 15000
+    })
+  },
+  uploadImage: (file, onUploadProgress, signal) => {
+    const fd = new FormData()
+    fd.append('file', file, file?.name || 'inventory.jpg')
+    return http.post('/inventory/upload-image', fd, {
+      headers: { 'Content-Type': 'multipart/form-data' },
+      timeout: 120000,
+      onUploadProgress,
+      signal
     })
   },
   create: (data) => http.post('/inventory', data),
