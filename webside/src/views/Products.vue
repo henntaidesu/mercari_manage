@@ -725,6 +725,7 @@
       v-model="listingDialogVisible"
       :category-mappings="listingCategoryMappings"
       :initial-data="listingSeedData"
+      :listing-defaults="listingDefaultsFromServer"
       :is-mobile="isMobile"
       @saved="onListingFormSaved"
     />
@@ -1032,7 +1033,19 @@
 import { ref, computed, watch, onMounted, onBeforeUnmount, nextTick } from 'vue'
 import { ElMessage } from 'element-plus'
 import { Loading } from '@element-plus/icons-vue'
-import { inventoryApi, categoryApi, warehouseApi, authApi, scanApi, ocrApi, transactionApi, productTypeCategoryMappingApi, onSaleItemApi, listingApi } from '@/api/index.js'
+import {
+  inventoryApi,
+  categoryApi,
+  warehouseApi,
+  authApi,
+  scanApi,
+  ocrApi,
+  transactionApi,
+  productTypeCategoryMappingApi,
+  onSaleItemApi,
+  listingApi,
+  configApi
+} from '@/api/index.js'
 import SingleListingFormDialog from '@/components/SingleListingFormDialog.vue'
 
 const list = ref([])
@@ -1094,6 +1107,14 @@ const productImgCameraSelectId = ref('')
 let productImgStream = null
 const listingDialogVisible = ref(false)
 const listingSeedData = ref(null)
+/** 系统页「出品默认值」，打开出品弹窗时与 seed 合并（与 SingleListingFormDialog 字段一致） */
+const listingDefaultsFromServer = ref({
+  shipping_from_area_id: null,
+  shipping_method: null,
+  shipping_payer: null,
+  shipping_days: null,
+  meilu_account_id: null
+})
 /** 组合商品创建弹窗 */
 const combinedProductDialogVisible = ref(false)
 const combinedProductSubmitting = ref(false)
@@ -1455,7 +1476,15 @@ const productEditDialogWidth = computed(() => {
 
 const rules = {
   barcode: [{ required: true, message: '请填写或扫描条形码', trigger: 'blur' }],
-  image_front: [{ validator: (_, val, cb) => val ? cb() : cb(new Error('请拍摄或上传正面图')), trigger: 'change' }],
+  image_front: [
+    {
+      validator: (_, val, cb) => {
+        if (Number(form.value?.is_combined || 0) === 1) return cb()
+        return val ? cb() : cb(new Error('请拍摄或上传正面图'))
+      },
+      trigger: 'change',
+    },
+  ],
   price: [
     {
       validator: (_, val, cb) => {
@@ -2611,8 +2640,9 @@ function openCombinedProductDialog(rows) {
     product_type_id: sameType ? first.product_type_id : null,
     owner_user_id: sameOwner ? first.owner_user_id : null,
     warehouse_id: sameWarehouse ? first.warehouse_id : null,
-    image_front: first.image_front || first.image || null,
-    image_back: first.image_back || null
+    /** 组合商品不继承来源库存的正/背面图，需在编辑中单独上传 */
+    image_front: null,
+    image_back: null
   }
   combinedProductDialogVisible.value = true
 }
@@ -2657,8 +2687,8 @@ async function submitCombinedProduct() {
     warehouse_id: combinedProductForm.value.warehouse_id || null,
     listing_title: name,
     listing_body: desc || sourceText,
-    image_front: combinedProductForm.value.image_front || null,
-    image_back: combinedProductForm.value.image_back || null,
+    image_front: null,
+    image_back: null,
     components
   }
   combinedProductSubmitting.value = true
@@ -2871,7 +2901,7 @@ function isListingPickSelectable(row) {
   return Number(row?.quantity ?? 0) > 0
 }
 
-/** 进入「组合商品」：在列表中多选库存后再填表单 */
+/** 进入「组合商品」：在列表中单选或多选库存后再填表单（单条时可调「每套数量」） */
 async function enterListingPickMode() {
   listingPickMode.value = true
   listingPickIds.value = new Set()
@@ -2947,10 +2977,6 @@ async function confirmListingPick() {
   )
   if (!rows.length) {
     ElMessage.warning('所选商品均无库存，无法组合')
-    return
-  }
-  if (rows.length < 2) {
-    ElMessage.warning('组合商品至少需要选择两个不同商品')
     return
   }
   await exitListingPickMode()
@@ -3508,6 +3534,21 @@ watch(isMobile, (mobile) => {
 onBeforeUnmount(stopScan)
 onBeforeUnmount(stopContScan)
 
+async function refreshListingDefaults() {
+  try {
+    const d = await configApi.getListingDefaults()
+    listingDefaultsFromServer.value = {
+      shipping_from_area_id: d?.shipping_from_area_id ?? null,
+      shipping_method: d?.shipping_method ?? null,
+      shipping_payer: d?.shipping_payer ?? null,
+      shipping_days: d?.shipping_days ?? null,
+      meilu_account_id: d?.meilu_account_id ?? null
+    }
+  } catch {
+    /* 拦截器已提示；保持当前占位 */
+  }
+}
+
 onMounted(async () => {
   updateViewportState()
   window.addEventListener('resize', updateViewportState)
@@ -3517,6 +3558,7 @@ onMounted(async () => {
     authApi.listUsers(),
     productTypeCategoryMappingApi.list()
   ])
+  await refreshListingDefaults()
   categories.value = cats
   warehouses.value = whs
   productTypes.value = buildProductTypeOptionsFromMappings(mappings)

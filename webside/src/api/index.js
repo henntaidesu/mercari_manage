@@ -236,6 +236,12 @@ export const scanApi = {
   }
 }
 
+// 应用配置（系统页：出品默认值等，对应库存出品表单）
+export const configApi = {
+  getListingDefaults: () => http.get('/config/listing-defaults'),
+  putListingDefaults: (data) => http.put('/config/listing-defaults', data)
+}
+
 // 认证
 export const authApi = {
   login: (data) => http.post('/auth/login', data),

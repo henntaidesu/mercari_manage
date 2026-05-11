@@ -212,6 +212,8 @@ const props = defineProps({
   modelValue: { type: Boolean, default: false },
   categoryMappings: { type: Array, default: () => [] },
   initialData: { type: Object, default: null },
+  /** 系统页保存的出品默认值（与表单字段对应）；库存 seed 优先 */
+  listingDefaults: { type: Object, default: null },
   isMobile: { type: Boolean, default: false }
 })
 
@@ -511,18 +513,30 @@ async function fetchMeiluAccounts() {
   }
 }
 
+function pickListingStr(seedVal, cfgVal, fallback) {
+  const a = seedVal != null && String(seedVal).trim() ? String(seedVal).trim() : ''
+  if (a) return a
+  const b = cfgVal != null && String(cfgVal).trim() ? String(cfgVal).trim() : ''
+  if (b) return b
+  return fallback
+}
+
 watch(
   () => props.modelValue,
   (visible) => {
     if (!visible) return
     fetchMeiluAccounts()
     const seed = props.initialData || {}
+    const cfg = props.listingDefaults || {}
     const seedMappingId = seed.category_mapping_id != null ? String(seed.category_mapping_id) : null
     const seedPath = seedMappingId
       ? (categoryTypeTreeMeta.value.idToPath.get(seedMappingId) || [])
       : []
-    const areaId = normalizeShippingFromSeed(seed.shipping_from)
+    const areaFromSeed = normalizeShippingFromSeed(seed.shipping_from)
+    const areaFromCfg = normalizeShippingFromSeed(cfg.shipping_from_area_id)
+    const areaId = areaFromSeed || areaFromCfg || ''
     const accId = seed.meilu_account_id != null ? Number(seed.meilu_account_id) : null
+    const cfgMid = cfg.meilu_account_id != null ? Number(cfg.meilu_account_id) : null
     const seedPrice = seed.price != null ? Math.round(Number(seed.price)) : 0
     const priceVal = Number.isFinite(seedPrice) && seedPrice >= 0 ? seedPrice : 0
     form.value = {
@@ -539,7 +553,15 @@ watch(
       inventory_ids: Array.isArray(seed.inventory_ids)
         ? seed.inventory_ids.map((x) => Number(x)).filter((x) => Number.isFinite(x))
         : [],
-      meilu_account_id: Number.isFinite(accId) && accId > 0 ? accId : null
+      meilu_account_id:
+        Number.isFinite(accId) && accId > 0
+          ? accId
+          : Number.isFinite(cfgMid) && cfgMid > 0
+            ? cfgMid
+            : null,
+      shipping_payer: pickListingStr(seed.shipping_payer, cfg.shipping_payer, 'seller'),
+      shipping_method: pickListingStr(seed.shipping_method, cfg.shipping_method, 'undecided'),
+      shipping_days: pickListingStr(seed.shipping_days, cfg.shipping_days, '2_3_days')
     }
     syncListingPriceFromForm()
   }

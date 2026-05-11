@@ -19,6 +19,7 @@ from .models import (
     MeiluAccountModel,
     OnSaleItemModel,
     ProductTypeCategoryMappingModel,
+    ConfigEntryModel,
 )
 
 
@@ -298,6 +299,7 @@ class DBManager:
         """按依赖顺序返回所有模型类"""
         return [
             UserModel,        # 无外键依赖（登录依赖）
+            ConfigEntryModel,  # 键值配置（出品默认值等）
             CategoryModel,    # 无外键依赖
             WarehouseModel,   # 无外键依赖
             ProductModel,     # 依赖 categories

@@ -223,8 +223,8 @@ def _normalize_combined_components(components: list[CombinedProductComponent]) -
             raise HTTPException(status_code=400, detail="组合商品的商品数量必须大于0")
         grouped[inventory_id] = grouped.get(inventory_id, 0) + quantity
     items = [{"inventory_id": iid, "quantity": qty} for iid, qty in grouped.items()]
-    if len(items) < 2:
-        raise HTTPException(status_code=400, detail="组合商品至少需要选择两个不同商品")
+    if not items:
+        raise HTTPException(status_code=400, detail="组合商品至少需要一件来源商品")
     return items
 
 
@@ -460,7 +460,7 @@ async def upload_inventory_image(file: UploadFile = File(...)):
 
 @router.post("/combine")
 def create_combined_product(data: CombinedProductCreate, claims: dict = Depends(require_auth)):
-    """将多个库存商品组合成一个新的库存商品，并扣减来源库存。"""
+    """将一件或多件库存商品组合成一个新的库存商品，并扣减来源库存（单 SKU 时通过 components 数量表示每套几件）。"""
     combo_quantity = int(data.quantity or 0)
     if combo_quantity <= 0:
         raise HTTPException(status_code=400, detail="组合商品库存数量必须大于0")
