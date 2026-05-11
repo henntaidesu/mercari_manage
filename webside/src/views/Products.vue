@@ -62,7 +62,7 @@
               </div>
               <div class="search-actions-ios-row">
                 <el-button type="warning" @click="openNoBarcodeEntry">无码入库</el-button>
-                <el-button @click="enterListingPickMode()">组合出品</el-button>
+                <el-button @click="enterListingPickMode()">组合商品</el-button>
               </div>
             </template>
             <template v-else>
@@ -77,11 +77,11 @@
             <template v-if="!listingPickMode">
               <el-button type="success" @click="openContScan">条码入库</el-button>
               <el-button type="warning" @click="openNoBarcodeEntry">无码入库</el-button>
-              <el-button @click="enterListingPickMode()">组合出品</el-button>
+              <el-button @click="enterListingPickMode()">组合商品</el-button>
             </template>
             <template v-else>
               <span class="listing-pick-count">已选 {{ listingPickIds.size }} 条</span>
-              <el-button type="primary" :disabled="!listingPickIds.size" @click="confirmListingPick">下一步：填写出品表单</el-button>
+              <el-button type="primary" :disabled="!listingPickIds.size" @click="confirmListingPick">下一步：创建组合商品</el-button>
               <el-button @click="exitListingPickMode">取消选择</el-button>
             </template>
           </template>
@@ -190,7 +190,10 @@
               @keyup.enter="saveInlineEdit(row, 'name')"
               @blur="saveInlineEdit(row, 'name')"
             />
-            <div v-else class="editable-cell" @click="startInlineEdit(row, 'name')">{{ row.name || '-' }}</div>
+            <div v-else class="editable-cell" @click="startInlineEdit(row, 'name')">
+              <el-tag v-if="Number(row.is_combined || 0) === 1" size="small" type="success" effect="light">组合</el-tag>
+              {{ row.name || '-' }}
+            </div>
           </template>
         </el-table-column>
         <el-table-column label="游戏分类" width="120" align="center" header-align="center">
@@ -669,13 +672,70 @@
       :is-mobile="isMobile"
       @saved="onListingFormSaved"
     />
-    <CombinedListingFormDialog
-      v-model="combinedListingDialogVisible"
-      :category-mappings="listingCategoryMappings"
-      :initial-data="combinedListingSeedData"
-      :is-mobile="isMobile"
-      @saved="onListingFormSaved"
-    />
+
+    <el-dialog
+      v-model="combinedProductDialogVisible"
+      title="组合商品"
+      :width="isMobile ? '94vw' : '720px'"
+      class="product-dialog"
+      destroy-on-close
+    >
+      <el-form :model="combinedProductForm" label-width="112px" class="combined-product-form">
+        <el-form-item label="商品名称" required>
+          <el-input v-model="combinedProductForm.name" placeholder="请输入组合商品名称" clearable />
+        </el-form-item>
+        <el-row :gutter="12">
+          <el-col :xs="24" :sm="12">
+            <el-form-item label="组合库存数" required>
+              <el-input
+                v-model="combinedProductForm.quantity"
+                inputmode="numeric"
+                placeholder="要生成几套组合商品"
+              />
+            </el-form-item>
+          </el-col>
+          <el-col :xs="24" :sm="12">
+            <el-form-item label="单价">
+              <el-input v-model="combinedProductForm.price" inputmode="numeric" placeholder="组合商品单价" />
+            </el-form-item>
+          </el-col>
+        </el-row>
+        <el-form-item label="组成商品" required>
+          <div class="combined-product-items">
+            <div v-for="item in combinedProductRows" :key="item.id" class="combined-product-item">
+              <div class="combined-product-item__main">
+                <div class="combined-product-item__name">
+                  管理 {{ item.id }} · {{ item.name || '-' }}
+                </div>
+                <div class="combined-product-item__meta">
+                  当前库存 {{ Number(item.quantity || 0) }}，每套使用
+                </div>
+              </div>
+              <el-input
+                v-model="item.combine_quantity"
+                class="combined-product-item__qty"
+                inputmode="numeric"
+                @blur="normalizeCombinedProductItemQty(item)"
+              />
+            </div>
+          </div>
+        </el-form-item>
+        <el-form-item label="备注">
+          <el-input
+            v-model="combinedProductForm.description"
+            type="textarea"
+            :rows="3"
+            placeholder="可选，默认会记录组合来源"
+          />
+        </el-form-item>
+      </el-form>
+      <template #footer>
+        <el-button @click="combinedProductDialogVisible = false">取消</el-button>
+        <el-button type="primary" :loading="combinedProductSubmitting" @click="submitCombinedProduct">
+          创建组合商品
+        </el-button>
+      </template>
+    </el-dialog>
 
     <el-dialog
       v-model="scanVisible"
@@ -898,7 +958,6 @@ import { ElMessage } from 'element-plus'
 import { Loading } from '@element-plus/icons-vue'
 import { inventoryApi, categoryApi, warehouseApi, authApi, scanApi, ocrApi, transactionApi, productTypeCategoryMappingApi, onSaleItemApi, listingApi } from '@/api/index.js'
 import SingleListingFormDialog from '@/components/SingleListingFormDialog.vue'
-import CombinedListingFormDialog from '@/components/CombinedListingFormDialog.vue'
 
 const list = ref([])
 const loading = ref(false)
@@ -959,10 +1018,17 @@ const productImgCameraSelectId = ref('')
 let productImgStream = null
 const listingDialogVisible = ref(false)
 const listingSeedData = ref(null)
-/** 组合出品独立弹窗 */
-const combinedListingDialogVisible = ref(false)
-const combinedListingSeedData = ref(null)
-/** 组合出品「在列表中选择」模式 */
+/** 组合商品创建弹窗 */
+const combinedProductDialogVisible = ref(false)
+const combinedProductSubmitting = ref(false)
+const combinedProductRows = ref([])
+const combinedProductForm = ref({
+  name: '',
+  quantity: 1,
+  price: 0,
+  description: ''
+})
+/** 组合商品「在列表中选择」模式 */
 const listingPickMode = ref(false)
 /** 已选中的库存 id 集合 */
 const listingPickIds = ref(new Set())
@@ -2339,6 +2405,95 @@ function buildCombinedListingSeedFromInventoryRows(rows) {
   }
 }
 
+function toPositiveInt(value, fallback = 1) {
+  const n = parseInt(String(value ?? '').trim(), 10)
+  return Number.isFinite(n) && n > 0 ? n : fallback
+}
+
+function buildCombinedProductDescription(rows) {
+  return rows
+    .map((r) => `管理番号 ${r.id}：${r.name || '-'} × ${toPositiveInt(r.combine_quantity, 1)}`)
+    .join('\n')
+}
+
+function openCombinedProductDialog(rows) {
+  const first = rows[0]
+  const sameCategory = rows.every((r) => r.category_id === first.category_id)
+  const sameType = rows.every((r) => r.product_type_id === first.product_type_id)
+  const sameOwner = rows.every((r) => r.owner_user_id === first.owner_user_id)
+  const sameWarehouse = rows.every((r) => r.warehouse_id === first.warehouse_id)
+  combinedProductRows.value = rows.map((r) => ({ ...r, combine_quantity: 1 }))
+  combinedProductForm.value = {
+    name: `${rows.map((r) => String(r.name || '').trim()).filter(Boolean).join(' + ') || '组合商品'} 组合`,
+    quantity: 1,
+    price: rows.reduce((sum, r) => sum + Math.round(Number(r.price ?? 0)), 0),
+    description: '',
+    category_id: sameCategory ? first.category_id : null,
+    product_type_id: sameType ? first.product_type_id : null,
+    owner_user_id: sameOwner ? first.owner_user_id : null,
+    warehouse_id: sameWarehouse ? first.warehouse_id : null,
+    image_front: first.image_front || first.image || null,
+    image_back: first.image_back || null
+  }
+  combinedProductDialogVisible.value = true
+}
+
+function normalizeCombinedProductItemQty(item) {
+  item.combine_quantity = toPositiveInt(item.combine_quantity, 1)
+}
+
+async function submitCombinedProduct() {
+  const comboQty = toPositiveInt(combinedProductForm.value.quantity, 0)
+  if (comboQty <= 0) {
+    ElMessage.warning('组合库存数必须大于 0')
+    return
+  }
+  const name = String(combinedProductForm.value.name || '').trim()
+  if (!name) {
+    ElMessage.warning('请输入组合商品名称')
+    return
+  }
+  const components = combinedProductRows.value.map((r) => ({
+    inventory_id: r.id,
+    quantity: toPositiveInt(r.combine_quantity, 1)
+  }))
+  for (const comp of components) {
+    const row = combinedProductRows.value.find((r) => r.id === comp.inventory_id)
+    const need = comp.quantity * comboQty
+    if (need > Number(row?.quantity || 0)) {
+      ElMessage.warning(`管理番号 ${comp.inventory_id} 库存不足，需要 ${need}，当前 ${Number(row?.quantity || 0)}`)
+      return
+    }
+  }
+  const sourceText = buildCombinedProductDescription(combinedProductRows.value)
+  const desc = String(combinedProductForm.value.description || '').trim()
+  const payload = {
+    name,
+    quantity: comboQty,
+    price: Math.max(0, Math.round(Number(combinedProductForm.value.price ?? 0))),
+    description: desc || `组合来源：\n${sourceText}`,
+    category_id: combinedProductForm.value.category_id || null,
+    product_type_id: combinedProductForm.value.product_type_id || null,
+    owner_user_id: combinedProductForm.value.owner_user_id || null,
+    warehouse_id: combinedProductForm.value.warehouse_id || null,
+    listing_title: name,
+    listing_body: desc || sourceText,
+    image_front: combinedProductForm.value.image_front || null,
+    image_back: combinedProductForm.value.image_back || null,
+    components
+  }
+  combinedProductSubmitting.value = true
+  try {
+    const res = await inventoryApi.combine(payload)
+    ElMessage.success(`组合商品已创建，管理番号：${res?.id ?? '-'}`)
+    combinedProductDialogVisible.value = false
+    await load({ resetPage: false })
+    loadInventoryStats()
+  } finally {
+    combinedProductSubmitting.value = false
+  }
+}
+
 /** 煤炉 WebDriver 自动化返回的 *_error 字段 → 中文项目名（用于「上架失败」提示） */
 const WEB_DRIVE_LISTING_ERROR_LABELS = [
   ['switch_error', '页面开关'],
@@ -2532,12 +2687,12 @@ async function onListingFormSaved(data) {
   loadInventoryStats()
 }
 
-/** 组合出品可选：库存大于 0 */
+/** 组合商品可选：库存大于 0 */
 function isListingPickSelectable(row) {
   return Number(row?.quantity ?? 0) > 0
 }
 
-/** 进入「组合出品」：在列表中多选库存后再填表单 */
+/** 进入「组合商品」：在列表中多选库存后再填表单 */
 async function enterListingPickMode() {
   listingPickMode.value = true
   listingPickIds.value = new Set()
@@ -2612,12 +2767,15 @@ async function confirmListingPick() {
     (r) => idSet.has(r.id) && isListingPickSelectable(r)
   )
   if (!rows.length) {
-    ElMessage.warning('所选商品均无库存，无法出品')
+    ElMessage.warning('所选商品均无库存，无法组合')
     return
   }
-  combinedListingSeedData.value = buildCombinedListingSeedFromInventoryRows(rows)
+  if (rows.length < 2) {
+    ElMessage.warning('组合商品至少需要选择两个不同商品')
+    return
+  }
   await exitListingPickMode()
-  combinedListingDialogVisible.value = true
+  openCombinedProductDialog(rows)
 }
 
 function triggerFileInputOnly(side) {
@@ -3667,6 +3825,42 @@ onBeforeUnmount(() => {
 /* 选择模式下，整张表行的鼠标指针变为可点击 */
 .listing-pick-mode-active .el-table tbody tr {
   cursor: pointer;
+}
+
+.combined-product-items {
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.combined-product-item {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 12px;
+  border: 1px solid #ebeef5;
+  border-radius: 8px;
+  background: #fafafa;
+}
+.combined-product-item__main {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+.combined-product-item__name {
+  font-weight: 600;
+  color: #303133;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.combined-product-item__meta {
+  margin-top: 4px;
+  font-size: 12px;
+  color: #909399;
+}
+.combined-product-item__qty {
+  width: 96px;
+  flex: 0 0 auto;
 }
 
 /* 出品自动化全屏等待（teleport 到 body，须无 scoped；黑色主题） */

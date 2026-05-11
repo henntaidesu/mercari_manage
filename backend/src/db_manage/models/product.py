@@ -89,6 +89,16 @@ class ProductModel(BaseModel):
                 'not_null': True,
                 'default': 0,
             },
+            'is_combined': {
+                'type': 'INTEGER',
+                'not_null': True,
+                'default': 0,
+            },
+            'combined_items': {
+                'type': 'TEXT',
+                'not_null': False,
+                'default': None,
+            },
             'description': {
                 'type': 'TEXT',
                 'not_null': False,
