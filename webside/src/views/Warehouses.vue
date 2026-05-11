@@ -516,7 +516,7 @@ const migrateTargetCascaderOptions = computed(() => {
           .sort((a, b) => String(a.name || '').localeCompare(String(b.name || ''), 'zh-CN'))
           .map((r) => ({
             value: `SID:${r.id}`,
-            label: warehouseShelfLabel(r),
+            label: String(r?.name ?? '').trim() || '（未设货架号）',
             children: [],
           })),
       })),

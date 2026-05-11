@@ -180,7 +180,6 @@
             <span v-else class="thumb-fallback">-</span>
           </template>
         </el-table-column>
-        <el-table-column label="条形码" prop="barcode" min-width="150" align="left" header-align="left" />
         <el-table-column label="商品名称" min-width="130" align="left" header-align="left">
           <template #default="{ row }">
             <el-input
@@ -323,10 +322,11 @@
     >
       <el-form :model="form" :rules="rules" ref="formRef">
         <!-- 条形码行 -->
-        <el-form-item prop="barcode">
+        <el-form-item label="条形码" prop="barcode">
           <el-input
             v-model="form.barcode"
             placeholder="条形码（必填）"
+            class="listing-field-fullwidth"
             size="large"
             clearable
             :disabled="Boolean(form.id)"
@@ -589,6 +589,24 @@
       @closed="onProductImgCameraClosed"
     >
       <div class="scan-box">
+        <div v-if="inventoryCameraDevices.length > 1" class="camera-device-row">
+          <span class="camera-device-label">摄像头</span>
+          <el-select
+            v-model="productImgCameraSelectId"
+            filterable
+            placeholder="选择摄像头"
+            class="camera-device-select"
+            :disabled="Boolean(productImgPreviewUrl) || productImgCapturing"
+            @change="onProductImgCameraDeviceChanged"
+          >
+            <el-option
+              v-for="d in inventoryCameraDevices"
+              :key="d.deviceId"
+              :label="d.label"
+              :value="d.deviceId"
+            />
+          </el-select>
+        </div>
         <video
           v-show="!productImgPreviewUrl"
           ref="productImgVideoRef"
@@ -858,7 +876,6 @@ import { ref, computed, watch, onMounted, onBeforeUnmount, nextTick } from 'vue'
 import { ElMessage } from 'element-plus'
 import { Loading } from '@element-plus/icons-vue'
 import { inventoryApi, categoryApi, warehouseApi, authApi, scanApi, ocrApi, transactionApi, productTypeCategoryMappingApi, onSaleItemApi, listingApi } from '@/api/index.js'
-import { warehouseShelfLabel } from '@/utils/warehouseLabel.js'
 import SingleListingFormDialog from '@/components/SingleListingFormDialog.vue'
 import CombinedListingFormDialog from '@/components/CombinedListingFormDialog.vue'
 
@@ -917,6 +934,7 @@ const productImgCameraSide = ref('front')
 const productImgVideoRef = ref()
 const productImgPreviewUrl = ref(null)
 const productImgCapturing = ref(false)
+const productImgCameraSelectId = ref('')
 let productImgStream = null
 const listingDialogVisible = ref(false)
 const listingSeedData = ref(null)
@@ -928,6 +946,7 @@ const listingPickMode = ref(false)
 /** 已选中的库存 id 集合 */
 const listingPickIds = ref(new Set())
 const listingCategoryMappings = ref([])
+const noBarcodeEntryMode = ref(false)
 /** WebDriver 出品自动化：全屏等待与步骤文案（与 progress_job_id 轮询同步） */
 const listingPostOverlayVisible = ref(false)
 const listingPostOverlayTitle = ref('正在上架')
@@ -1067,6 +1086,43 @@ const CAMERA_CONSTRAINTS = {
 const INVENTORY_CAMERA_STORAGE_KEY = 'mercari.inventory.preferredCameraDeviceId'
 const inventoryCameraDevices = ref([])
 const inventoryCameraSelectId = ref('')
+const NO_BARCODE_FORM_CACHE_KEY = 'mercari.inventory.noBarcode.lastSelections'
+
+function toNullableInt(v) {
+  const n = Number(v)
+  return Number.isFinite(n) && n > 0 ? Math.round(n) : null
+}
+
+function readNoBarcodeFormSelectionsCache() {
+  try {
+    const raw = localStorage.getItem(NO_BARCODE_FORM_CACHE_KEY)
+    if (!raw) return null
+    const parsed = JSON.parse(raw)
+    if (!parsed || typeof parsed !== 'object') return null
+    return {
+      category_id: toNullableInt(parsed.category_id),
+      product_type_id: toNullableInt(parsed.product_type_id),
+      owner_user_id: toNullableInt(parsed.owner_user_id),
+      warehouse_id: toNullableInt(parsed.warehouse_id)
+    }
+  } catch {
+    return null
+  }
+}
+
+function writeNoBarcodeFormSelectionsCache(data) {
+  try {
+    const payload = {
+      category_id: toNullableInt(data?.category_id),
+      product_type_id: toNullableInt(data?.product_type_id),
+      owner_user_id: toNullableInt(data?.owner_user_id),
+      warehouse_id: toNullableInt(data?.warehouse_id)
+    }
+    localStorage.setItem(NO_BARCODE_FORM_CACHE_KEY, JSON.stringify(payload))
+  } catch {
+    /* ignore */
+  }
+}
 
 function readSavedInventoryCameraDeviceId() {
   try {
@@ -1721,7 +1777,8 @@ const warehouseTreeMeta = computed(() => {
         const id = Number(w.id)
         const leafVal = `WHS:${w.id}`
         if (Number.isFinite(id)) idToPath.set(id, [l1Val, l2Val, leafVal])
-        return { value: leafVal, label: warehouseShelfLabel(w), children: [] }
+        const code = String(w?.name ?? '').trim() || '（未设货架号）'
+        return { value: leafVal, label: code, children: [] }
       })
       midNodes.push({ value: l2Val, label: labelMid, children: leaves })
     }
@@ -2049,6 +2106,7 @@ const pagedList = computed(() => {
 })
 
 function openDialog(row = null) {
+  noBarcodeEntryMode.value = false
   categoryCreateMode.value = false
   warehouseCreateMode.value = false
   newCategoryName.value = ''
@@ -2102,6 +2160,7 @@ function openDialog(row = null) {
 
 watch(dialogVisible, (visible) => {
   if (!visible) {
+    noBarcodeEntryMode.value = false
     categoryCreateMode.value = false
     warehouseCreateMode.value = false
     newCategoryName.value = ''
@@ -2120,6 +2179,16 @@ watch(
 
 function openNoBarcodeEntry() {
   openDialog()
+  noBarcodeEntryMode.value = true
+  const cached = readNoBarcodeFormSelectionsCache()
+  if (cached) {
+    form.value.category_id = cached.category_id
+    form.value.product_type_id = cached.product_type_id
+    form.value.owner_user_id = cached.owner_user_id
+    form.value.warehouse_id = cached.warehouse_id
+    syncCascaderPathByProductTypeId(form.value.product_type_id)
+    syncWarehouseCascaderPathByWarehouseId(form.value.warehouse_id)
+  }
   const uuid = (typeof crypto !== 'undefined' && crypto.randomUUID)
     ? crypto.randomUUID()
     : `nb-${Date.now()}-${Math.random().toString(16).slice(2, 10)}`
@@ -2487,7 +2556,46 @@ function stopProductImgCameraStream() {
 
 function onProductImgCameraClosed() {
   productImgPreviewUrl.value = null
+  productImgCameraSelectId.value = ''
   stopProductImgCameraStream()
+}
+
+async function onProductImgCameraDeviceChanged(deviceId) {
+  if (!deviceId || productImgCapturing.value || productImgPreviewUrl.value) return
+  const v = productImgVideoRef.value
+  if (!v) return
+  stopProductImgCameraStream()
+  try {
+    productImgStream = await getInventoryCameraStream(deviceId)
+    v.srcObject = productImgStream
+    await new Promise((resolve) => {
+      v.onloadedmetadata = resolve
+    })
+    await refreshInventoryCameraDeviceList()
+    syncInventoryCameraSelectFromStream(productImgStream)
+    productImgCameraSelectId.value = inventoryCameraSelectId.value
+    const okDev = productImgStream.getVideoTracks()[0]?.getSettings?.()?.deviceId
+    if (okDev) writeSavedInventoryCameraDeviceId(okDev)
+  } catch {
+    ElMessage.error('无法切换到所选摄像头，将尝试默认摄像头')
+    try {
+      productImgStream = await getInventoryCameraStream(null)
+      v.srcObject = productImgStream
+      await new Promise((resolve) => {
+        v.onloadedmetadata = resolve
+      })
+      await refreshInventoryCameraDeviceList()
+      syncInventoryCameraSelectFromStream(productImgStream)
+      productImgCameraSelectId.value = inventoryCameraSelectId.value
+      const fbDev = productImgStream.getVideoTracks()[0]?.getSettings?.()?.deviceId
+      if (fbDev) writeSavedInventoryCameraDeviceId(fbDev)
+    } catch {
+      ElMessage.error('无法打开摄像头，将改为从本机选择图片')
+      productImgCameraVisible.value = false
+      stopProductImgCameraStream()
+      triggerFileInputOnly(productImgCameraSide.value)
+    }
+  }
 }
 
 /**
@@ -2511,6 +2619,9 @@ async function openProductImageSource(side) {
       await new Promise((resolve) => {
         v.onloadedmetadata = () => resolve()
       })
+      await refreshInventoryCameraDeviceList()
+      syncInventoryCameraSelectFromStream(productImgStream)
+      productImgCameraSelectId.value = inventoryCameraSelectId.value
       const curDev = productImgStream.getVideoTracks()[0]?.getSettings?.()?.deviceId
       if (curDev) writeSavedInventoryCameraDeviceId(curDev)
     } catch {
@@ -2605,8 +2716,14 @@ async function submit() {
     if (payload.on_sale_quantity != null) {
       payload.on_sale_quantity = Math.max(0, Math.round(Number(payload.on_sale_quantity)))
     }
-    if (payload.id) await inventoryApi.update(payload.id, payload)
-    else await inventoryApi.create(payload)
+    if (payload.id) {
+      await inventoryApi.update(payload.id, payload)
+    } else {
+      await inventoryApi.create(payload)
+      if (noBarcodeEntryMode.value) {
+        writeNoBarcodeFormSelectionsCache(payload)
+      }
+    }
     ElMessage.success('保存成功')
     dialogVisible.value = false
     await load({ resetPage: false })
