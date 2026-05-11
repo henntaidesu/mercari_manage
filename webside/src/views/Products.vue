@@ -324,7 +324,7 @@
           >
             <template #append>
               <el-button @click="openScanDialog">
-                <el-icon><Camera /></el-icon> 扫码
+                <el-icon><Camera /></el-icon> {{ barcodePickButtonLabel }}
               </el-button>
             </template>
           </el-input>
@@ -451,10 +451,17 @@
                 <img v-if="form.image_front" :src="form.image_front" class="preview-img" />
                 <div v-else class="upload-placeholder">
                   <el-icon size="36" color="#4a5a72"><Camera /></el-icon>
-                  <div class="upload-tip">点击上传正面图</div>
+                  <div class="upload-tip">{{ formImageUploadTip }}</div>
                 </div>
               </div>
-              <input ref="fileInputFront" type="file" accept="image/*" capture="environment" style="display:none" @change="handleImageUpload($event, 'front')" />
+              <input
+                ref="fileInputFront"
+                type="file"
+                accept="image/*"
+                :capture="canPickImageWithCamera ? 'environment' : undefined"
+                style="display:none"
+                @change="handleImageUpload($event, 'front')"
+              />
               <div class="img-actions">
                 <el-button v-if="form.image_front" size="small" type="danger" text @click="form.image_front = null">移除</el-button>
                 <el-button v-if="form.image_front" size="small" type="primary" text @click="openOcr('front')">OCR识别名称</el-button>
@@ -468,10 +475,17 @@
                 <img v-if="form.image_back" :src="form.image_back" class="preview-img" />
                 <div v-else class="upload-placeholder">
                   <el-icon size="36" color="#4a5a72"><Camera /></el-icon>
-                  <div class="upload-tip">点击上传背面图</div>
+                  <div class="upload-tip">{{ formImageUploadTip }}</div>
                 </div>
               </div>
-              <input ref="fileInputBack" type="file" accept="image/*" capture="environment" style="display:none" @change="handleImageUpload($event, 'back')" />
+              <input
+                ref="fileInputBack"
+                type="file"
+                accept="image/*"
+                :capture="canPickImageWithCamera ? 'environment' : undefined"
+                style="display:none"
+                @change="handleImageUpload($event, 'back')"
+              />
               <div class="img-actions">
                 <el-button v-if="form.image_back" size="small" type="danger" text @click="form.image_back = null">移除</el-button>
                 <el-button v-if="form.image_back" size="small" type="primary" text @click="openOcr('back')">OCR识别名称</el-button>
@@ -571,7 +585,7 @@
       ref="cameraInputRef"
       type="file"
       accept="image/*"
-      capture="environment"
+      :capture="canPickImageWithCamera ? 'environment' : undefined"
       style="display:none"
       @change="handleCameraCapture"
     />
@@ -618,8 +632,10 @@
           当前为 <strong>HTTP</strong> 且非 localhost：浏览器不允许网页使用摄像头连续预览，只能选图/拍照。
           若要用摄像头：请用 <strong>https://</strong> 打开本站（开发环境为自签名证书，在浏览器中选「高级 → 继续访问」），或使用 <strong>http://localhost:9600</strong>。
         </p>
-        <p style="color:#8e9bb3;margin:12px 0">也可点击下方，从相册或相机拍摄条形码图片进行识别。</p>
-        <el-button type="primary" @click="triggerContCapture">拍照 / 选图识别</el-button>
+        <p style="color:#8e9bb3;margin:12px 0">
+          {{ canPickImageWithCamera ? '也可点击下方拍照，或从相册选择条形码图片进行识别。' : '也可点击下方上传条形码图片进行识别。' }}
+        </p>
+        <el-button type="primary" @click="triggerContCapture">{{ formImageUploadTip }}</el-button>
       </div>
 
       <!-- 找到商品（须同时有 contProduct，避免二次入库时 contState 仍为 found 但 product 已清空导致渲染报错、弹窗空白） -->
@@ -685,7 +701,7 @@
       ref="contCameraRefA"
       type="file"
       accept="image/*"
-      capture="environment"
+      :capture="canPickImageWithCamera ? 'environment' : undefined"
       style="display:none"
       @change="handleContCapture"
     />
@@ -693,7 +709,7 @@
       ref="contCameraRefB"
       type="file"
       accept="image/*"
-      capture="environment"
+      :capture="canPickImageWithCamera ? 'environment' : undefined"
       style="display:none"
       @change="handleContCapture"
     />
@@ -815,6 +831,12 @@ const videoRef = ref()
 const cameraInputRef = ref()
 const isMobile = ref(false)
 const isIOS = ref(false)
+/** iOS 或存在 getUserMedia 时，file input 可加 capture 走相机；否则纯上传 */
+const canPickImageWithCamera = computed(
+  () => isIOS.value || typeof navigator.mediaDevices?.getUserMedia === 'function'
+)
+const formImageUploadTip = computed(() => (canPickImageWithCamera.value ? '点击拍照' : '点击上传'))
+const barcodePickButtonLabel = computed(() => (canPickImageWithCamera.value ? '拍照' : '上传'))
 const editingCell = ref('')
 const editingValue = ref('')
 const savingInlineCell = ref('')
@@ -1097,6 +1119,7 @@ function updateViewportState() {
   const platform = navigator.platform || ''
   isIOS.value = /iPhone|iPad|iPod/i.test(ua) || (platform === 'MacIntel' && navigator.maxTouchPoints > 1)
 }
+updateViewportState()
 
 // ============ OCR 框选 ============
 
