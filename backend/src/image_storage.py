@@ -54,15 +54,18 @@ def save_base64_image(data_url: str, prefix: str = "product") -> str:
     return f"/imges/{filename}"
 
 
-async def save_upload_image(file: UploadFile, prefix: str = "file") -> str:
+async def save_upload_image(
+    file: UploadFile, prefix: str = "file", max_bytes: int = 25 * 1024 * 1024
+) -> str:
     ensure_image_dir()
     if not (file.content_type or "").startswith("image/"):
         raise HTTPException(status_code=400, detail="请上传图片文件")
     content = await file.read()
     if not content:
         raise HTTPException(status_code=400, detail="图片内容为空")
-    if len(content) > 5 * 1024 * 1024:
-        raise HTTPException(status_code=400, detail="图片不能超过5MB")
+    if len(content) > max_bytes:
+        mb = max_bytes // (1024 * 1024)
+        raise HTTPException(status_code=400, detail=f"图片不能超过{mb}MB")
     ext = (file.filename or "").rsplit(".", 1)[-1].lower() if "." in (file.filename or "") else "jpg"
     if ext not in {"jpg", "jpeg", "png", "webp", "gif"}:
         ext = "jpg"

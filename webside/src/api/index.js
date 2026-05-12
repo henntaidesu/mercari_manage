@@ -140,6 +140,9 @@ export const orderApi = {
   stats: (params) => http.get('/orders/stats', { params }),
   /** 订单展开：从说明解析的待出库明细（管理 ID、仓库等） */
   outboundLines: (params) => http.get('/orders/outbound-lines', { params }),
+  /** 订单二级列表：未匹配库存的明细行手动关联 inventory_id */
+  bindOutboundLineInventory: (lineId, data) =>
+    http.patch(`/orders/outbound-lines/${lineId}/bind-inventory`, data),
   /** 订单二级列表：单行手动出库（已出库不可重复） */
   stockOutOutboundLine: (lineId, data = {}) => http.post(`/orders/outbound-lines/${lineId}/stock-out`, data),
   /** 订单二级列表：手动新增出库明细（预扣库存并进入待出库） */

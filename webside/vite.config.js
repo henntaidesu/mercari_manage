@@ -8,8 +8,9 @@ const DEV_PORT = 9600
 
 // 默认 HTTPS：自签名证书。纯 HTTP：MERCARI_DEV_HTTP=1。
 // 远程/域名访问（非本机浏览器）：在 webside/.env.development 中设置
-// MERCARI_DEV_PUBLIC_HOST=nas.makurochan.com（或与地址栏一致的主机名/IP），
+// MERCARI_DEV_PUBLIC_HOST=mercari.makurochan.com（或与地址栏一致的主机名/IP），
 // 以便 HMR WebSocket 使用 ws/wss 连到可解析的主机，而不是 0.0.0.0。
+// 若经反向代理用 80/443 对外，可设 MERCARI_DEV_HMR_CLIENT_PORT=80（或 443）与 MERCARI_DEV_PUBLIC_ORIGIN（如 http://mercari.makurochan.com）。
 export default defineConfig(({ mode }) => {
   const fileEnv = loadEnv(mode, websideRoot, 'MERCARI_')
   const env = { ...fileEnv, ...process.env }
@@ -17,12 +18,23 @@ export default defineConfig(({ mode }) => {
   const publicHost = (env.MERCARI_DEV_PUBLIC_HOST || '').trim() || undefined
   const useHttps = !devHttpOnly
 
+  const hmrClientPortRaw = (env.MERCARI_DEV_HMR_CLIENT_PORT || '').trim()
+  const hmrClientPort = hmrClientPortRaw ? Number(hmrClientPortRaw) : DEV_PORT
+  const hmrClientPortFinal = Number.isFinite(hmrClientPort) ? hmrClientPort : DEV_PORT
+
+  const publicOriginRaw = (env.MERCARI_DEV_PUBLIC_ORIGIN || '').trim()
+  const serverOrigin =
+    publicOriginRaw ||
+    (publicHost
+      ? `${useHttps ? 'https' : 'http'}://${publicHost}:${DEV_PORT}`
+      : undefined)
+
   const hmr = publicHost
     ? {
         protocol: useHttps ? 'wss' : 'ws',
         host: publicHost,
         port: DEV_PORT,
-        clientPort: DEV_PORT
+        clientPort: hmrClientPortFinal
       }
     : { protocol: useHttps ? 'wss' : 'ws' }
 
@@ -38,11 +50,11 @@ export default defineConfig(({ mode }) => {
       port: DEV_PORT,
       strictPort: true,
       https: useHttps,
+      // 开发机任意 Host / Origin 均可访问（存在 DNS 重绑定等风险，勿对公网暴露无防护的 dev 端口）
       allowedHosts: true,
+      cors: true,
       hmr,
-      ...(publicHost
-        ? { origin: `${useHttps ? 'https' : 'http'}://${publicHost}:${DEV_PORT}` }
-        : {}),
+      ...(serverOrigin ? { origin: serverOrigin } : {}),
       proxy: {
         '/api': {
           target: 'http://127.0.0.1:9601',

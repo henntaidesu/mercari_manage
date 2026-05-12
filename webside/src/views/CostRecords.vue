@@ -333,8 +333,8 @@ async function handleImageUpload(e) {
   const file = e.target.files?.[0]
   e.target.value = ''
   if (!file) return
-  if (file.size > 5 * 1024 * 1024) {
-    ElMessage.warning('图片不能超过5MB')
+  if (file.size > 25 * 1024 * 1024) {
+    ElMessage.warning('图片不能超过25MB')
     return
   }
   uploadingImage.value = true

@@ -158,25 +158,36 @@
                       </el-tag>
                     </template>
                   </el-table-column>
-                  <el-table-column label="操作" width="96" align="center">
+                  <el-table-column label="操作" width="168" align="center">
                     <template #default="{ row: line }">
-                      <el-popconfirm
-                        title="确认出库？"
-                        confirm-button-text="确认"
-                        cancel-button-text="取消"
-                        @confirm="stockOutLine(row, line)"
-                      >
-                        <template #reference>
-                          <el-button
-                            size="small"
-                            type="primary"
-                            :loading="lineStockingKey === outboundLineKey(row.order_no, line.id)"
-                            :disabled="!canStockOutLine(line)"
-                          >
-                            出库
-                          </el-button>
-                        </template>
-                      </el-popconfirm>
+                      <div class="order-outbound-actions">
+                        <el-button
+                          size="small"
+                          type="warning"
+                          plain
+                          :disabled="outboundLineHasBoundInventory(line)"
+                          @click="openBindOutboundInventoryDialog(row, line)"
+                        >
+                          修改
+                        </el-button>
+                        <el-popconfirm
+                          title="确认出库？"
+                          confirm-button-text="确认"
+                          cancel-button-text="取消"
+                          @confirm="stockOutLine(row, line)"
+                        >
+                          <template #reference>
+                            <el-button
+                              size="small"
+                              type="primary"
+                              :loading="lineStockingKey === outboundLineKey(row.order_no, line.id)"
+                              :disabled="!canStockOutLine(line)"
+                            >
+                              出库
+                            </el-button>
+                          </template>
+                        </el-popconfirm>
+                      </div>
                     </template>
                   </el-table-column>
                 </el-table>
@@ -593,6 +604,79 @@
     </el-dialog>
 
     <el-dialog
+      v-model="bindOutboundDialogVisible"
+      title="关联库存"
+      width="520px"
+      destroy-on-close
+    >
+      <el-form label-width="90px">
+        <el-form-item label="订单号">
+          <el-input :model-value="bindOutboundContext.order_no" disabled />
+        </el-form-item>
+        <el-form-item label="明细标识">
+          <el-input :model-value="bindOutboundContext.label" type="textarea" :rows="2" disabled />
+        </el-form-item>
+        <el-form-item label="商品归属">
+          <el-select
+            v-model="bindOwnerFilter"
+            clearable
+            filterable
+            style="width: 100%"
+            placeholder="请选择商品归属"
+          >
+            <el-option
+              v-for="owner in bindOwnerOptions"
+              :key="owner"
+              :label="owner"
+              :value="owner"
+            />
+          </el-select>
+        </el-form-item>
+        <el-form-item label="库存商品" required>
+          <el-select
+            v-model="bindOutboundForm.inventory_id"
+            filterable
+            clearable
+            class="manual-inventory-select"
+            style="width: 100%"
+            placeholder="请选择要关联的库存商品"
+            :loading="bindInventoryLoading"
+            popper-class="manual-inventory-select-popper"
+          >
+            <el-option
+              v-for="it in filteredBindInventoryOptions"
+              :key="it.id"
+              :label="`${it.name || '-'}（归属:${it.owner_user_name || '-'}，库存:${Number(it.quantity || 0)}）`"
+              :value="it.id"
+            >
+              <div class="manual-option-row">
+                <el-image
+                  v-if="inventoryThumbUrl(it)"
+                  class="manual-option-thumb"
+                  :src="inventoryThumbUrl(it)"
+                  fit="contain"
+                  lazy
+                  referrerpolicy="no-referrer"
+                />
+                <span v-else class="manual-option-thumb-fallback">-</span>
+                <div class="manual-option-meta">
+                  <div class="manual-option-name">{{ it.name || '-' }}</div>
+                  <div class="manual-option-sub">归属: {{ it.owner_user_name || '-' }} ｜ 库存: {{ Number(it.quantity || 0) }}</div>
+                </div>
+              </div>
+            </el-option>
+          </el-select>
+        </el-form-item>
+      </el-form>
+      <template #footer>
+        <el-button @click="bindOutboundDialogVisible = false">取消</el-button>
+        <el-button type="primary" :loading="bindOutboundSaving" @click="submitBindOutboundInventory">
+          确认关联
+        </el-button>
+      </template>
+    </el-dialog>
+
+    <el-dialog
       v-model="packagingDialogVisible"
       title="添加包装材料"
       width="520px"
@@ -608,9 +692,10 @@
             filterable
             clearable
             style="width: 100%"
-            placeholder="请选择库存包材"
+            placeholder="请选择库存包材，或选「不选择包材」"
             @change="onPackagingItemChange"
           >
+            <el-option label="不选择包材" :value="PACKAGING_ITEM_NONE" />
             <el-option
               v-for="item in packagingItemsOptions"
               :key="item.item_name"
@@ -619,7 +704,7 @@
             />
           </el-select>
         </el-form-item>
-        <el-row :gutter="12">
+        <el-row v-show="isPackagingConcreteItemSelected" :gutter="12">
           <el-col :span="12">
             <el-form-item label="数量" required>
               <el-input-number
@@ -643,7 +728,7 @@
             </el-form-item>
           </el-col>
         </el-row>
-        <el-form-item label="成本金额">
+        <el-form-item v-show="isPackagingConcreteItemSelected" label="成本金额">
           <el-input :model-value="String(Math.round(expenseAmount(packagingForm)))" disabled />
         </el-form-item>
       </el-form>
@@ -682,6 +767,13 @@ const manualOutboundSaving = ref(false)
 const manualInventoryLoading = ref(false)
 const manualInventoryOptions = ref([])
 const manualOwnerFilter = ref('')
+const bindOutboundDialogVisible = ref(false)
+const bindOutboundSaving = ref(false)
+const bindInventoryLoading = ref(false)
+const bindInventoryOptions = ref([])
+const bindOwnerFilter = ref('')
+const bindOutboundContext = ref({ order_no: '', line_id: 0, label: '' })
+const bindOutboundForm = ref({ inventory_id: null })
 const packagingDialogVisible = ref(false)
 const packagingSubmitting = ref(false)
 const packagingItemsOptions = ref([])
@@ -708,6 +800,24 @@ const filteredManualInventoryOptions = computed(() => {
     (it) => String(it?.owner_user_name || '').trim() === owner
   )
 })
+const bindOwnerOptions = computed(() => {
+  const out = []
+  const seen = new Set()
+  for (const it of bindInventoryOptions.value || []) {
+    const owner = String(it?.owner_user_name || '').trim()
+    if (!owner || seen.has(owner)) continue
+    seen.add(owner)
+    out.push(owner)
+  }
+  return out.sort((a, b) => a.localeCompare(b, 'zh-CN'))
+})
+const filteredBindInventoryOptions = computed(() => {
+  const owner = String(bindOwnerFilter.value || '').trim()
+  if (!owner) return bindInventoryOptions.value || []
+  return (bindInventoryOptions.value || []).filter(
+    (it) => String(it?.owner_user_name || '').trim() === owner
+  )
+})
 const stats = ref({
   total_count: 0,
   sum_amount: 0,
@@ -722,6 +832,12 @@ const stats = ref({
 })
 
 const packagingState = ref({})
+/** 包材下拉：与真实库存包材名称隔离，避免重名冲突 */
+const PACKAGING_ITEM_NONE = '__PACKAGING_NONE__'
+const isPackagingConcreteItemSelected = computed(() => {
+  const n = String(packagingForm.value?.item_name || '').trim()
+  return Boolean(n && n !== PACKAGING_ITEM_NONE)
+})
 const packagingForm = ref({
   order_no: '',
   item_name: '',
@@ -1273,6 +1389,83 @@ function canStockOutLine(line) {
   return qty > 0
 }
 
+/** 二级明细是否已关联有效库存 ID（有则禁用「修改」） */
+function outboundLineHasBoundInventory(line) {
+  const id = line?.inventory_id
+  if (id == null || id === '') return false
+  const n = Number(id)
+  return Number.isFinite(n) && n > 0
+}
+
+async function reloadOutboundLinesExpand(orderNo) {
+  const ono = String(orderNo || '').trim()
+  if (!ono) return
+  const cur = expandState.value[ono]
+  if (!cur?.loaded) return
+  expandState.value = { ...expandState.value, [ono]: { ...cur, loading: true } }
+  try {
+    const res = await orderApi.outboundLines({ order_no: ono })
+    const rows = Array.isArray(res?.items) ? res.items : []
+    expandState.value = {
+      ...expandState.value,
+      [ono]: { loading: false, loaded: true, rows },
+    }
+  } catch {
+    expandState.value = {
+      ...expandState.value,
+      [ono]: { loading: false, loaded: true, rows: cur.rows || [] },
+    }
+  }
+}
+
+async function openBindOutboundInventoryDialog(orderRow, line) {
+  const orderNo = String(orderRow?.order_no || '').trim()
+  const lineId = Number(line?.id || 0)
+  if (!orderNo || !lineId) return
+  if (outboundLineHasBoundInventory(line)) return
+  const labelParts = []
+  const mid = String(line?.management_id || '').trim()
+  if (mid) labelParts.push(mid)
+  const pname = String(line?.product_name || '').trim()
+  if (pname && pname !== mid) labelParts.push(pname)
+  bindOutboundContext.value = {
+    order_no: orderNo,
+    line_id: lineId,
+    label: labelParts.length ? labelParts.join('\n') : '（无标识）',
+  }
+  bindOutboundForm.value = { inventory_id: null }
+  bindOwnerFilter.value = ''
+  bindOutboundDialogVisible.value = true
+  bindInventoryLoading.value = true
+  try {
+    const res = await inventoryApi.list({ in_stock_only: true })
+    bindInventoryOptions.value = Array.isArray(res) ? res : []
+  } finally {
+    bindInventoryLoading.value = false
+  }
+}
+
+async function submitBindOutboundInventory() {
+  const orderNo = String(bindOutboundContext.value.order_no || '').trim()
+  const lineId = Number(bindOutboundContext.value.line_id || 0)
+  const invId = Number(bindOutboundForm.value.inventory_id || 0)
+  if (!orderNo || !lineId) return
+  if (!Number.isFinite(invId) || invId <= 0) {
+    ElMessage.warning('请选择库存商品')
+    return
+  }
+  bindOutboundSaving.value = true
+  try {
+    await orderApi.bindOutboundLineInventory(lineId, { inventory_id: invId })
+    ElMessage.success('已关联库存')
+    bindOutboundDialogVisible.value = false
+    await reloadOutboundLinesExpand(orderNo)
+    await load()
+  } finally {
+    bindOutboundSaving.value = false
+  }
+}
+
 async function onOrderExpandChange(row, expandedRows) {
   const ono = String(row?.order_no || '').trim()
   if (!ono) return
@@ -1309,6 +1502,11 @@ function selectedPackagingMeta(itemName) {
 }
 
 function onPackagingItemChange(itemName) {
+  if (itemName === PACKAGING_ITEM_NONE) {
+    packagingForm.value.quantity = 1
+    packagingForm.value.unit_price = 0
+    return
+  }
   const meta = selectedPackagingMeta(itemName)
   if (!meta) return
   packagingForm.value.unit_price = Number(meta.amount || 0)
@@ -1383,6 +1581,11 @@ async function submitPackagingExpense() {
   if (!orderNo) return
   if (!itemName) {
     ElMessage.warning('请选择包材物品')
+    return
+  }
+  if (itemName === PACKAGING_ITEM_NONE) {
+    packagingDialogVisible.value = false
+    ElMessage.success('已确认本单不使用包材（未登记包材支出）')
     return
   }
   if (unitPrice <= 0) {
@@ -1762,6 +1965,13 @@ onBeforeUnmount(() => {
 }
 .order-expand-inner-table {
   max-width: 100%;
+}
+.order-outbound-actions {
+  display: inline-flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  justify-content: center;
+  align-items: center;
 }
 .order-empty-compact :deep(.el-empty) {
   padding: 8px 0;

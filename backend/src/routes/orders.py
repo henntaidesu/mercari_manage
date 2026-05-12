@@ -96,6 +96,12 @@ class OutboundStockOutBody(PydanticModel):
     remark: Optional[str] = None
 
 
+class OutboundLineBindInventoryBody(PydanticModel):
+    """将未匹配到库存的出库明细行手动关联到某条库存（仅允许 inventory_id 为空时）。"""
+
+    inventory_id: int
+
+
 class ManualOutboundLineCreateBody(PydanticModel):
     order_no: str
     inventory_id: int
@@ -335,6 +341,40 @@ def list_order_outbound_lines(order_no: str):
                 it["ratio_price"] = int(alloc_totals[i])
 
     return {"order_no": ono, "items": items}
+
+
+def _outbound_line_has_inventory_id(line: OrderOutboundLineModel) -> bool:
+    raw = line.inventory_id
+    if raw is None:
+        return False
+    try:
+        n = int(raw)
+    except (TypeError, ValueError):
+        return False
+    return n > 0
+
+
+@router.patch("/outbound-lines/{line_id}/bind-inventory")
+def bind_outbound_line_inventory(line_id: int, data: OutboundLineBindInventoryBody):
+    """未识别到库存 ID 的明细行，手动指定 inventory_id；已有关联时拒绝。"""
+    line = OrderOutboundLineModel.find_by_id(id=int(line_id))
+    if not line:
+        raise HTTPException(status_code=404, detail="出库明细不存在")
+    if _outbound_line_has_inventory_id(line):
+        raise HTTPException(status_code=400, detail="该明细已关联库存，无法修改")
+    if int(line.is_stocked_out or 0) == 1:
+        raise HTTPException(status_code=400, detail="该明细已出库，无法修改绑定")
+    inv_id = int(data.inventory_id)
+    if inv_id <= 0:
+        raise HTTPException(status_code=400, detail="inventory_id 无效")
+    inv_rows = db.execute_query("SELECT [id] FROM [inventory] WHERE [id] = ? LIMIT 1", (inv_id,))
+    if not inv_rows:
+        raise HTTPException(status_code=404, detail="库存商品不存在")
+    line.inventory_id = inv_id
+    if not line.save():
+        raise HTTPException(status_code=500, detail="保存失败")
+    refresh_inventory_pending_outbound_qty([inv_id])
+    return {"success": True, "line_id": int(line.id), "inventory_id": inv_id}
 
 
 @router.post("/outbound-lines/{line_id}/stock-out")

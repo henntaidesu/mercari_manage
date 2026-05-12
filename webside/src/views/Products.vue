@@ -802,7 +802,7 @@
             v-model="combinedProductForm.description"
             type="textarea"
             :rows="3"
-            placeholder="可选，默认会记录组合来源"
+            placeholder="可选；留空则商品说明与出品正文均不自动填写"
           />
         </el-form-item>
       </el-form>
@@ -1143,6 +1143,8 @@ const nbCameraUploading = ref(false)
 const nbCameraUploadPercent = ref(0)
 /** 无码新建：各侧正在进行的 multipart 请求，移除/重选时中止 */
 const noBarcodeUploadAbortBySide = { front: null, back: null }
+/** 库存表单图片上传上限（与后端 save_upload_image 默认一致） */
+const MAX_UPLOAD_IMAGE_BYTES = 25 * 1024 * 1024
 /** WebDriver 出品自动化：全屏等待与步骤文案（与 progress_job_id 轮询同步） */
 const listingPostOverlayVisible = ref(false)
 const listingPostOverlayTitle = ref('正在上架')
@@ -2187,13 +2189,34 @@ async function loadInventoryStats() {
   }
 }
 
+/** 与在售商品页一致：库存为 0（或以下）但仍有在售数量时标红并整体顶置 */
+function isInventoryZeroStockOnSaleAlert(row) {
+  if (!row || typeof row !== 'object') return false
+  const qty = Number(row.quantity ?? 0)
+  const onSale = Number(row.on_sale_quantity ?? 0)
+  if (!Number.isFinite(onSale) || onSale <= 0) return false
+  return Number.isFinite(qty) && qty <= 0
+}
+
 const sortedInventoryList = computed(() => {
   const arr = [...list.value]
   const prop = inventorySortProp.value
   const order = inventorySortOrder.value
-  if (!prop || !order) return arr
   const mult = order === 'ascending' ? 1 : -1
-  arr.sort((a, b) => {
+
+  function alertOrder(a, b) {
+    const aa = isInventoryZeroStockOnSaleAlert(a) ? 0 : 1
+    const ba = isInventoryZeroStockOnSaleAlert(b) ? 0 : 1
+    if (aa !== ba) return aa - ba
+    return 0
+  }
+
+  function compareByColumn(a, b) {
+    if (!prop || !order) {
+      const ida = Number(a.id) || 0
+      const idb = Number(b.id) || 0
+      return idb - ida
+    }
     if (prop === 'price') {
       const va = Number(a.price) || 0
       const vb = Number(b.price) || 0
@@ -2223,6 +2246,16 @@ const sortedInventoryList = computed(() => {
       return 0
     }
     return 0
+  }
+
+  arr.sort((a, b) => {
+    const ao = alertOrder(a, b)
+    if (ao !== 0) return ao
+    const co = compareByColumn(a, b)
+    if (co !== 0) return co
+    const ida = Number(a.id) || 0
+    const idb = Number(b.id) || 0
+    return idb - ida
   })
   return arr
 })
@@ -2618,13 +2651,12 @@ function toPositiveInt(value, fallback = 1) {
   return Number.isFinite(n) && n > 0 ? n : fallback
 }
 
-function buildCombinedProductDescription(rows) {
-  return rows
-    .map((r) => `管理番号 ${r.id}：${r.name || '-'} × ${toPositiveInt(r.combine_quantity, 1)}`)
-    .join('\n')
-}
-
 function openCombinedProductDialog(rows) {
+  if (!Array.isArray(rows) || !rows.length) return
+  if (rows.some((r) => Number(r?.is_combined || 0) === 1)) {
+    ElMessage.warning('组合商品不能再次作为组合来源')
+    return
+  }
   const first = rows[0]
   const sameCategory = rows.every((r) => r.category_id === first.category_id)
   const sameType = rows.every((r) => r.product_type_id === first.product_type_id)
@@ -2662,6 +2694,10 @@ async function submitCombinedProduct() {
     ElMessage.warning('请输入组合商品名称')
     return
   }
+  if (combinedProductRows.value.some((r) => Number(r?.is_combined || 0) === 1)) {
+    ElMessage.warning('组合商品不能再次作为组合来源')
+    return
+  }
   const components = combinedProductRows.value.map((r) => ({
     inventory_id: r.id,
     quantity: toPositiveInt(r.combine_quantity, 1)
@@ -2674,19 +2710,18 @@ async function submitCombinedProduct() {
       return
     }
   }
-  const sourceText = buildCombinedProductDescription(combinedProductRows.value)
   const desc = String(combinedProductForm.value.description || '').trim()
   const payload = {
     name,
     quantity: comboQty,
     price: Math.max(0, Math.round(Number(combinedProductForm.value.price ?? 0))),
-    description: desc || `组合来源：\n${sourceText}`,
+    description: desc || null,
     category_id: combinedProductForm.value.category_id || null,
     product_type_id: combinedProductForm.value.product_type_id || null,
     owner_user_id: combinedProductForm.value.owner_user_id || null,
     warehouse_id: combinedProductForm.value.warehouse_id || null,
     listing_title: name,
-    listing_body: desc || sourceText,
+    listing_body: desc || null,
     image_front: null,
     image_back: null,
     components
@@ -2896,8 +2931,9 @@ async function onListingFormSaved(data) {
   loadInventoryStats()
 }
 
-/** 组合商品可选：库存大于 0 */
+/** 组合商品可选：库存大于 0，且不能是已有组合 SKU（禁止二次组合） */
 function isListingPickSelectable(row) {
+  if (Number(row?.is_combined || 0) === 1) return false
   return Number(row?.quantity ?? 0) > 0
 }
 
@@ -2912,7 +2948,7 @@ async function enterListingPickMode() {
 /** 「出品」：当前行直接打开出品表单（单条库存） */
 function openListingFormForRow(row) {
   if (!row || row.id == null) return
-  if (!isListingPickSelectable(row)) {
+  if (Number(row?.quantity ?? 0) <= 0) {
     ElMessage.warning('库存为 0 的商品无法出品')
     return
   }
@@ -2934,7 +2970,11 @@ function toggleListingPickRow(row) {
     listingPickIds.value = next
     return
   }
-  if (!isListingPickSelectable(row)) {
+  if (Number(row?.is_combined || 0) === 1) {
+    ElMessage.warning('组合商品不能再次作为组合来源')
+    return
+  }
+  if (Number(row?.quantity ?? 0) <= 0) {
     ElMessage.warning('库存为 0 的商品不能选中')
     return
   }
@@ -2944,6 +2984,9 @@ function toggleListingPickRow(row) {
 
 function rowClassName({ row }) {
   const classes = []
+  if (isInventoryZeroStockOnSaleAlert(row)) {
+    classes.push('on-sale-stock-alert-row')
+  }
   if (listingPickMode.value && listingPickIds.value.has(row?.id)) {
     classes.push('listing-pick-row-selected')
   }
@@ -2976,7 +3019,7 @@ async function confirmListingPick() {
     (r) => idSet.has(r.id) && isListingPickSelectable(r)
   )
   if (!rows.length) {
-    ElMessage.warning('所选商品均无库存，无法组合')
+    ElMessage.warning('所选商品无法用于组合（库存为 0 或已为组合商品）')
     return
   }
   await exitListingPickMode()
@@ -3130,6 +3173,10 @@ async function applyProductImgConfirm() {
       }
       const mime = blob.type && blob.type.startsWith('image/') ? blob.type : 'image/jpeg'
       const file = new File([blob], 'capture.jpg', { type: mime })
+      if (file.size > MAX_UPLOAD_IMAGE_BYTES) {
+        ElMessage.warning('图片不能超过25MB')
+        return
+      }
       const res = await inventoryApi.uploadImage(file, (pe) => {
         if (!pe.total) return
         nbCameraUploadPercent.value = Math.min(100, Math.round((pe.loaded / pe.total) * 100))
@@ -3168,8 +3215,8 @@ async function handleImageUpload(e, side) {
   const file = e.target.files?.[0]
   if (e.target) e.target.value = ''
   if (!file) return
-  if (file.size > 5 * 1024 * 1024) {
-    ElMessage.warning('图片不能超过5MB')
+  if (file.size > MAX_UPLOAD_IMAGE_BYTES) {
+    ElMessage.warning('图片不能超过25MB')
     return
   }
 
@@ -4181,6 +4228,21 @@ onBeforeUnmount(() => {
 /* 选择模式下，整张表行的鼠标指针变为可点击 */
 .listing-pick-mode-active .el-table tbody tr {
   cursor: pointer;
+}
+
+/* 库存为 0 但仍有在售：与「在售商品」页相同的标红行（顶置由 sortedInventoryList 排序保证） */
+.el-table tr.on-sale-stock-alert-row {
+  --el-table-tr-bg-color: #3a1517;
+}
+.el-table tr.on-sale-stock-alert-row > td.el-table__cell {
+  background-color: #3a1517 !important;
+}
+.el-table tr.on-sale-stock-alert-row:hover > td.el-table__cell {
+  background-color: #4a1a1d !important;
+}
+.el-table tr.on-sale-stock-alert-row td.el-table__cell .cell {
+  color: #ffd6d9;
+  font-weight: 600;
 }
 
 /* 组合商品弹窗：与全局暗色对话框一致，组成行内展示正面缩略图 */
