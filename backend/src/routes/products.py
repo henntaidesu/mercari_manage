@@ -19,6 +19,8 @@ router = APIRouter(prefix="/api/inventory", tags=["inventory"])
 public_router = APIRouter(prefix="/api/inventory", tags=["inventory-public"])
 db = DatabaseManager()
 
+MAX_INVENTORY_IMAGES = 20
+
 
 def _coerce_optional_cost_cny(v):
     """人民币成本：可空；合法时为非负小数，最多四位小数。"""
@@ -55,6 +57,7 @@ PRODUCT_COLUMNS = [
     "image",
     "image_front",
     "image_back",
+    "images_json",
     "created_at",
     "warehouse_id",
 ]
@@ -83,6 +86,7 @@ class ProductCreate(PydanticModel):
     on_sale_quantity: Optional[int] = None
     image_front: Optional[str] = None
     image_back: Optional[str] = None
+    images: Optional[List[str]] = None
 
     @field_validator('price', mode='before')
     @classmethod
@@ -119,6 +123,7 @@ class CombinedProductCreate(PydanticModel):
     listing_body: Optional[str] = None
     image_front: Optional[str] = None
     image_back: Optional[str] = None
+    images: Optional[List[str]] = None
     components: List[CombinedProductComponent]
 
     @field_validator('price', mode='before')
@@ -154,6 +159,7 @@ class ProductUpdate(PydanticModel):
     on_sale_quantity: Optional[int] = None
     image_front: Optional[str] = None
     image_back: Optional[str] = None
+    images: Optional[List[str]] = None
 
     @field_validator('price', mode='before')
     @classmethod
@@ -184,6 +190,111 @@ def _row_to_product_detail(row: tuple) -> dict:
     return dict(zip(keys, row))
 
 
+def _inventory_paths_from_parsed_row(row_dict: dict) -> List[str]:
+    """从行字典解析图片路径列表（优先 images_json，否则 image_front / image / image_back）。"""
+    raw = row_dict.get("images_json")
+    if raw and str(raw).strip():
+        try:
+            data = json.loads(raw)
+            if isinstance(data, list):
+                out: List[str] = []
+                for x in data:
+                    if x is None:
+                        continue
+                    s = str(x).strip()
+                    if s:
+                        out.append(s)
+                if out:
+                    return out[:MAX_INVENTORY_IMAGES]
+        except Exception:
+            pass
+    out: List[str] = []
+    front = (row_dict.get("image_front") or row_dict.get("image") or "").strip()
+    if front:
+        out.append(front)
+    back = (row_dict.get("image_back") or "").strip()
+    if back:
+        out.append(back)
+    return out
+
+
+def _enrich_inventory_api_dict(d: dict) -> dict:
+    d["images"] = _inventory_paths_from_parsed_row(d)
+    d.pop("images_json", None)
+    return d
+
+
+def _legacy_paths_from_db_columns(front, legacy_image, back, images_json_raw) -> List[str]:
+    return _inventory_paths_from_parsed_row(
+        {
+            "image_front": front,
+            "image": legacy_image,
+            "image_back": back,
+            "images_json": images_json_raw,
+        }
+    )
+
+
+def _normalize_images_input_list(items: Optional[List], field_label: str = "images") -> Optional[List[str]]:
+    """None 表示调用方未传 images；空数组表示清空全部图片。"""
+    if items is None:
+        return None
+    if not isinstance(items, list):
+        raise HTTPException(status_code=400, detail=f"{field_label} 须为数组")
+    if len(items) > MAX_INVENTORY_IMAGES:
+        raise HTTPException(
+            status_code=400,
+            detail=f"最多上传 {MAX_INVENTORY_IMAGES} 张图片",
+        )
+    out: List[str] = []
+    for it in items:
+        if it is None:
+            continue
+        s = str(it).strip() if isinstance(it, str) else str(it).strip()
+        if not s:
+            continue
+        out.append(s)
+    if len(out) > MAX_INVENTORY_IMAGES:
+        raise HTTPException(
+            status_code=400,
+            detail=f"最多上传 {MAX_INVENTORY_IMAGES} 张图片",
+        )
+    return out
+
+
+def _convert_image_list_to_paths(raw_items: List[str]) -> List[str]:
+    paths: List[str] = []
+    for raw in raw_items:
+        p = _convert_image_payload(raw, "product_img")
+        if p:
+            paths.append(p)
+        if len(paths) > MAX_INVENTORY_IMAGES:
+            raise HTTPException(
+                status_code=400,
+                detail=f"最多上传 {MAX_INVENTORY_IMAGES} 张图片",
+            )
+    return paths
+
+
+def _sync_image_columns_from_paths(paths: List[str]) -> dict:
+    j = json.dumps(paths, ensure_ascii=False, separators=(",", ":")) if paths else None
+    front = paths[0] if paths else None
+    back = paths[1] if len(paths) > 1 else None
+    return {
+        "image": front,
+        "image_front": front,
+        "image_back": back,
+        "images_json": j,
+    }
+
+
+def _delete_paths_removed(old_paths: List[str], new_paths: List[str]) -> None:
+    new_set = set(new_paths)
+    for p in old_paths:
+        if p and p not in new_set:
+            delete_image_file(p)
+
+
 def _query_product_with_joins(where_sql: str = "", params: tuple = ()) -> list[dict]:
     from ..db_manage.models.warehouse import WarehouseModel
 
@@ -206,7 +317,7 @@ def _query_product_with_joins(where_sql: str = "", params: tuple = ()) -> list[d
         WHERE 1=1 {where_sql}
     """
     rows = db.execute_query(sql, tuple(params))
-    return [_row_to_product_detail(r) for r in rows]
+    return [_enrich_inventory_api_dict(_row_to_product_detail(r)) for r in rows]
 
 
 def _product_exists(pid: int) -> bool:
@@ -313,6 +424,36 @@ def _convert_image_payload(image_value: Optional[str], prefix: str) -> Optional[
         except Exception:
             raise HTTPException(status_code=400, detail="图片格式无效或保存失败")
     return val
+
+
+def _resolve_paths_for_create(data: ProductCreate) -> List[str]:
+    if data.images is not None:
+        normalized = _normalize_images_input_list(data.images, "images")
+        return _convert_image_list_to_paths(normalized)
+    fp = _convert_image_payload(data.image_front, "product_front")
+    bp = _convert_image_payload(data.image_back, "product_back")
+    paths = [p for p in [fp, bp] if p]
+    if len(paths) > MAX_INVENTORY_IMAGES:
+        raise HTTPException(
+            status_code=400,
+            detail=f"最多上传 {MAX_INVENTORY_IMAGES} 张图片",
+        )
+    return paths
+
+
+def _resolve_paths_for_combined_create(data: CombinedProductCreate) -> List[str]:
+    if data.images is not None:
+        normalized = _normalize_images_input_list(data.images, "images")
+        return _convert_image_list_to_paths(normalized)
+    fp = _convert_image_payload(data.image_front, "product_front")
+    bp = _convert_image_payload(data.image_back, "product_back")
+    paths = [p for p in [fp, bp] if p]
+    if len(paths) > MAX_INVENTORY_IMAGES:
+        raise HTTPException(
+            status_code=400,
+            detail=f"最多上传 {MAX_INVENTORY_IMAGES} 张图片",
+        )
+    return paths
 
 
 def _to_dhash(image: Image.Image) -> int:
@@ -463,18 +604,26 @@ async def find_by_image(file: UploadFile = File(...)):
         raise HTTPException(status_code=400, detail="图片解析失败，请重试")
 
     query_hash = _to_dhash(query_img)
-    rows = db.execute_query("SELECT id, image_front, image FROM [inventory]")
+    rows = db.execute_query(
+        "SELECT id, image_front, image, image_back, images_json FROM [inventory]"
+    )
     best_id = None
     best_distance = 999
 
-    for pid, image_front, image in rows:
-        candidate_img = _load_image_for_match(image_front) or _load_image_for_match(image)
-        if candidate_img is None:
-            continue
-        distance = _hamming_distance(query_hash, _to_dhash(candidate_img))
-        if distance < best_distance:
-            best_distance = distance
-            best_id = pid
+    for pid, image_front, image, image_back, images_json in rows:
+        candidates = _legacy_paths_from_db_columns(image_front, image, image_back, images_json)
+        row_best = 999
+        for path in candidates:
+            candidate_img = _load_image_for_match(path)
+            if candidate_img is None:
+                continue
+            distance = _hamming_distance(query_hash, _to_dhash(candidate_img))
+            if distance < row_best:
+                row_best = distance
+        if row_best < 999:
+            if row_best < best_distance:
+                best_distance = row_best
+                best_id = pid
 
     if best_id is None:
         return {"found": False, "product": None, "distance": None}
@@ -510,8 +659,8 @@ def create_combined_product(data: CombinedProductCreate, claims: dict = Depends(
         raise HTTPException(status_code=400, detail="商品归属用户不存在")
 
     items = _normalize_combined_components(data.components)
-    image_front_path = _convert_image_payload(data.image_front, "product_front")
-    image_back_path = _convert_image_payload(data.image_back, "product_back")
+    paths = _resolve_paths_for_combined_create(data)
+    img_cols = _sync_image_columns_from_paths(paths)
     barcode = f"COMBO-{int(time.time() * 1000)}"
     name = (data.name or "").strip() or "组合商品"
     combined_items_json = json.dumps(items, ensure_ascii=False, separators=(",", ":"))
@@ -526,8 +675,8 @@ def create_combined_product(data: CombinedProductCreate, claims: dict = Depends(
                 INSERT INTO [inventory] (
                     name, barcode, category_id, product_type_id, owner_user_id, warehouse_id, price, cost_cny, quantity,
                     mercari_item_id, on_sale_quantity, pending_outbound_qty, is_combined, combined_items,
-                    description, listing_title, listing_body, image, image_front, image_back
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    description, listing_title, listing_body, image, image_front, image_back, images_json
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 (
                     name,
@@ -547,9 +696,10 @@ def create_combined_product(data: CombinedProductCreate, claims: dict = Depends(
                     data.description,
                     data.listing_title,
                     data.listing_body,
-                    image_front_path,
-                    image_front_path,
-                    image_back_path,
+                    img_cols["image"],
+                    img_cols["image_front"],
+                    img_cols["image_back"],
+                    img_cols["images_json"],
                 ),
             )
             new_id = cur.lastrowid
@@ -679,16 +829,16 @@ def create_product(data: ProductCreate, claims: dict = Depends(require_auth)):
         raise HTTPException(status_code=403, detail="仅系统管理员可修改商品归属")
     if data.owner_user_id is not None and not _user_exists(data.owner_user_id):
         raise HTTPException(status_code=400, detail="商品归属用户不存在")
-    image_front_path = _convert_image_payload(data.image_front, "product_front")
-    image_back_path = _convert_image_payload(data.image_back, "product_back")
+    paths = _resolve_paths_for_create(data)
+    img_cols = _sync_image_columns_from_paths(paths)
     try:
         new_id = db.execute_insert(
             """
             INSERT INTO [inventory] (
                 name, barcode, category_id, product_type_id, owner_user_id, warehouse_id, price, cost_cny, quantity,
                 mercari_item_id, on_sale_quantity, pending_outbound_qty,
-                description, listing_title, listing_body, image, image_front, image_back
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                description, listing_title, listing_body, image, image_front, image_back, images_json
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             (
                 data.name,
@@ -706,9 +856,10 @@ def create_product(data: ProductCreate, claims: dict = Depends(require_auth)):
                 data.description,
                 data.listing_title,
                 data.listing_body,
-                image_front_path,
-                image_front_path,
-                image_back_path,
+                img_cols["image"],
+                img_cols["image_front"],
+                img_cols["image_back"],
+                img_cols["images_json"],
             ),
         )
     except Exception:
@@ -728,31 +879,47 @@ def update_product(pid: int, data: ProductUpdate, claims: dict = Depends(require
         update_data['barcode'] = update_data['barcode'].strip()
     existing = db.execute_query(
         """
-        SELECT image_front, image_back, warehouse_id, owner_user_id,
+        SELECT image, image_front, image_back, images_json, warehouse_id, owner_user_id,
                is_combined, combined_items, quantity
         FROM [inventory] WHERE id = ? LIMIT 1
         """,
         (pid,),
     )
-    old_front = existing[0][0] if existing else None
-    old_back = existing[0][1] if existing else None
-    old_warehouse_id = existing[0][2] if existing else None
-    old_owner_user_id = existing[0][3] if existing else None
-    old_is_combined = int(existing[0][4] or 0) if existing else 0
-    old_combined_items = existing[0][5] if existing else None
-    old_quantity = int(existing[0][6] or 0) if existing else 0
+    old_image = existing[0][0] if existing else None
+    old_front = existing[0][1] if existing else None
+    old_back = existing[0][2] if existing else None
+    old_images_json = existing[0][3] if existing else None
+    old_warehouse_id = existing[0][4] if existing else None
+    old_owner_user_id = existing[0][5] if existing else None
+    old_is_combined = int(existing[0][6] or 0) if existing else 0
+    old_combined_items = existing[0][7] if existing else None
+    old_quantity = int(existing[0][8] or 0) if existing else 0
 
-    if 'image_front' in update_data:
-        new_front = _convert_image_payload(update_data.get('image_front'), "product_front")
-        update_data['image_front'] = new_front
-        update_data['image'] = new_front
-        if old_front and old_front != new_front:
-            delete_image_file(old_front)
-    if 'image_back' in update_data:
-        new_back = _convert_image_payload(update_data.get('image_back'), "product_back")
-        update_data['image_back'] = new_back
-        if old_back and old_back != new_back:
-            delete_image_file(old_back)
+    old_paths = _legacy_paths_from_db_columns(old_front, old_image, old_back, old_images_json)
+
+    if 'images' in update_data:
+        update_data.pop('image_front', None)
+        update_data.pop('image_back', None)
+        update_data.pop('image', None)
+        raw_images = update_data.pop('images')
+        normalized = _normalize_images_input_list(raw_images, "images")
+        if normalized is None:
+            normalized = []
+        new_paths = _convert_image_list_to_paths(normalized)
+        _delete_paths_removed(old_paths, new_paths)
+        update_data.update(_sync_image_columns_from_paths(new_paths))
+    else:
+        if 'image_front' in update_data:
+            new_front = _convert_image_payload(update_data.get('image_front'), "product_front")
+            update_data['image_front'] = new_front
+            update_data['image'] = new_front
+            if old_front and old_front != new_front:
+                delete_image_file(old_front)
+        if 'image_back' in update_data:
+            new_back = _convert_image_payload(update_data.get('image_back'), "product_back")
+            update_data['image_back'] = new_back
+            if old_back and old_back != new_back:
+                delete_image_file(old_back)
     final_warehouse_id = update_data['warehouse_id'] if 'warehouse_id' in update_data else old_warehouse_id
     if 'warehouse_id' in update_data:
         if final_warehouse_id is not None and not _warehouse_exists(final_warehouse_id):
@@ -767,7 +934,7 @@ def update_product(pid: int, data: ProductUpdate, claims: dict = Depends(require
         "name", "barcode", "category_id", "product_type_id", "owner_user_id", "warehouse_id", "price", "cost_cny",
         "quantity",
         "mercari_item_id", "on_sale_quantity",
-        "description", "listing_title", "listing_body", "image", "image_front", "image_back",
+        "description", "listing_title", "listing_body", "image", "image_front", "image_back", "images_json",
     }
     update_data = {k: v for k, v in update_data.items() if k in allowed_fields}
     if update_data:
@@ -802,21 +969,25 @@ def delete_product(pid: int):
     if not _product_exists(pid):
         raise HTTPException(status_code=404, detail="商品不存在")
     images = db.execute_query(
-        "SELECT image_front, image_back, is_combined, combined_items, quantity FROM [inventory] WHERE id = ? LIMIT 1",
+        """
+        SELECT image, image_front, image_back, images_json, is_combined, combined_items, quantity
+        FROM [inventory] WHERE id = ? LIMIT 1
+        """,
         (pid,),
     )
     if images:
-        delete_image_file(images[0][0])
-        delete_image_file(images[0][1])
+        paths = _legacy_paths_from_db_columns(images[0][1], images[0][0], images[0][2], images[0][3])
+        for p in paths:
+            delete_image_file(p)
     try:
         with db.get_connection() as conn:
             cur = conn.cursor()
             cur.execute("BEGIN IMMEDIATE")
-            if images and int(images[0][2] or 0):
+            if images and int(images[0][4] or 0):
                 _adjust_combined_source_stock(
                     cur,
-                    _parse_combined_items(images[0][3]),
-                    -int(images[0][4] or 0),
+                    _parse_combined_items(images[0][5]),
+                    -int(images[0][6] or 0),
                 )
             cur.execute("DELETE FROM [inventory] WHERE id = ?", (pid,))
             conn.commit()

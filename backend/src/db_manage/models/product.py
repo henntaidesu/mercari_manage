@@ -3,6 +3,7 @@
 商品表模型
 """
 
+import json
 from typing import Dict, Any, List, Optional
 from ..base_model import BaseModel
 from .warehouse import WarehouseModel
@@ -136,6 +137,12 @@ class ProductModel(BaseModel):
                 'not_null': False,
                 'default': None,
             },
+            # JSON 数组：商品图 /imges/... 路径列表（最多 20 张，由业务层校验）
+            'images_json': {
+                'type': 'TEXT',
+                'not_null': False,
+                'default': None,
+            },
             'created_at': {
                 'type': 'DATETIME',
                 'not_null': False,
@@ -231,6 +238,36 @@ class ProductModel(BaseModel):
         print(f'[{tn}] price 列已迁移为 INTEGER（日元整数）')
 
     @classmethod
+    def _backfill_images_json_from_legacy(cls) -> None:
+        """将仅有 image_front / image / image_back 的旧数据写入 images_json。"""
+        db = cls().db
+        tn = cls.get_table_name()
+        if not db.table_exists(tn):
+            return
+        cols = {c['name'] for c in db.get_table_columns(tn)}
+        if 'images_json' not in cols:
+            return
+        rows = db.execute_query(
+            f"SELECT id, image, image_front, image_back, images_json FROM [{tn}]"
+        )
+        for rid, image, image_front, image_back, images_json in rows or []:
+            if images_json and str(images_json).strip():
+                continue
+            paths: List[str] = []
+            front = (image_front or image or '').strip() if (image_front or image) else ''
+            back = (image_back or '').strip() if image_back else ''
+            if front:
+                paths.append(front)
+            if back:
+                paths.append(back)
+            if not paths:
+                continue
+            db.execute_update(
+                f"UPDATE [{tn}] SET images_json = ? WHERE id = ?",
+                (json.dumps(paths, ensure_ascii=False, separators=(',', ':')), rid),
+            )
+
+    @classmethod
     def ensure_table_exists(cls) -> bool:
         if hasattr(cls, '_cached_table_columns'):
             delattr(cls, '_cached_table_columns')
@@ -243,6 +280,11 @@ class ProductModel(BaseModel):
             cls._migrate_price_to_integer_if_needed()
         except Exception as exc:
             print(f'迁移 inventory.price 为 INTEGER 失败: {exc}')
+            return False
+        try:
+            cls._backfill_images_json_from_legacy()
+        except Exception as exc:
+            print(f'回填 inventory.images_json 失败: {exc}')
             return False
         return True
 
