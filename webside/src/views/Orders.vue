@@ -29,6 +29,21 @@
             style="width: 100%"
             @change="onFilterChange"
           />
+          <el-select
+            v-model="filters.owner_user_id"
+            placeholder="商品归属"
+            clearable
+            filterable
+            style="width: 100%"
+            @change="onFilterChange"
+          >
+            <el-option
+              v-for="u in ownerUsers"
+              :key="u.id"
+              :label="u.display_name || u.username"
+              :value="u.id"
+            />
+          </el-select>
         </el-col>
         <el-col :xs="24" :md="8" class="search-actions">
           <el-button type="success" :icon="RefreshRight" @click="openSyncDialog('newData')">更新列表</el-button>
@@ -63,6 +78,7 @@
 
     <el-card shadow="never" class="table-card">
       <el-table
+        ref="orderTableRef"
         :data="list"
         v-loading="loading"
         stripe
@@ -512,86 +528,164 @@
     <el-dialog
       v-model="manualOutboundDialogVisible"
       title="手动添加出库"
-      width="520px"
+      width="760px"
       destroy-on-close
     >
       <el-form label-width="90px">
         <el-form-item label="订单号">
           <el-input :model-value="manualOutboundForm.order_no" disabled />
         </el-form-item>
-        <el-form-item label="商品归属">
-          <el-select
-            v-model="manualOwnerFilter"
-            clearable
-            filterable
-            style="width: 100%"
-            placeholder="请选择商品归属"
-          >
-            <el-option
-              v-for="owner in manualOwnerOptions"
-              :key="owner"
-              :label="owner"
-              :value="owner"
-            />
-          </el-select>
-        </el-form-item>
-        <el-form-item label="库存商品">
-          <el-select
-            v-model="manualOutboundForm.inventory_ids"
-            multiple
-            collapse-tags
-            collapse-tags-tooltip
-            filterable
-            clearable
-            class="manual-inventory-select"
-            style="width: 100%"
-            placeholder="请选择一个或多个库存商品"
-            :loading="manualInventoryLoading"
-            popper-class="manual-inventory-select-popper"
-          >
-            <el-option
-              v-for="it in filteredManualInventoryOptions"
-              :key="it.id"
-              :label="`${it.name || '-'}（归属:${it.owner_user_name || '-'}，库存:${Number(it.quantity || 0)}）`"
-              :value="it.id"
-            >
-              <div class="manual-option-row">
-                <el-image
-                  v-if="inventoryThumbUrl(it)"
-                  class="manual-option-thumb"
-                  :src="inventoryThumbUrl(it)"
-                  fit="contain"
-                  lazy
-                  referrerpolicy="no-referrer"
-                />
-                <span v-else class="manual-option-thumb-fallback">-</span>
-                <div class="manual-option-meta">
-                  <div class="manual-option-name">{{ it.name || '-' }}</div>
-                  <div class="manual-option-sub">归属: {{ it.owner_user_name || '-' }} ｜ 库存: {{ Number(it.quantity || 0) }}</div>
-                </div>
-              </div>
-            </el-option>
-          </el-select>
-        </el-form-item>
-        <el-form-item label="各自数量">
-          <div style="width:100%; display:flex; flex-direction:column; gap:8px;">
-            <div
-              v-for="iid in manualOutboundForm.inventory_ids"
-              :key="iid"
-              style="display:flex; align-items:center; gap:8px;"
-            >
-              <span style="flex:1; min-width:0; color:#cfd3dc;">
-                {{ inventoryLabelById(iid) }}
-              </span>
-              <el-input-number
-                v-model="manualOutboundForm.quantities[iid]"
-                :min="1"
-                :precision="0"
-                :controls="false"
-                style="width:120px"
+        <el-form-item label="物品筛选" class="manual-outbound-inv-filter-item">
+          <div class="manual-ob-filter-grid">
+            <div class="manual-ob-filter-cell">
+              <el-input
+                v-model="manualInvFilters.keyword"
+                placeholder="搜索商品名称"
+                clearable
+                prefix-icon="Search"
+                @change="reloadManualInventoryList"
               />
             </div>
-            <span v-if="!manualOutboundForm.inventory_ids.length" class="cell-dash">请先选择库存商品</span>
+            <div class="manual-ob-filter-cell">
+              <el-select
+                v-model="manualInvFilters.filterCat"
+                placeholder="所有游戏分类"
+                clearable
+                filterable
+                style="width: 100%"
+                @change="reloadManualInventoryList"
+              >
+                <el-option v-for="c in manualInvFilters.categories" :key="c.id" :label="c.name" :value="c.id" />
+              </el-select>
+            </div>
+            <div class="manual-ob-filter-cell">
+              <el-cascader
+                v-model="manualInvFilters.filterWarehousePath"
+                :options="manualInvFilters.warehouseCascaderOptions"
+                :props="manualInvWarehouseCascaderProps"
+                :show-all-levels="false"
+                style="width: 100%"
+                placeholder="仓库 / 货架名称 / 货架号"
+                popper-class="product-type-cascader-popper"
+                clearable
+                filterable
+                @change="manualInvFilters.handleFilterWarehouseChange"
+              />
+            </div>
+            <div class="manual-ob-filter-cell">
+              <el-cascader
+                v-model="manualInvFilters.filterProductTypePath"
+                :options="manualInvFilters.productTypeCascaderOptions"
+                :props="manualInvProductTypeCascaderProps"
+                :show-all-levels="false"
+                style="width: 100%"
+                placeholder="商品类型"
+                popper-class="product-type-cascader-popper"
+                clearable
+                filterable
+                @change="manualInvFilters.handleFilterProductTypeChange"
+              />
+            </div>
+            <div class="manual-ob-filter-cell">
+              <el-select
+                v-model="manualInvFilters.filterOwnerUserId"
+                placeholder="所有商品归属"
+                clearable
+                filterable
+                style="width: 100%"
+                @change="reloadManualInventoryList"
+              >
+                <el-option
+                  v-for="u in manualInvFilters.ownerUsers"
+                  :key="u.id"
+                  :label="u.display_name || u.username"
+                  :value="u.id"
+                />
+              </el-select>
+            </div>
+            <div class="manual-ob-filter-cell manual-ob-filter-cell--checkbox">
+              <el-checkbox v-model="manualInvFilters.hideNoWarehouseSlot" class="manual-ob-filter-checkbox">
+                隐藏无在库
+              </el-checkbox>
+            </div>
+          </div>
+        </el-form-item>
+        <el-form-item label="库存物品">
+          <div class="manual-ob-line-list" v-loading="manualInventoryLoading">
+            <div
+              v-for="row in manualOutboundForm.rows"
+              :key="row.key"
+              class="manual-ob-line-row"
+            >
+              <el-select
+                v-model="row.inventory_id"
+                filterable
+                clearable
+                class="manual-inventory-select"
+                style="width: 100%"
+                placeholder="选择库存商品"
+                popper-class="manual-inventory-select-popper"
+                @change="onManualOutboundRowInventoryChange(row)"
+              >
+                <el-option
+                  v-for="it in rowInventoryOptions(row.key)"
+                  :key="it.id"
+                  :label="`${it.name || '-'}（归属:${it.owner_user_name || '-'}，库存:${Number(it.quantity || 0)}）`"
+                  :value="it.id"
+                >
+                  <div class="manual-option-row">
+                    <div
+                      v-if="inventoryThumbUrl(it)"
+                      class="manual-option-thumb-click"
+                      @click.stop
+                    >
+                      <el-image
+                        class="manual-option-thumb"
+                        :src="inventoryThumbUrl(it)"
+                        :preview-src-list="inventoryPreviewSrcList(it)"
+                        :initial-index="0"
+                        fit="contain"
+                        lazy
+                        preview-teleported
+                        hide-on-click-modal
+                        :z-index="4000"
+                        referrerpolicy="no-referrer"
+                      />
+                    </div>
+                    <span v-else class="manual-option-thumb-fallback">-</span>
+                    <div class="manual-option-meta">
+                      <div class="manual-option-name">{{ it.name || '-' }}</div>
+                      <div class="manual-option-sub">归属: {{ it.owner_user_name || '-' }} ｜ 库存: {{ Number(it.quantity || 0) }}</div>
+                    </div>
+                  </div>
+                </el-option>
+              </el-select>
+              <el-input-number
+                v-model="row.quantity"
+                :min="1"
+                :max="maxStockForManualRow(row.inventory_id)"
+                :precision="0"
+                :controls="false"
+                class="manual-ob-line-qty"
+                :disabled="!row.inventory_id"
+              />
+              <el-button
+                type="danger"
+                plain
+                circle
+                :icon="Minus"
+                title="删除此行"
+                @click="removeManualOutboundRow(row.key)"
+              />
+            </div>
+            <div v-if="!manualOutboundForm.rows.length" class="cell-dash manual-ob-line-empty">
+              点击下方「添加」增加出库明细
+            </div>
+            <div class="manual-ob-line-add">
+              <el-button type="primary" plain :icon="Plus" @click="addManualOutboundRow">
+                添加
+              </el-button>
+            </div>
           </div>
         </el-form-item>
       </el-form>
@@ -650,14 +744,24 @@
               :value="it.id"
             >
               <div class="manual-option-row">
-                <el-image
+                <div
                   v-if="inventoryThumbUrl(it)"
-                  class="manual-option-thumb"
-                  :src="inventoryThumbUrl(it)"
-                  fit="contain"
-                  lazy
-                  referrerpolicy="no-referrer"
-                />
+                  class="manual-option-thumb-click"
+                  @click.stop
+                >
+                  <el-image
+                    class="manual-option-thumb"
+                    :src="inventoryThumbUrl(it)"
+                    :preview-src-list="inventoryPreviewSrcList(it)"
+                    :initial-index="0"
+                    fit="contain"
+                    lazy
+                    preview-teleported
+                    hide-on-click-modal
+                    :z-index="4000"
+                    referrerpolicy="no-referrer"
+                  />
+                </div>
                 <span v-else class="manual-option-thumb-fallback">-</span>
                 <div class="manual-option-meta">
                   <div class="manual-option-name">{{ it.name || '-' }}</div>
@@ -743,15 +847,33 @@
 </template>
 
 <script setup>
-import { ref, computed, onMounted, watch, onBeforeUnmount } from 'vue'
+import { ref, computed, onMounted, watch, onBeforeUnmount, nextTick } from 'vue'
 import { ElMessage } from 'element-plus'
-import { RefreshRight, Refresh } from '@element-plus/icons-vue'
-import { orderApi, mercariApi, meiluAccountApi, inventoryApi, costExpenseApi, costRecordApi } from '@/api/index.js'
+import { RefreshRight, Refresh, Plus, Minus } from '@element-plus/icons-vue'
+import {
+  orderApi,
+  mercariApi,
+  meiluAccountApi,
+  inventoryApi,
+  costExpenseApi,
+  costRecordApi,
+  authApi,
+} from '@/api/index.js'
+import {
+  useInventoryListApiFilters,
+  warehouseCascaderProps,
+  productTypeCascaderProps,
+} from '@/composables/useInventoryListApiFilters.js'
 import {
   localYmdToDayStartTs,
   localYmdToDayEndTs,
   localTodayRangeTs,
 } from '@/utils/orderStatsTime.js'
+
+const orderTableRef = ref(null)
+/** 当前已展开的主表行（用于筛选变更时折叠，避免展开区与缓存不一致） */
+const lastExpandedRows = ref([])
+const ownerUsers = ref([])
 
 const loading = ref(false)
 const statsLoading = ref(false)
@@ -766,7 +888,6 @@ const manualOutboundDialogVisible = ref(false)
 const manualOutboundSaving = ref(false)
 const manualInventoryLoading = ref(false)
 const manualInventoryOptions = ref([])
-const manualOwnerFilter = ref('')
 const bindOutboundDialogVisible = ref(false)
 const bindOutboundSaving = ref(false)
 const bindInventoryLoading = ref(false)
@@ -777,29 +898,46 @@ const bindOutboundForm = ref({ inventory_id: null })
 const packagingDialogVisible = ref(false)
 const packagingSubmitting = ref(false)
 const packagingItemsOptions = ref([])
+let _manualObRowKeySeq = 0
+function newManualOutboundRowKey() {
+  _manualObRowKeySeq += 1
+  return `mob-${_manualObRowKeySeq}`
+}
+
 const manualOutboundForm = ref({
   order_no: '',
-  inventory_ids: [],
-  quantities: {},
+  /** 出库明细行：同一 inventory_id 仅允许一行（与后端 batch 校验一致） */
+  rows: [],
 })
-const manualOwnerOptions = computed(() => {
-  const out = []
-  const seen = new Set()
-  for (const it of (manualInventoryOptions.value || [])) {
-    const owner = String(it?.owner_user_name || '').trim()
-    if (!owner || seen.has(owner)) continue
-    seen.add(owner)
-    out.push(owner)
+
+function scheduleManualInvReload() {
+  void reloadManualInventoryList()
+}
+const manualInvFilters = useInventoryListApiFilters(scheduleManualInvReload)
+const manualInvWarehouseCascaderProps = warehouseCascaderProps
+const manualInvProductTypeCascaderProps = productTypeCascaderProps
+
+async function reloadManualInventoryList() {
+  if (!manualOutboundDialogVisible.value) return
+  manualInventoryLoading.value = true
+  try {
+    const res = await inventoryApi.list(
+      manualInvFilters.buildInventoryListParams({ in_stock_only: true })
+    )
+    const next = Array.isArray(res) ? res : []
+    manualInventoryOptions.value = next
+    const allowed = new Set(next.map((x) => Number(x.id)))
+    for (const row of manualOutboundForm.value.rows || []) {
+      const iid = Number(row?.inventory_id || 0)
+      if (Number.isFinite(iid) && iid > 0 && !allowed.has(iid)) {
+        row.inventory_id = null
+        row.quantity = 1
+      }
+    }
+  } finally {
+    manualInventoryLoading.value = false
   }
-  return out.sort((a, b) => a.localeCompare(b, 'zh-CN'))
-})
-const filteredManualInventoryOptions = computed(() => {
-  const owner = String(manualOwnerFilter.value || '').trim()
-  if (!owner) return manualInventoryOptions.value || []
-  return (manualInventoryOptions.value || []).filter(
-    (it) => String(it?.owner_user_name || '').trim() === owner
-  )
-})
+}
 const bindOwnerOptions = computed(() => {
   const out = []
   const seen = new Set()
@@ -908,7 +1046,7 @@ const dateRange = ref([])
 const dialogVisible = ref(false)
 const formRef = ref()
 
-const filters = ref({ keyword: '', status: '' })
+const filters = ref({ keyword: '', status: '', owner_user_id: null })
 
 /** 与后端 routes.orders ORDER_STATUSES 一致（煤炉） */
 const ORDER_STATUS_KEYS = [
@@ -1275,6 +1413,11 @@ function listFilterParams() {
   if (filters.value.keyword) params.keyword = filters.value.keyword
   const st = (filters.value.status || '').trim()
   if (st && LIST_FILTER_STATUS_SET.has(st)) params.status = st
+  const ouid = filters.value.owner_user_id
+  if (ouid != null && ouid !== '') {
+    const n = Number(ouid)
+    if (Number.isFinite(n) && n > 0) params.owner_user_id = n
+  }
   if (dateRange.value?.length === 2) {
     const start = localYmdToDayStartTs(dateRange.value[0])
     const end = localYmdToDayEndTs(dateRange.value[1])
@@ -1282,6 +1425,32 @@ function listFilterParams() {
     if (end != null) params.end_ts = end
   }
   return params
+}
+
+/** 与列表「商品归属」筛选一致：展开区只请求该归属下的出库行（一单多归属时各显示各的） */
+function buildOutboundLinesParams(orderNo) {
+  const ono = String(orderNo || '').trim()
+  const params = { order_no: ono }
+  const p = listFilterParams()
+  if (p.owner_user_id != null) params.owner_user_id = p.owner_user_id
+  return params
+}
+
+async function resetExpandAndCollapseRows() {
+  const rows = [...(lastExpandedRows.value || [])]
+  expandState.value = {}
+  await nextTick()
+  const tbl = orderTableRef.value
+  if (tbl && typeof tbl.toggleRowExpansion === 'function') {
+    rows.forEach((r) => {
+      try {
+        tbl.toggleRowExpansion(r, false)
+      } catch (_) {
+        /* ignore */
+      }
+    })
+  }
+  lastExpandedRows.value = []
 }
 
 function updateViewportState() {
@@ -1325,16 +1494,18 @@ async function load() {
   total.value = res.total || 0
 }
 
-function onFilterChange() {
+async function onFilterChange() {
   page.value = 1
+  await resetExpandAndCollapseRows()
   load()
   loadStats()
 }
 
-function resetFilters() {
-  filters.value = { keyword: '', status: '' }
+async function resetFilters() {
+  filters.value = { keyword: '', status: '', owner_user_id: null }
   dateRange.value = []
   page.value = 1
+  await resetExpandAndCollapseRows()
   load()
   loadStats()
 }
@@ -1404,7 +1575,7 @@ async function reloadOutboundLinesExpand(orderNo) {
   if (!cur?.loaded) return
   expandState.value = { ...expandState.value, [ono]: { ...cur, loading: true } }
   try {
-    const res = await orderApi.outboundLines({ order_no: ono })
+    const res = await orderApi.outboundLines(buildOutboundLinesParams(ono))
     const rows = Array.isArray(res?.items) ? res.items : []
     expandState.value = {
       ...expandState.value,
@@ -1467,9 +1638,11 @@ async function submitBindOutboundInventory() {
 }
 
 async function onOrderExpandChange(row, expandedRows) {
+  const exp = Array.isArray(expandedRows) ? expandedRows : []
+  lastExpandedRows.value = [...exp]
   const ono = String(row?.order_no || '').trim()
   if (!ono) return
-  const opened = expandedRows.some((r) => String(r?.order_no || '').trim() === ono)
+  const opened = exp.some((r) => String(r?.order_no || '').trim() === ono)
   if (!opened) return
   if (expandState.value[ono]?.loaded) return
   expandState.value = {
@@ -1477,7 +1650,7 @@ async function onOrderExpandChange(row, expandedRows) {
     [ono]: { loading: true, loaded: false, rows: [] },
   }
   try {
-    const res = await orderApi.outboundLines({ order_no: ono })
+    const res = await orderApi.outboundLines(buildOutboundLinesParams(ono))
     const rows = Array.isArray(res?.items) ? res.items : []
     expandState.value = {
       ...expandState.value,
@@ -1610,20 +1783,69 @@ async function submitPackagingExpense() {
   }
 }
 
+function addManualOutboundRow() {
+  manualOutboundForm.value.rows.push({
+    key: newManualOutboundRowKey(),
+    inventory_id: null,
+    quantity: 1,
+  })
+}
+
+function removeManualOutboundRow(rowKey) {
+  const rows = (manualOutboundForm.value.rows || []).filter((r) => r.key !== rowKey)
+  manualOutboundForm.value.rows = rows
+}
+
+function rowInventoryOptions(rowKey) {
+  const rows = manualOutboundForm.value.rows || []
+  const otherIds = new Set(
+    rows
+      .filter((r) => r.key !== rowKey && r.inventory_id != null && r.inventory_id !== '')
+      .map((r) => Number(r.inventory_id))
+      .filter((id) => Number.isFinite(id) && id > 0)
+  )
+  return (manualInventoryOptions.value || []).filter((it) => {
+    const id = Number(it.id)
+    if (!Number.isFinite(id)) return false
+    if (otherIds.has(id)) return false
+    return true
+  })
+}
+
+function maxStockForManualRow(inventoryId) {
+  const id = Number(inventoryId || 0)
+  if (!Number.isFinite(id) || id <= 0) return undefined
+  const row = (manualInventoryOptions.value || []).find((x) => Number(x.id) === id)
+  if (!row) return undefined
+  const q = Number(row.quantity ?? 0)
+  return Number.isFinite(q) && q >= 1 ? q : 1
+}
+
+function onManualOutboundRowInventoryChange(row) {
+  const max = maxStockForManualRow(row?.inventory_id)
+  if (max != null) {
+    const n = Math.max(1, Number(row.quantity || 1))
+    row.quantity = Math.min(n, max)
+  } else {
+    row.quantity = Math.max(1, Number(row.quantity || 1))
+  }
+}
+
 async function openManualOutboundDialog(orderRow) {
   const orderNo = String(orderRow?.order_no || '').trim()
   if (!orderNo) return
   manualOutboundForm.value = {
     order_no: orderNo,
-    inventory_ids: [],
-    quantities: {},
+    rows: [{ key: newManualOutboundRowKey(), inventory_id: null, quantity: 1 }],
   }
-  manualOwnerFilter.value = ''
+  manualInvFilters.resetFilters()
   manualOutboundDialogVisible.value = true
   manualInventoryLoading.value = true
   try {
-    const res = await inventoryApi.list({ in_stock_only: true })
-    manualInventoryOptions.value = Array.isArray(res) ? res : []
+    await manualInvFilters.loadFilterMetadata()
+    await reloadManualInventoryList()
+  } catch {
+    manualInventoryOptions.value = []
   } finally {
     manualInventoryLoading.value = false
   }
@@ -1631,18 +1853,30 @@ async function openManualOutboundDialog(orderRow) {
 
 async function submitManualOutbound() {
   const orderNo = String(manualOutboundForm.value.order_no || '').trim()
-  const ids = Array.isArray(manualOutboundForm.value.inventory_ids)
-    ? manualOutboundForm.value.inventory_ids.map((x) => Number(x)).filter((x) => Number.isFinite(x) && x > 0)
-    : []
   if (!orderNo) return
-  if (!ids.length) {
-    ElMessage.warning('请至少选择一个库存商品')
+  const rows = manualOutboundForm.value.rows || []
+  const lines = []
+  const seen = new Set()
+  for (const row of rows) {
+    const iid = Number(row?.inventory_id || 0)
+    if (!Number.isFinite(iid) || iid <= 0) continue
+    if (seen.has(iid)) {
+      ElMessage.warning('同一库存商品请勿重复选择')
+      return
+    }
+    seen.add(iid)
+    const max = maxStockForManualRow(iid)
+    const qty = Math.max(1, Number(row.quantity || 1))
+    if (max != null && qty > max) {
+      ElMessage.warning(`「${inventoryLabelById(iid)}」出库数量不能超过当前库存 ${max}`)
+      return
+    }
+    lines.push({ inventory_id: iid, quantity: qty })
+  }
+  if (!lines.length) {
+    ElMessage.warning('请至少添加一行并选择库存商品')
     return
   }
-  const lines = ids.map((iid) => ({
-    inventory_id: iid,
-    quantity: Math.max(1, Number((manualOutboundForm.value.quantities || {})[iid] || 1)),
-  }))
   manualOutboundSaving.value = true
   try {
     await orderApi.addManualOutboundLinesBatch({
@@ -1669,6 +1903,18 @@ function inventoryThumbUrl(row) {
   if (f) return f
   const i = String(row?.image || '').trim()
   return i || ''
+}
+
+/** 下拉项内点击图片预览：正 / 背（与列表缩略图同源，去重） */
+function inventoryPreviewSrcList(row) {
+  const front = String(row?.image_front || '').trim()
+  const back = String(row?.image_back || '').trim()
+  const legacy = String(row?.image || '').trim()
+  const primary = front || legacy
+  const out = []
+  if (primary) out.push(primary)
+  if (back && !out.includes(back)) out.push(back)
+  return out
 }
 
 async function stockOutLine(orderRow, line) {
@@ -1707,6 +1953,7 @@ async function stockOutLine(orderRow, line) {
 }
 
 function openEdit(row) {
+  const dbMoney = row._owner_split_money_db
   form.value = {
     id: row.id,
     order_no: row.order_no || '',
@@ -1716,12 +1963,12 @@ function openEdit(row) {
     data_user: row.data_user != null && row.data_user !== '' ? String(row.data_user) : '',
     customer_name: row.customer_name || '',
     status: row.status || 'pending',
-    amount: Number(row.amount || 0),
-    service_fee: optionalNumFromRow(row.service_fee),
-    net_income: optionalNumFromRow(row.net_income),
+    amount: Number((dbMoney ? dbMoney.amount : row.amount) ?? 0),
+    service_fee: optionalNumFromRow(dbMoney ? dbMoney.service_fee : row.service_fee),
+    net_income: optionalNumFromRow(dbMoney ? dbMoney.net_income : row.net_income),
     carrier_display_name: row.carrier_display_name || '',
     request_class_display_name: row.request_class_display_name || '',
-    shipping_fee: optionalNumFromRow(row.shipping_fee),
+    shipping_fee: optionalNumFromRow(dbMoney ? dbMoney.shipping_fee : row.shipping_fee),
     tracking_no: row.tracking_no || '',
     transaction_evidence_id: optionalIntFromRow(row.transaction_evidence_id),
     remark: row.remark || '',
@@ -1820,9 +2067,15 @@ watch(isMobile, (mobile) => {
   if (!mobile) loadStats()
 })
 
-onMounted(() => {
+onMounted(async () => {
   updateViewportState()
   window.addEventListener('resize', updateViewportState)
+  try {
+    const users = await authApi.listUsers()
+    ownerUsers.value = Array.isArray(users) ? users : []
+  } catch {
+    ownerUsers.value = []
+  }
   load()
   loadStats()
   loadPackagingItemOptions()
@@ -2022,6 +2275,59 @@ onBeforeUnmount(() => {
   gap: 12px;
   margin-left: auto;
 }
+.manual-outbound-inv-filter-item :deep(.el-form-item__content) {
+  flex: 1;
+  min-width: 0;
+}
+.manual-ob-filter-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px 12px;
+  width: 100%;
+}
+.manual-ob-filter-cell {
+  min-width: 0;
+}
+.manual-ob-filter-cell :deep(.el-input),
+.manual-ob-filter-cell :deep(.el-select),
+.manual-ob-filter-cell :deep(.el-cascader) {
+  width: 100%;
+}
+.manual-ob-filter-cell--checkbox {
+  display: flex;
+  align-items: center;
+}
+.manual-ob-filter-checkbox :deep(.el-checkbox__label) {
+  padding-left: 6px;
+  white-space: nowrap;
+}
+.manual-ob-line-list {
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  min-height: 40px;
+}
+.manual-ob-line-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 120px 36px;
+  gap: 10px;
+  align-items: center;
+}
+.manual-ob-line-qty {
+  width: 100%;
+}
+.manual-ob-line-qty :deep(.el-input__wrapper) {
+  padding-left: 8px;
+  padding-right: 8px;
+}
+.manual-ob-line-add {
+  display: flex;
+  justify-content: flex-start;
+}
+.manual-ob-line-empty {
+  font-size: 13px;
+}
 .manual-option-row {
   display: grid;
   grid-template-columns: 140px 1fr;
@@ -2031,6 +2337,15 @@ onBeforeUnmount(() => {
   min-width: 0;
   min-height: 156px;
   padding: 8px 0;
+}
+.manual-option-thumb-click {
+  flex-shrink: 0;
+  cursor: zoom-in;
+  border-radius: 4px;
+  align-self: start;
+}
+.manual-option-thumb-click :deep(.el-image) {
+  display: block;
 }
 .manual-option-thumb {
   width: 140px;

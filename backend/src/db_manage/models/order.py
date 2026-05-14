@@ -165,6 +165,7 @@ class OrderModel(BaseModel):
         status: Optional[str] = None,
         start_ts: Optional[int] = None,
         end_ts: Optional[int] = None,
+        owner_user_id: Optional[int] = None,
     ) -> Tuple[str, List[Any]]:
         base_sql = """
             FROM [orders] o
@@ -193,6 +194,16 @@ class OrderModel(BaseModel):
                 " AND COALESCE(o.purchase_time, o.order_date) <= ?"
             )
             params.append(int(end_ts))
+        if owner_user_id is not None and int(owner_user_id) > 0:
+            base_sql += """
+                AND EXISTS (
+                    SELECT 1 FROM [order_outbound_lines] l
+                    INNER JOIN [inventory] p ON p.id = l.inventory_id
+                    WHERE l.[order_no] = o.[order_no]
+                      AND p.[owner_user_id] = ?
+                )
+            """
+            params.append(int(owner_user_id))
         return base_sql, params
 
     @classmethod
@@ -202,16 +213,31 @@ class OrderModel(BaseModel):
         status: Optional[str] = None,
         start_ts: Optional[int] = None,
         end_ts: Optional[int] = None,
+        owner_user_id: Optional[int] = None,
     ) -> Dict[str, Any]:
         """
         与列表相同的筛选条件下，对全量匹配行求和（非当前页）。
 
         统计口径：status=cancelled 的订单不计入 total_count / sum_amount /
         sum_service_fee / sum_shipping_fee / sum_net_income（与列表筛选无关，列表仍可只看已取消）。
+
+        若指定 owner_user_id，则金额类字段按该归属在单内的拆分比例累加（与订单列表展示一致）。
         """
+        if owner_user_id is not None and int(owner_user_id) > 0:
+            return cls._aggregate_sums_with_owner_money_split(
+                keyword=keyword,
+                status=status,
+                start_ts=start_ts,
+                end_ts=end_ts,
+                owner_user_id=int(owner_user_id),
+            )
         db = cls().db
         base_sql, params = cls._build_list_filter(
-            keyword=keyword, status=status, start_ts=start_ts, end_ts=end_ts
+            keyword=keyword,
+            status=status,
+            start_ts=start_ts,
+            end_ts=end_ts,
+            owner_user_id=owner_user_id,
         )
         base_sql += " AND o.status != 'cancelled'"
         sql = f"""
@@ -230,6 +256,65 @@ class OrderModel(BaseModel):
             "sum_service_fee": int(row[2]),
             "sum_shipping_fee": int(row[3]),
             "sum_net_income": int(row[4]),
+        }
+
+    @classmethod
+    def _aggregate_sums_with_owner_money_split(
+        cls,
+        keyword: Optional[str] = None,
+        status: Optional[str] = None,
+        start_ts: Optional[int] = None,
+        end_ts: Optional[int] = None,
+        owner_user_id: int = 0,
+    ) -> Dict[str, Any]:
+        from ...order_goods_ratio import split_order_money_for_owner_user
+
+        db = cls().db
+        base_sql, params = cls._build_list_filter(
+            keyword=keyword,
+            status=status,
+            start_ts=start_ts,
+            end_ts=end_ts,
+            owner_user_id=int(owner_user_id),
+        )
+        base_sql += " AND o.status != 'cancelled'"
+        sql = f"""
+            SELECT o.order_no, o.amount, o.service_fee, o.shipping_fee, o.net_income
+            {base_sql}
+        """
+        rows = db.execute_query(sql, tuple(params))
+        oid = int(owner_user_id)
+        tc = 0
+        sa = ss = sh = sn = 0
+        for r in rows:
+            if not r or len(r) < 5:
+                continue
+            ono, amt, sf, ship, ni = r[0], r[1], r[2], r[3], r[4]
+            parts = split_order_money_for_owner_user(
+                str(ono or "").strip(),
+                oid,
+                amt,
+                sf,
+                ship,
+                ni,
+            )
+            tc += 1
+            sa += int(parts.get("amount") or 0)
+            pv = parts.get("service_fee")
+            if pv is not None:
+                ss += int(pv)
+            pv = parts.get("shipping_fee")
+            if pv is not None:
+                sh += int(pv)
+            pv = parts.get("net_income")
+            if pv is not None:
+                sn += int(pv)
+        return {
+            "total_count": tc,
+            "sum_amount": sa,
+            "sum_service_fee": ss,
+            "sum_shipping_fee": sh,
+            "sum_net_income": sn,
         }
 
     # items/get 批量刷新时排除：已完成(done)、取消、历史売切（煤炉侧终态）
@@ -282,12 +367,17 @@ class OrderModel(BaseModel):
         status: Optional[str] = None,
         start_ts: Optional[int] = None,
         end_ts: Optional[int] = None,
+        owner_user_id: Optional[int] = None,
         page: int = 1,
         page_size: int = 20,
     ) -> Dict[str, Any]:
         db = cls().db
         base_sql, params = cls._build_list_filter(
-            keyword=keyword, status=status, start_ts=start_ts, end_ts=end_ts
+            keyword=keyword,
+            status=status,
+            start_ts=start_ts,
+            end_ts=end_ts,
+            owner_user_id=owner_user_id,
         )
 
         total = db.execute_query(f"SELECT COUNT(*) {base_sql}", tuple(params))[0][0]
@@ -326,9 +416,33 @@ class OrderModel(BaseModel):
             'shipping_fee', 'tracking_no', 'transaction_evidence_id', 'remark', 'description',
             'inventory_synced', 'inventory_synced_quantity', 'thumbnails', 'pending_outbound_qty',
         ]
+        items = [dict(zip(keys, row)) for row in rows]
+        if owner_user_id is not None and int(owner_user_id) > 0:
+            from ...order_goods_ratio import split_order_money_for_owner_user
+
+            oid = int(owner_user_id)
+            for row in items:
+                row["_owner_split_money_db"] = {
+                    "amount": row.get("amount"),
+                    "service_fee": row.get("service_fee"),
+                    "shipping_fee": row.get("shipping_fee"),
+                    "net_income": row.get("net_income"),
+                }
+                parts = split_order_money_for_owner_user(
+                    str(row.get("order_no") or "").strip(),
+                    oid,
+                    row.get("amount"),
+                    row.get("service_fee"),
+                    row.get("shipping_fee"),
+                    row.get("net_income"),
+                )
+                row["amount"] = parts["amount"]
+                row["service_fee"] = parts["service_fee"]
+                row["shipping_fee"] = parts["shipping_fee"]
+                row["net_income"] = parts["net_income"]
         return {
             'total': total,
             'page': page,
             'page_size': page_size,
-            'items': [dict(zip(keys, row)) for row in rows],
+            'items': items,
         }

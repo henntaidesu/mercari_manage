@@ -90,12 +90,26 @@ class OrderOutboundLineModel(BaseModel):
         ]
 
     @classmethod
-    def list_enriched_for_order(cls, order_no: str) -> List[Dict[str, Any]]:
-        """返回某订单解析出的出库行，左联库存与仓库名称（不按订单状态过滤，便于查看历史单）。"""
+    def list_enriched_for_order(
+        cls,
+        order_no: str,
+        owner_user_id: Optional[int] = None,
+    ) -> List[Dict[str, Any]]:
+        """返回某订单解析出的出库行，左联库存与仓库名称（不按订单状态过滤，便于查看历史单）。
+
+        owner_user_id：仅保留已关联库存且 inventory.owner_user_id 等于该值的行（与订单列表「按商品归属」筛选一致）。
+        """
         ono = (order_no or "").strip()
         if not ono:
             return []
         db = cls().db
+        owner_filter_sql = ""
+        bind: Tuple[Any, ...] = (ono,)
+        if owner_user_id is not None and int(owner_user_id) > 0:
+            owner_filter_sql = (
+                " AND l.inventory_id IS NOT NULL AND IFNULL(p.owner_user_id, 0) = ?"
+            )
+            bind = (ono, int(owner_user_id))
         sql = f"""
             SELECT
                 l.id,
@@ -114,6 +128,7 @@ class OrderOutboundLineModel(BaseModel):
                 p.price AS original_price,
                 p.quantity AS stock_quantity,
                 COALESCE(u.display_name, u.username) AS product_owner_name,
+                p.owner_user_id AS product_owner_user_id,
                 COALESCE(NULLIF(TRIM(w.[warehouse]), ''), '默认仓库') AS warehouse_name,
                 NULLIF(TRIM(w.[shelf_name]), '') AS shelf_name,
                 NULLIF(TRIM(w.[name]), '') AS shelf_code
@@ -121,10 +136,10 @@ class OrderOutboundLineModel(BaseModel):
             LEFT JOIN [inventory] p ON p.id = l.inventory_id
             LEFT JOIN [warehouses] w ON w.id = p.warehouse_id
             LEFT JOIN [users] u ON u.id = p.owner_user_id
-            WHERE l.order_no = ?
+            WHERE l.order_no = ?{owner_filter_sql}
             ORDER BY l.sort_index ASC, l.id ASC
         """
-        rows = db.execute_query(sql, (ono,))
+        rows = db.execute_query(sql, bind)
         keys = [
             "id",
             "order_no",
@@ -142,6 +157,7 @@ class OrderOutboundLineModel(BaseModel):
             "original_price",
             "stock_quantity",
             "product_owner_name",
+            "product_owner_user_id",
             "warehouse_name",
             "shelf_name",
             "shelf_code",
