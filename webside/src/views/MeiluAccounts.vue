@@ -22,7 +22,10 @@
             <div class="card-item"><span>卖家ID：</span>{{ row.seller_id || '-' }}</div>
             <div class="card-item">
               <span>自动数据获取：</span>
-              <template v-if="row.is_open === 1">开启 · {{ fetchIntervalLabel(row.fetch_interval) }}</template>
+              <template v-if="row.is_open === 1">
+                开启 · {{ fetchIntervalLabel(row.fetch_interval) }}
+                <template v-if="autoFetchTasksLabel(row)">（{{ autoFetchTasksLabel(row) }}）</template>
+              </template>
               <template v-else>关闭</template>
             </div>
             <div class="card-item"><span>备注：</span>{{ row.remark || '-' }}</div>
@@ -88,19 +91,42 @@
 
         <el-divider content-position="left">自动数据获取</el-divider>
         <p class="form-section-hint">
-          开启后由服务端按间隔执行：订单页「更新状态」→「更新列表」→ 在售页「从煤炉同步」（与对应页面按钮同源）。
-          须已配置卖家 ID 且 MITM / 鉴权可用。
+          开启后由服务端按间隔执行所选任务（与订单页 / 在售页对应按钮同源）。须已配置卖家 ID 且 MITM / 鉴权可用。
         </p>
         <el-form-item label="自动获取" prop="is_open">
           <el-select v-model="form.is_open" style="width: 100%" @change="onAutoFetchToggle">
             <el-option v-for="opt in autoFetchSwitchOptions" :key="opt.value" :label="opt.label" :value="opt.value" />
           </el-select>
         </el-form-item>
-        <el-form-item v-show="form.is_open === 1" label="间隔" prop="fetch_interval">
-          <el-select v-model="form.fetch_interval" style="width: 100%" placeholder="请选择间隔">
-            <el-option v-for="opt in fetchIntervalOptions" :key="opt.value" :label="opt.label" :value="opt.value" />
-          </el-select>
-        </el-form-item>
+        <template v-if="form.is_open === 1">
+          <el-form-item label="同步项">
+            <div class="af-task-checks">
+              <el-checkbox
+                v-model="form.auto_fetch_order_status"
+                :true-value="1"
+                :false-value="0"
+                @change="onAutoFetchTaskChange"
+              >订单：更新状态</el-checkbox>
+              <el-checkbox
+                v-model="form.auto_fetch_order_list"
+                :true-value="1"
+                :false-value="0"
+                @change="onAutoFetchTaskChange"
+              >订单：更新列表</el-checkbox>
+              <el-checkbox
+                v-model="form.auto_fetch_on_sale"
+                :true-value="1"
+                :false-value="0"
+                @change="onAutoFetchTaskChange"
+              >在售：从煤炉同步</el-checkbox>
+            </div>
+          </el-form-item>
+          <el-form-item label="间隔" prop="fetch_interval">
+            <el-select v-model="form.fetch_interval" style="width: 100%" placeholder="请选择间隔" @change="onAutoFetchTaskChange">
+              <el-option v-for="opt in fetchIntervalOptions" :key="opt.value" :label="opt.label" :value="opt.value" />
+            </el-select>
+          </el-form-item>
+        </template>
       </el-form>
       <template #footer>
         <div class="meilu-dialog-footer">
@@ -172,11 +198,27 @@ function fetchIntervalLabel(v) {
   return legacyFetchIntervalLabels[key] || key
 }
 
+function autoFetchTasksLabel(row) {
+  if (!row || row.is_open !== 1) return ''
+  const parts = []
+  if (row.auto_fetch_order_status === 1) parts.push('订单状态')
+  if (row.auto_fetch_order_list === 1) parts.push('订单列表')
+  if (row.auto_fetch_on_sale === 1) parts.push('在售同步')
+  return parts.join('、')
+}
+
 function onAutoFetchToggle() {
   if (form.value.is_open !== 1) {
     form.value.fetch_interval = ''
+    form.value.auto_fetch_order_status = 0
+    form.value.auto_fetch_order_list = 0
+    form.value.auto_fetch_on_sale = 0
   }
   nextTick(() => formRef.value?.clearValidate(['fetch_interval']))
+}
+
+function onAutoFetchTaskChange() {
+  nextTick(() => formRef.value?.validateField('fetch_interval').catch(() => {}))
 }
 
 const createDefaultForm = () => ({
@@ -187,6 +229,9 @@ const createDefaultForm = () => ({
   remark: '',
   is_open: 0,
   fetch_interval: '',
+  auto_fetch_order_status: 0,
+  auto_fetch_order_list: 0,
+  auto_fetch_on_sale: 0,
 })
 
 const form = ref(createDefaultForm())
@@ -216,6 +261,14 @@ const formRules = {
             cb(new Error('请选择间隔'))
             return
           }
+          const anyTask =
+            form.value.auto_fetch_order_status === 1 ||
+            form.value.auto_fetch_order_list === 1 ||
+            form.value.auto_fetch_on_sale === 1
+          if (!anyTask) {
+            cb(new Error('请至少选择一项同步任务'))
+            return
+          }
         }
         cb()
       },
@@ -240,6 +293,7 @@ function openCreate() {
 }
 
 function openEdit(row) {
+  const open = row.is_open === 1 || row.is_open === true ? 1 : 0
   form.value = {
     ...createDefaultForm(),
     id: row.id,
@@ -247,11 +301,11 @@ function openEdit(row) {
     seller_id: row.seller_id != null ? String(row.seller_id) : '',
     status: row.status || 'active',
     remark: row.remark || '',
-    is_open: row.is_open === 1 || row.is_open === true ? 1 : 0,
-    fetch_interval:
-      row.is_open === 1 || row.is_open === true
-        ? String(row.fetch_interval != null ? row.fetch_interval : '')
-        : '',
+    is_open: open,
+    fetch_interval: open === 1 ? String(row.fetch_interval != null ? row.fetch_interval : '') : '',
+    auto_fetch_order_status: row.auto_fetch_order_status === 1 ? 1 : 0,
+    auto_fetch_order_list: row.auto_fetch_order_list === 1 ? 1 : 0,
+    auto_fetch_on_sale: row.auto_fetch_on_sale === 1 ? 1 : 0,
   }
   dialogVisible.value = true
 }
@@ -267,6 +321,9 @@ function buildPayload() {
     remark: form.value.remark || null,
     is_open: open,
     fetch_interval: open === 1 ? String(form.value.fetch_interval || '').trim() || null : null,
+    auto_fetch_order_status: open === 1 && form.value.auto_fetch_order_status === 1 ? 1 : 0,
+    auto_fetch_order_list: open === 1 && form.value.auto_fetch_order_list === 1 ? 1 : 0,
+    auto_fetch_on_sale: open === 1 && form.value.auto_fetch_on_sale === 1 ? 1 : 0,
   }
   if (form.value.id) {
     return base
@@ -506,6 +563,17 @@ onMounted(() => {
   font-size: 12px;
   line-height: 1.55;
   color: #7d8da6;
+}
+.af-task-checks {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 10px;
+}
+.af-task-checks .el-checkbox {
+  margin-right: 0;
+  height: auto;
+  white-space: normal;
 }
 .meilu-form {
   max-height: 70vh;

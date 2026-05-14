@@ -78,6 +78,22 @@ class MeiluAccountModel(BaseModel):
                 'not_null': False,
                 'default': None,
             },
+            # 自动同步子任务（与订单页 / 在售页按钮对应）；总开关仍为 is_open + fetch_interval
+            'auto_fetch_order_status': {
+                'type': 'INTEGER',
+                'not_null': True,
+                'default': 0,
+            },
+            'auto_fetch_order_list': {
+                'type': 'INTEGER',
+                'not_null': True,
+                'default': 0,
+            },
+            'auto_fetch_on_sale': {
+                'type': 'INTEGER',
+                'not_null': True,
+                'default': 0,
+            },
         }
 
     @classmethod
@@ -85,9 +101,38 @@ class MeiluAccountModel(BaseModel):
         ok = super().ensure_table_exists()
         if ok:
             cls._migrate_login_password_json_to_value()
+            cls._migrate_auto_fetch_task_defaults()
             if hasattr(cls, '_cached_table_columns'):
                 delattr(cls, '_cached_table_columns')
         return ok
+
+    @classmethod
+    def _migrate_auto_fetch_task_defaults(cls) -> None:
+        """旧数据 is_open=1 且子任务全 0 时，视为三项全开（与升级前行为一致）。"""
+        db = cls().db
+        table = cls.get_table_name()
+        if not db.table_exists(table):
+            return
+        names = {c['name'] for c in db.get_table_columns(table)}
+        for col in ('auto_fetch_order_status', 'auto_fetch_order_list', 'auto_fetch_on_sale'):
+            if col not in names:
+                return
+        try:
+            db.execute_update(
+                f"""
+                UPDATE [{table}]
+                SET [auto_fetch_order_status] = 1,
+                    [auto_fetch_order_list] = 1,
+                    [auto_fetch_on_sale] = 1
+                WHERE [is_open] = 1
+                  AND IFNULL([auto_fetch_order_status], 0) = 0
+                  AND IFNULL([auto_fetch_order_list], 0) = 0
+                  AND IFNULL([auto_fetch_on_sale], 0) = 0
+                """,
+                (),
+            )
+        except Exception as e:
+            print(f"[meilu_accounts] auto_fetch 子任务默认迁移跳过: {e}")
 
     @classmethod
     def _migrate_login_password_json_to_value(cls) -> None:
@@ -143,12 +188,12 @@ class MeiluAccountModel(BaseModel):
 
         total = db.execute_query(f"SELECT COUNT(*) {base_sql}", tuple(params))[0][0]
         select_sql = f"""
-            SELECT m.id, m.account_name, m.login_id, m.seller_id, m.login_password, m.status, m.remark, m.[value], m.is_open, m.fetch_interval, m.auto_fetch_last_at
+            SELECT m.id, m.account_name, m.login_id, m.seller_id, m.login_password, m.status, m.remark, m.[value], m.is_open, m.fetch_interval, m.auto_fetch_last_at, m.auto_fetch_order_status, m.auto_fetch_order_list, m.auto_fetch_on_sale
             {base_sql}
             ORDER BY m.id DESC
             LIMIT ? OFFSET ?
         """
-        keys = ['id', 'account_name', 'login_id', 'seller_id', 'login_password', 'status', 'remark', 'value', 'is_open', 'fetch_interval', 'auto_fetch_last_at']
+        keys = ['id', 'account_name', 'login_id', 'seller_id', 'login_password', 'status', 'remark', 'value', 'is_open', 'fetch_interval', 'auto_fetch_last_at', 'auto_fetch_order_status', 'auto_fetch_order_list', 'auto_fetch_on_sale']
         rows = db.execute_query(select_sql, tuple(params + [page_size, (page - 1) * page_size]))
         items = []
         for row in rows:
@@ -157,6 +202,9 @@ class MeiluAccountModel(BaseModel):
             raw = d.pop('value', None)
             d['value'] = cls._parse_value_json(raw)
             d['is_open'] = 1 if d.get('is_open') else 0
+            d['auto_fetch_order_status'] = 1 if d.get('auto_fetch_order_status') else 0
+            d['auto_fetch_order_list'] = 1 if d.get('auto_fetch_order_list') else 0
+            d['auto_fetch_on_sale'] = 1 if d.get('auto_fetch_on_sale') else 0
             items.append(d)
         return {
             'total': total,

@@ -2,10 +2,10 @@
 """
 煤炉账号「自动数据获取」后台调度。
 
-开启且 status=active 的账号，按 fetch_interval 节流，依次执行（与同账号 run_meilu_serial 串行）：
-1) batch_refresh_orders_info — 对应订单页「更新状态」
-2) sync_new_data — 对应订单页「更新列表」
-3) sync_on_sale_items_from_mercari — 对应在售页「从煤炉同步」
+开启且 status=active 的账号，按 fetch_interval 节流；在账号配置的子任务中按需执行（与同账号 run_meilu_serial 串行）：
+- auto_fetch_order_status → batch_refresh_orders_info（订单页「更新状态」）
+- auto_fetch_order_list → sync_new_data（订单页「更新列表」）
+- auto_fetch_on_sale → sync_on_sale_items_from_mercari（在售页「从煤炉同步」）
 
 环境变量：
 - MEILU_AUTO_FETCH：设为 0/false/off 关闭本循环（默认开启）
@@ -63,19 +63,6 @@ def _now_iso() -> str:
     return datetime.now(timezone.utc).replace(microsecond=0).isoformat()
 
 
-def _account_due(item: MeiluAccountModel, now: datetime) -> bool:
-    if not _normalize_row_is_open(item.is_open):
-        return False
-    iv = (item.fetch_interval or "").strip()
-    if not iv:
-        return False
-    last = _parse_last_at(getattr(item, "auto_fetch_last_at", None))
-    if last is None:
-        return True
-    elapsed = (now - last).total_seconds()
-    return elapsed >= _interval_seconds(iv)
-
-
 def _normalize_row_is_open(v) -> bool:
     if v is True:
         return True
@@ -87,12 +74,43 @@ def _normalize_row_is_open(v) -> bool:
         return False
 
 
-def _run_auto_fetch_for_account(aid: int) -> None:
-    """在同一 meilu_{id} 队列内顺序执行三步（与前端订单页 / 在售页按钮同源逻辑）。"""
+def _any_auto_task_enabled(item: MeiluAccountModel) -> bool:
+    return (
+        _normalize_row_is_open(getattr(item, "auto_fetch_order_status", 0))
+        or _normalize_row_is_open(getattr(item, "auto_fetch_order_list", 0))
+        or _normalize_row_is_open(getattr(item, "auto_fetch_on_sale", 0))
+    )
+
+
+def _account_due(item: MeiluAccountModel, now: datetime) -> bool:
+    if not _normalize_row_is_open(item.is_open):
+        return False
+    if not _any_auto_task_enabled(item):
+        return False
+    iv = (item.fetch_interval or "").strip()
+    if not iv:
+        return False
+    last = _parse_last_at(getattr(item, "auto_fetch_last_at", None))
+    if last is None:
+        return True
+    elapsed = (now - last).total_seconds()
+    return elapsed >= _interval_seconds(iv)
+
+
+def _run_auto_fetch_for_account(aid: int, item: MeiluAccountModel) -> None:
+    st = _normalize_row_is_open(getattr(item, "auto_fetch_order_status", 0))
+    li = _normalize_row_is_open(getattr(item, "auto_fetch_order_list", 0))
+    os_ = _normalize_row_is_open(getattr(item, "auto_fetch_on_sale", 0))
+    if not (st or li or os_):
+        return
+
     def _body():
-        batch_refresh_orders_info(account_id=aid)
-        sync_new_data(account_id=aid)
-        sync_on_sale_items_from_mercari(account_id=aid)
+        if st:
+            batch_refresh_orders_info(account_id=aid)
+        if li:
+            sync_new_data(account_id=aid)
+        if os_:
+            sync_on_sale_items_from_mercari(account_id=aid)
 
     run_meilu_serial(queue_key_for_meilu_account(aid), _body)
 
@@ -126,8 +144,10 @@ def run_meilu_auto_fetch_tick() -> None:
             if not sid:
                 log.warning("[meilu_auto_fetch] 账号 id=%s 已开启自动获取但未配置 seller_id，跳过", aid)
                 continue
+            if not _any_auto_task_enabled(item):
+                continue
             log.info("[meilu_auto_fetch] 开始账号 id=%s seller_id=%s", aid, sid)
-            _run_auto_fetch_for_account(int(aid))
+            _run_auto_fetch_for_account(int(aid), item)
             _mark_last_at(int(aid))
             log.info("[meilu_auto_fetch] 完成账号 id=%s", aid)
         except Exception:

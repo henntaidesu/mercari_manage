@@ -71,6 +71,9 @@ class MeiluAccountCreate(PydanticModel):
     remark: Optional[str] = None
     is_open: int = 0
     fetch_interval: Optional[str] = None
+    auto_fetch_order_status: int = 0
+    auto_fetch_order_list: int = 0
+    auto_fetch_on_sale: int = 0
 
 
 class MeiluAccountUpdate(PydanticModel):
@@ -82,6 +85,9 @@ class MeiluAccountUpdate(PydanticModel):
     remark: Optional[str] = None
     is_open: Optional[int] = None
     fetch_interval: Optional[str] = None
+    auto_fetch_order_status: Optional[int] = None
+    auto_fetch_order_list: Optional[int] = None
+    auto_fetch_on_sale: Optional[int] = None
 
 
 class FetchAuthViaMitmBody(PydanticModel):
@@ -125,14 +131,29 @@ def _normalize_is_open(v: Any) -> int:
         return 0
 
 
-def _norm_auto_fetch(is_open: int, fetch_interval: Optional[str]) -> tuple:
-    is_open = 1 if is_open else 0
-    if is_open == 0:
-        return 0, None
+def _norm_auto_fetch(
+    is_open: int,
+    fetch_interval: Optional[str],
+    order_status: int,
+    order_list: int,
+    on_sale: int,
+) -> tuple:
+    """
+    规范化自动同步：总开关关闭时清空间隔与子任务；
+    开启时须合法间隔且至少一项子任务为 1。
+    """
+    io = 1 if is_open else 0
+    if io == 0:
+        return 0, None, 0, 0, 0
     iv = (fetch_interval or "").strip()
     if iv not in ALLOWED_FETCH_INTERVALS:
         raise HTTPException(status_code=400, detail="开启自动数据获取时，请选择有效的时间间隔")
-    return 1, iv
+    st = 1 if order_status else 0
+    li = 1 if order_list else 0
+    os_ = 1 if on_sale else 0
+    if not (st or li or os_):
+        raise HTTPException(status_code=400, detail="开启自动数据获取时，请至少选择一项同步任务")
+    return 1, iv, st, li, os_
 
 
 def _norm_headers_dict(d: Optional[dict]) -> dict:
@@ -189,6 +210,9 @@ def _item_api_dict(item: MeiluAccountModel) -> dict:
     raw = d.pop('value', None)
     d['value'] = MeiluAccountModel._parse_value_json(raw if isinstance(raw, str) else None)
     d['is_open'] = 1 if d.get('is_open') else 0
+    d['auto_fetch_order_status'] = 1 if d.get('auto_fetch_order_status') else 0
+    d['auto_fetch_order_list'] = 1 if d.get('auto_fetch_order_list') else 0
+    d['auto_fetch_on_sale'] = 1 if d.get('auto_fetch_on_sale') else 0
     return d
 
 
@@ -316,7 +340,13 @@ def create_meilu_account(data: MeiluAccountCreate):
     value_json = _value_json_for_create(data)
     name = _norm_required_text(data.account_name, "账号名称")
     lid = (data.login_id or "").strip() or name
-    io, fi = _norm_auto_fetch(_normalize_is_open(data.is_open), data.fetch_interval)
+    io, fi, st, li, os_ = _norm_auto_fetch(
+        _normalize_is_open(data.is_open),
+        data.fetch_interval,
+        _normalize_is_open(data.auto_fetch_order_status),
+        _normalize_is_open(data.auto_fetch_order_list),
+        _normalize_is_open(data.auto_fetch_on_sale),
+    )
     item = MeiluAccountModel(
         account_name=name,
         login_id=lid,
@@ -327,6 +357,9 @@ def create_meilu_account(data: MeiluAccountCreate):
         remark=data.remark,
         is_open=io,
         fetch_interval=fi,
+        auto_fetch_order_status=st,
+        auto_fetch_order_list=li,
+        auto_fetch_on_sale=os_,
     )
     if not item.save():
         raise HTTPException(status_code=500, detail="保存失败")
@@ -353,13 +386,25 @@ def update_meilu_account(aid: int, data: MeiluAccountUpdate):
     if data.value is not None:
         headers = _norm_headers_dict(data.value)
         item.value = json.dumps(headers, ensure_ascii=False)
-    if data.is_open is not None or data.fetch_interval is not None:
+    if data.is_open is not None or data.fetch_interval is not None or data.auto_fetch_order_status is not None or data.auto_fetch_order_list is not None or data.auto_fetch_on_sale is not None:
         prev_open = _normalize_is_open(item.is_open)
-        io = _normalize_is_open(data.is_open if data.is_open is not None else item.is_open)
+        io = _normalize_is_open(data.is_open) if data.is_open is not None else prev_open
         fi = data.fetch_interval if data.fetch_interval is not None else item.fetch_interval
-        io, fi = _norm_auto_fetch(io, fi)
+        st = _normalize_is_open(getattr(item, "auto_fetch_order_status", 0))
+        if data.auto_fetch_order_status is not None:
+            st = _normalize_is_open(data.auto_fetch_order_status)
+        li = _normalize_is_open(getattr(item, "auto_fetch_order_list", 0))
+        if data.auto_fetch_order_list is not None:
+            li = _normalize_is_open(data.auto_fetch_order_list)
+        os_ = _normalize_is_open(getattr(item, "auto_fetch_on_sale", 0))
+        if data.auto_fetch_on_sale is not None:
+            os_ = _normalize_is_open(data.auto_fetch_on_sale)
+        io, fi, st, li, os_ = _norm_auto_fetch(io, fi, st, li, os_)
         item.is_open = io
         item.fetch_interval = fi
+        item.auto_fetch_order_status = st
+        item.auto_fetch_order_list = li
+        item.auto_fetch_on_sale = os_
         if io == 0:
             item.auto_fetch_last_at = None
         elif prev_open == 0 and io == 1:
