@@ -66,8 +66,14 @@ class MeiluAccountModel(BaseModel):
                 'not_null': True,
                 'default': 0,
             },
-            # 抓取间隔，与前端选项一致：10 / 30 / 60 / 3h / 6h / 12h / 24h
+            # 抓取间隔：15 / 30 / 60(1h) / 3h / 6h 等（见 meilu_accounts.ALLOWED_FETCH_INTERVALS）
             'fetch_interval': {
+                'type': 'TEXT',
+                'not_null': False,
+                'default': None,
+            },
+            # 上次自动拉取成功时间（UTC ISO），供后台定时任务节流
+            'auto_fetch_last_at': {
                 'type': 'TEXT',
                 'not_null': False,
                 'default': None,
@@ -137,13 +143,13 @@ class MeiluAccountModel(BaseModel):
 
         total = db.execute_query(f"SELECT COUNT(*) {base_sql}", tuple(params))[0][0]
         select_sql = f"""
-            SELECT m.id, m.account_name, m.login_id, m.seller_id, m.login_password, m.status, m.remark, m.[value], m.is_open, m.fetch_interval
+            SELECT m.id, m.account_name, m.login_id, m.seller_id, m.login_password, m.status, m.remark, m.[value], m.is_open, m.fetch_interval, m.auto_fetch_last_at
             {base_sql}
             ORDER BY m.id DESC
             LIMIT ? OFFSET ?
         """
+        keys = ['id', 'account_name', 'login_id', 'seller_id', 'login_password', 'status', 'remark', 'value', 'is_open', 'fetch_interval', 'auto_fetch_last_at']
         rows = db.execute_query(select_sql, tuple(params + [page_size, (page - 1) * page_size]))
-        keys = ['id', 'account_name', 'login_id', 'seller_id', 'login_password', 'status', 'remark', 'value', 'is_open', 'fetch_interval']
         items = []
         for row in rows:
             d = dict(zip(keys, row))

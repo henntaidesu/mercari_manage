@@ -1,6 +1,7 @@
 import logging
 import os
 import sys
+import asyncio
 from pathlib import Path
 
 from fastapi import FastAPI, Depends
@@ -66,7 +67,7 @@ app.include_router(app_config_router, dependencies=auth_required)
 
 
 @app.on_event("startup")
-def startup():
+async def startup():
     # 保证业务代码里 logging.info 能出现在 Uvicorn 同一控制台（默认根 logger 常为 WARNING）
     _fmt = "%(levelname)s | %(name)s | %(message)s"
     try:
@@ -80,6 +81,10 @@ def startup():
         r = start_mitm_proxy()
         if r.get("error"):
             logging.getLogger(__name__).warning("SSL MITM 未启动: %s", r["error"])
+
+    from src.meilu_auto_fetch_loop import meilu_auto_fetch_loop
+
+    asyncio.create_task(meilu_auto_fetch_loop())
 
 
 @app.on_event("shutdown")

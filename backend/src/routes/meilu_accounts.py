@@ -25,7 +25,8 @@ router = APIRouter(prefix="/api/meilu-accounts", tags=["meilu-accounts"])
 log = logging.getLogger(__name__)
 
 ALLOWED_STATUS = {"active", "disabled"}
-ALLOWED_FETCH_INTERVALS = frozenset({"10", "30", "60", "3h", "6h", "12h", "24h"})
+# 前端主选项 15/30/1H/3H/6H；保留旧值以便已存数据校验通过
+ALLOWED_FETCH_INTERVALS = frozenset({"15", "30", "60", "3h", "6h", "10", "12h", "24h"})
 MERCARI_IN_PROGRESS_URL = "https://jp.mercari.com/mypage/listings/in_progress"
 MERCARI_LISTINGS_URL = "https://jp.mercari.com/mypage/listings"
 IN_PROGRESS_FIRST_LINK_XPATH = '//*[@id="my-page-main-content"]/div/div/div/div/ul/li[1]/a/div[1]/div'
@@ -353,11 +354,16 @@ def update_meilu_account(aid: int, data: MeiluAccountUpdate):
         headers = _norm_headers_dict(data.value)
         item.value = json.dumps(headers, ensure_ascii=False)
     if data.is_open is not None or data.fetch_interval is not None:
+        prev_open = _normalize_is_open(item.is_open)
         io = _normalize_is_open(data.is_open if data.is_open is not None else item.is_open)
         fi = data.fetch_interval if data.fetch_interval is not None else item.fetch_interval
         io, fi = _norm_auto_fetch(io, fi)
         item.is_open = io
         item.fetch_interval = fi
+        if io == 0:
+            item.auto_fetch_last_at = None
+        elif prev_open == 0 and io == 1:
+            item.auto_fetch_last_at = None
 
     if not item.save():
         raise HTTPException(status_code=500, detail="更新失败")

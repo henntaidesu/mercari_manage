@@ -63,7 +63,7 @@
     <el-dialog
       v-model="dialogVisible"
       :title="form.id ? '编辑煤炉账号' : '新增煤炉账号'"
-      width="560px"
+      width="620px"
       top="6vh"
       destroy-on-close
       class="meilu-dialog"
@@ -85,6 +85,22 @@
         <el-form-item label="备注">
           <el-input v-model="form.remark" type="textarea" :rows="2" maxlength="200" show-word-limit />
         </el-form-item>
+
+        <el-divider content-position="left">自动数据获取</el-divider>
+        <p class="form-section-hint">
+          开启后由服务端按间隔执行：订单页「更新状态」→「更新列表」→ 在售页「从煤炉同步」（与对应页面按钮同源）。
+          须已配置卖家 ID 且 MITM / 鉴权可用。
+        </p>
+        <el-form-item label="自动获取" prop="is_open">
+          <el-select v-model="form.is_open" style="width: 100%" @change="onAutoFetchToggle">
+            <el-option v-for="opt in autoFetchSwitchOptions" :key="opt.value" :label="opt.label" :value="opt.value" />
+          </el-select>
+        </el-form-item>
+        <el-form-item v-show="form.is_open === 1" label="间隔" prop="fetch_interval">
+          <el-select v-model="form.fetch_interval" style="width: 100%" placeholder="请选择间隔">
+            <el-option v-for="opt in fetchIntervalOptions" :key="opt.value" :label="opt.label" :value="opt.value" />
+          </el-select>
+        </el-form-item>
       </el-form>
       <template #footer>
         <div class="meilu-dialog-footer">
@@ -104,7 +120,7 @@
 </template>
 
 <script setup>
-import { ref, onMounted } from 'vue'
+import { ref, onMounted, nextTick } from 'vue'
 import { Plus } from '@element-plus/icons-vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { meiluAccountApi, mercariApi, webDriveApi } from '@/api/index.js'
@@ -129,21 +145,38 @@ const statusOptions = [
   { label: '停用', value: 'disabled' },
 ]
 
-const fetchIntervalOptions = [
-  { label: '10 分钟', value: '10' },
-  { label: '30 分钟', value: '30' },
-  { label: '60 分钟', value: '60' },
-  { label: '3 小时', value: '3h' },
-  { label: '6 小时', value: '6h' },
-  { label: '12 小时', value: '12h' },
-  { label: '24 小时', value: '24h' },
+const autoFetchSwitchOptions = [
+  { label: '关闭', value: 0 },
+  { label: '开启', value: 1 },
 ]
 
-const fetchIntervalLabelMap = Object.fromEntries(fetchIntervalOptions.map((o) => [o.value, o.label]))
+const fetchIntervalOptions = [
+  { label: '15 分钟', value: '15' },
+  { label: '30 分钟', value: '30' },
+  { label: '1 小时', value: '60' },
+  { label: '3 小时', value: '3h' },
+  { label: '6 小时', value: '6h' },
+]
+
+const legacyFetchIntervalLabels = {
+  '10': '10 分钟',
+  '12h': '12 小时',
+  '24h': '24 小时',
+}
 
 function fetchIntervalLabel(v) {
   if (v == null || v === '') return '-'
-  return fetchIntervalLabelMap[v] || v
+  const key = String(v)
+  const cur = fetchIntervalOptions.find((o) => o.value === key)
+  if (cur) return cur.label
+  return legacyFetchIntervalLabels[key] || key
+}
+
+function onAutoFetchToggle() {
+  if (form.value.is_open !== 1) {
+    form.value.fetch_interval = ''
+  }
+  nextTick(() => formRef.value?.clearValidate(['fetch_interval']))
 }
 
 const createDefaultForm = () => ({
@@ -152,6 +185,8 @@ const createDefaultForm = () => ({
   seller_id: '',
   status: 'active',
   remark: '',
+  is_open: 0,
+  fetch_interval: '',
 })
 
 const form = ref(createDefaultForm())
@@ -172,6 +207,21 @@ const formRules = {
   account_name: [{ required: true, message: '请输入账号名称', trigger: 'blur' }],
   seller_id: sellerIdRules,
   status: [{ required: true, message: '请选择账号状态', trigger: 'change' }],
+  is_open: [{ required: true, message: '请选择', trigger: 'change' }],
+  fetch_interval: [
+    {
+      validator(_rule, val, cb) {
+        if (form.value.is_open === 1) {
+          if (!val || !String(val).trim()) {
+            cb(new Error('请选择间隔'))
+            return
+          }
+        }
+        cb()
+      },
+      trigger: 'change',
+    },
+  ],
 }
 
 async function load() {
@@ -197,27 +247,31 @@ function openEdit(row) {
     seller_id: row.seller_id != null ? String(row.seller_id) : '',
     status: row.status || 'active',
     remark: row.remark || '',
+    is_open: row.is_open === 1 || row.is_open === true ? 1 : 0,
+    fetch_interval:
+      row.is_open === 1 || row.is_open === true
+        ? String(row.fetch_interval != null ? row.fetch_interval : '')
+        : '',
   }
   dialogVisible.value = true
 }
 
 function buildPayload() {
   const name = String(form.value.account_name || '').trim()
+  const open = form.value.is_open === 1 ? 1 : 0
   const base = {
     account_name: name,
     login_id: name,
     seller_id: String(form.value.seller_id || '').trim() || null,
     status: form.value.status,
     remark: form.value.remark || null,
+    is_open: open,
+    fetch_interval: open === 1 ? String(form.value.fetch_interval || '').trim() || null : null,
   }
   if (form.value.id) {
     return base
   }
-  return {
-    ...base,
-    is_open: 0,
-    fetch_interval: null,
-  }
+  return { ...base }
 }
 
 async function submit() {
@@ -444,6 +498,12 @@ onMounted(() => {
 .form-intro-tip {
   margin: 0 0 12px;
   font-size: 13px;
+  line-height: 1.55;
+  color: #7d8da6;
+}
+.form-section-hint {
+  margin: -4px 0 12px;
+  font-size: 12px;
   line-height: 1.55;
   color: #7d8da6;
 }
