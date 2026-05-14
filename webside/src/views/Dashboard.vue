@@ -96,11 +96,13 @@ const orderStats = ref({
   sum_service_fee: 0,
   sum_shipping_fee: 0,
   sum_net_income: 0,
+  sum_packaging: 0,
   today_total_count: 0,
   today_sum_amount: 0,
   today_sum_service_fee: 0,
   today_sum_shipping_fee: 0,
   today_sum_net_income: 0,
+  today_sum_packaging: 0,
 })
 
 const statCards = [
@@ -150,6 +152,15 @@ const orderStatCards = computed(() => {
       valueClass: '',
     },
     {
+      label: '包材合计',
+      display: Math.round(Number(o.sum_packaging || 0)),
+      todayDisplay: Math.round(Number(o.today_sum_packaging || 0)),
+      icon: 'ShoppingCart',
+      color: '#909399',
+      cardClass: '',
+      valueClass: '',
+    },
+    {
       label: '净收益合计',
       display: Math.round(Number(o.sum_net_income || 0)),
       todayDisplay: Math.round(Number(o.today_sum_net_income || 0)),
@@ -176,11 +187,13 @@ async function loadOrderStats() {
       sum_service_fee: res.sum_service_fee ?? 0,
       sum_shipping_fee: res.sum_shipping_fee ?? 0,
       sum_net_income: res.sum_net_income ?? 0,
+      sum_packaging: res.sum_packaging ?? 0,
       today_total_count: res.today_total_count ?? 0,
       today_sum_amount: res.today_sum_amount ?? 0,
       today_sum_service_fee: res.today_sum_service_fee ?? 0,
       today_sum_shipping_fee: res.today_sum_shipping_fee ?? 0,
       today_sum_net_income: res.today_sum_net_income ?? 0,
+      today_sum_packaging: res.today_sum_packaging ?? 0,
     }
   } finally {
     orderStatsLoading.value = false

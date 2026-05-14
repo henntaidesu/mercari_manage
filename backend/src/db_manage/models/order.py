@@ -259,6 +259,61 @@ class OrderModel(BaseModel):
         }
 
     @classmethod
+    def aggregate_packaging_expense_yen(
+        cls,
+        keyword: Optional[str] = None,
+        status: Optional[str] = None,
+        start_ts: Optional[int] = None,
+        end_ts: Optional[int] = None,
+        owner_user_id: Optional[int] = None,
+    ) -> int:
+        """
+        与 aggregate_sums 相同订单筛选下，「包装材料」支出合计（quantity * unit_price，日元整数）。
+
+        已取消订单排除；若指定 owner_user_id，仅统计 cost_expenses.owner 与该用户
+        display_name / username 一致的明细行（与列表按归属筛选时口径一致）。
+        """
+        db = cls().db
+        base_sql, params = cls._build_list_filter(
+            keyword=keyword,
+            status=status,
+            start_ts=start_ts,
+            end_ts=end_ts,
+            owner_user_id=owner_user_id,
+        )
+        base_sql = base_sql.replace(
+            "FROM [orders] o",
+            "FROM [orders] o\n"
+            "            INNER JOIN [cost_expenses] e ON e.[order_no] = o.[order_no] AND e.[type] = '包装材料'",
+            1,
+        )
+        base_sql += " AND o.status != 'cancelled'"
+        qparams: List[Any] = list(params)
+        oid = int(owner_user_id or 0)
+        if oid > 0:
+            base_sql += """
+                AND EXISTS (
+                    SELECT 1 FROM [users] u
+                    WHERE u.[id] = ?
+                      AND TRIM(COALESCE(e.[owner], '')) != ''
+                      AND (
+                          TRIM(COALESCE(e.[owner], '')) = TRIM(COALESCE(u.[display_name], ''))
+                          OR TRIM(COALESCE(e.[owner], '')) = TRIM(COALESCE(u.[username], ''))
+                      )
+                )
+            """
+            qparams.append(oid)
+        sql = f"""
+            SELECT COALESCE(SUM(COALESCE(e.[quantity], 0) * COALESCE(e.[unit_price], 0)), 0)
+            {base_sql}
+        """
+        row = db.execute_query(sql, tuple(qparams))[0]
+        try:
+            return max(0, int(row[0] or 0))
+        except (TypeError, ValueError):
+            return 0
+
+    @classmethod
     def _aggregate_sums_with_owner_money_split(
         cls,
         keyword: Optional[str] = None,

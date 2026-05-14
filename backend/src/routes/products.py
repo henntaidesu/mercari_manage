@@ -382,9 +382,11 @@ def list_inventory(
 ):
     where_parts = []
     params = []
-    if keyword:
-        where_parts.append("AND p.name LIKE ?")
-        params.append(f"%{keyword}%")
+    kw = (keyword or "").strip()
+    if kw:
+        where_parts.append("AND (p.name LIKE ? OR CAST(p.id AS TEXT) LIKE ?)")
+        params.append(f"%{kw}%")
+        params.append(f"%{kw}%")
     if category_id:
         where_parts.append("AND p.category_id = ?")
         params.append(category_id)

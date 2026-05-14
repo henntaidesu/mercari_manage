@@ -21,7 +21,7 @@
       <el-row :gutter="0" align="middle" class="search-row">
         <el-col :xs="24" :md="14" class="search-left-group">
           <div class="search-left-row1">
-            <el-input v-model="keyword" class="search-input-control" placeholder="搜索商品名称" clearable @change="load" prefix-icon="Search" />
+            <el-input v-model="keyword" class="search-input-control" placeholder="搜索商品名称或管理番号" clearable @change="load" prefix-icon="Search" />
             <div class="search-filters-row">
               <el-select v-model="filterCat" class="search-select-control" placeholder="所有游戏分类" clearable @change="load">
                 <el-option v-for="c in categories" :key="c.id" :label="c.name" :value="c.id" />
@@ -1076,7 +1076,7 @@ const filterWarehousePath = ref([])
 const filterProductType = ref(null)
 const filterProductTypePath = ref([])
 const filterOwnerUserId = ref(null)
-/** localStorage：是否隐藏未分配仓库/货架（warehouse_id 为空）的条目 */
+/** localStorage：是否隐藏「库存数量为 0」的条目（与「隐藏无在库」勾选一致） */
 const HIDE_NO_WAREHOUSE_SLOT_STORAGE_KEY = 'mercari.inventory.hideNoWarehouseSlot'
 function readHideNoWarehouseSlotPreference() {
   try {
@@ -1088,7 +1088,7 @@ function readHideNoWarehouseSlotPreference() {
   }
   return true
 }
-/** 默认开启；勾选状态会写入 localStorage 并在切换时立即重新拉取列表 */
+/** 默认开启（不展示 quantity=0）；写入 localStorage；watch 内会立即重新拉取列表 */
 const hideNoWarehouseSlot = ref(readHideNoWarehouseSlotPreference())
 const currentPage = ref(1)
 const pageSize = 15
@@ -2146,9 +2146,7 @@ async function load(options = {}) {
   if (filterWarehouse.value) params.warehouse_id = filterWarehouse.value
   if (filterProductType.value) params.product_type_id = filterProductType.value
   if (filterOwnerUserId.value) params.owner_user_id = filterOwnerUserId.value
-  if (hideNoWarehouseSlot.value) params.warehouse_assigned_only = true
-  /** 列表默认不展示 quantity 为 0 的条目（与组合商品多选一致） */
-  params.in_stock_only = true
+  if (hideNoWarehouseSlot.value) params.in_stock_only = true
   list.value = await inventoryApi.list(params).finally(() => (loading.value = false))
   if (resetPage) {
     inventorySortProp.value = ''

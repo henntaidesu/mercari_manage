@@ -179,9 +179,18 @@ def order_stats(
     筛选购入时间区间：start_ts / end_ts 为 Unix 秒（与列表一致，建议由前端按本地自然日 0 点～当日结束换算）。
     可选 today_start_ts / today_end_ts（同为 Unix 秒，本地「今天」起止）：在相同 keyword、status 下汇总「今日购入」，
     不受 start_ts/end_ts 影响。
+
+    sum_packaging / today_sum_packaging：关联订单的「包装材料」支出合计（日元），筛选条件与上述一致。
     """
     _validate_status_query(status)
     out = OrderModel.aggregate_sums(
+        keyword=keyword,
+        status=status,
+        start_ts=start_ts,
+        end_ts=end_ts,
+        owner_user_id=owner_user_id,
+    )
+    out["sum_packaging"] = OrderModel.aggregate_packaging_expense_yen(
         keyword=keyword,
         status=status,
         start_ts=start_ts,
@@ -201,6 +210,13 @@ def order_stats(
         out["today_sum_service_fee"] = t["sum_service_fee"]
         out["today_sum_shipping_fee"] = t["sum_shipping_fee"]
         out["today_sum_net_income"] = t["sum_net_income"]
+        out["today_sum_packaging"] = OrderModel.aggregate_packaging_expense_yen(
+            keyword=keyword,
+            status=status,
+            start_ts=int(today_start_ts),
+            end_ts=int(today_end_ts),
+            owner_user_id=owner_user_id,
+        )
     return out
 
 

@@ -267,6 +267,16 @@
                       </template>
                     </el-table-column>
                   </el-table>
+                  <div
+                    v-if="packagingState[row.order_no]?.loaded"
+                    class="order-packaging-total-line"
+                  >
+                    包材合计：
+                    <span class="order-packaging-total-value">
+                      {{ Math.round(Number(packagingState[row.order_no]?.total_amount || 0)) }}
+                    </span>
+                    日元
+                  </div>
                 </div>
               </template>
             </div>
@@ -962,11 +972,13 @@ const stats = ref({
   sum_service_fee: 0,
   sum_shipping_fee: 0,
   sum_net_income: 0,
+  sum_packaging: 0,
   today_total_count: 0,
   today_sum_amount: 0,
   today_sum_service_fee: 0,
   today_sum_shipping_fee: 0,
   today_sum_net_income: 0,
+  today_sum_packaging: 0,
 })
 
 const packagingState = ref({})
@@ -1020,6 +1032,15 @@ const orderStatCards = computed(() => {
       todayDisplay: Math.round(Number(o.today_sum_shipping_fee || 0)),
       icon: 'Box',
       color: '#F56C6C',
+      cardClass: '',
+      valueClass: '',
+    },
+    {
+      label: '包材合计',
+      display: Math.round(Number(o.sum_packaging || 0)),
+      todayDisplay: Math.round(Number(o.today_sum_packaging || 0)),
+      icon: 'ShoppingCart',
+      color: '#909399',
       cardClass: '',
       valueClass: '',
     },
@@ -1473,11 +1494,13 @@ async function loadStats() {
       sum_service_fee: res.sum_service_fee ?? 0,
       sum_shipping_fee: res.sum_shipping_fee ?? 0,
       sum_net_income: res.sum_net_income ?? 0,
+      sum_packaging: res.sum_packaging ?? 0,
       today_total_count: res.today_total_count ?? 0,
       today_sum_amount: res.today_sum_amount ?? 0,
       today_sum_service_fee: res.today_sum_service_fee ?? 0,
       today_sum_shipping_fee: res.today_sum_shipping_fee ?? 0,
       today_sum_net_income: res.today_sum_net_income ?? 0,
+      today_sum_packaging: res.today_sum_packaging ?? 0,
     }
   } finally {
     statsLoading.value = false
@@ -2237,6 +2260,15 @@ onBeforeUnmount(() => {
 }
 .order-packaging-wrap {
   margin-top: 10px;
+}
+.order-packaging-total-line {
+  margin-top: 8px;
+  font-size: 13px;
+  color: #cfd8e6;
+}
+.order-packaging-total-value {
+  font-weight: 700;
+  color: #e6edf8;
 }
 .order-packaging-head {
   display: flex;
