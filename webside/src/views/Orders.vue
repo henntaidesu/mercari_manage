@@ -265,11 +265,7 @@
                           type="primary"
                           @click="openPackagingDialog(row)"
                         >
-                          {{
-                            (packagingState[row.order_no]?.rows || []).length
-                              ? '继续添加包装材料'
-                              : '添加包装材料'
-                          }}
+                          添加包材
                         </el-button>
                         <span v-else class="cell-dash">-</span>
                       </template>
