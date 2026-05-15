@@ -237,7 +237,11 @@
                         {{ expense.__placeholder ? '-' : (expense.owner || '未分配') }}
                       </template>
                     </el-table-column>
-                    <el-table-column label="数量" prop="quantity" width="90" align="center" />
+                    <el-table-column label="数量" width="90" align="center">
+                      <template #default="{ row: expense }">
+                        {{ expense.__placeholder ? '-' : (expense.quantity ?? '-') }}
+                      </template>
+                    </el-table-column>
                     <el-table-column label="单价" width="100" align="center">
                       <template #default="{ row: expense }">
                         {{ expense.__placeholder ? '-' : Math.round(Number(expense.unit_price || 0)) }}
@@ -261,7 +265,11 @@
                           type="primary"
                           @click="openPackagingDialog(row)"
                         >
-                          添加包装材料
+                          {{
+                            (packagingState[row.order_no]?.rows || []).length
+                              ? '继续添加包装材料'
+                              : '添加包装材料'
+                          }}
                         </el-button>
                         <span v-else class="cell-dash">-</span>
                       </template>
@@ -1736,8 +1744,8 @@ function onPackagingItemChange(itemName) {
 
 function packagingDisplayRows(orderNo) {
   const rows = packagingState.value?.[String(orderNo || '').trim()]?.rows || []
-  if (rows.length) return rows
-  return [{ __placeholder: true }]
+  if (!rows.length) return [{ __placeholder: true }]
+  return [...rows, { __placeholder: true }]
 }
 
 async function loadPackagingExpenses(orderNo) {
