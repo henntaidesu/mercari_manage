@@ -30,7 +30,7 @@ from ....ssl_mitm_proxy.capture_config import (
     read_transaction_evidence_response,
 )
 from ....ssl_mitm_proxy.runner import default_mitm_proxy_url, start_mitm_proxy
-from ....web_drive import get_web_drive_manager
+from ....web_drive import get_web_drive_manager, run_browser_async
 from ....routes.cost_expenses import deduct_packaging_total_from_order_net_income
 
 _TRANSACTION_EVIDENCE_GET_PATH = "https://api.mercari.jp/transaction_evidences/get"
@@ -219,7 +219,7 @@ def fetch_item_info(
     try:
         asyncio.get_running_loop()
     except RuntimeError:
-        return asyncio.run(
+        return run_browser_async(
             _fetch_item_info_via_browser_impl(
                 str(item_id).strip(),
                 int(account_id),

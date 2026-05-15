@@ -430,3 +430,4 @@ class EdgeWebDriveManager:
                     pass
                 s.playwright = None
                 s.playwright_loop = None
+            s.lock = None

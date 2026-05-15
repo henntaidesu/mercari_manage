@@ -33,7 +33,7 @@ from ....ssl_mitm_proxy.capture_config import (
     read_trading_list_response,
 )
 from ....ssl_mitm_proxy.runner import default_mitm_proxy_url, start_mitm_proxy
-from ....web_drive import get_web_drive_manager
+from ....web_drive import get_web_drive_manager, run_browser_async
 from .get_order_info import apply_item_info_to_order
 
 _API_URL = "https://api.mercari.jp/items/get_items"
@@ -219,7 +219,7 @@ def fetch_open_order_items(
     try:
         asyncio.get_running_loop()
     except RuntimeError:
-        return asyncio.run(
+        return run_browser_async(
             _fetch_trading_list_via_browser_impl(
                 int(account_id),
                 int(seller_id),

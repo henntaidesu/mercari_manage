@@ -20,7 +20,7 @@ from ....ssl_mitm_proxy.capture_config import (
     read_sold_out_list_response,
 )
 from ....ssl_mitm_proxy.runner import default_mitm_proxy_url, start_mitm_proxy
-from ....web_drive import get_web_drive_manager
+from ....web_drive import get_web_drive_manager, run_browser_async
 from ..get_in_progress_order.get_order_info import apply_item_info_to_order
 from ..get_in_progress_order.get_order_list import _item_to_order_data, _upsert_order
 
@@ -129,7 +129,7 @@ def fetch_history_order_items(
     try:
         asyncio.get_running_loop()
     except RuntimeError:
-        return asyncio.run(
+        return run_browser_async(
             _fetch_sold_out_list_via_browser_impl(
                 int(account_id),
                 int(seller_id),
