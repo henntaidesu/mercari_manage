@@ -71,6 +71,26 @@ class EdgeWebDriveManager:
             return 0.45
 
     @staticmethod
+    def _headless_block_images() -> bool:
+        """无头模式是否拦截图片（默认开启，``WEB_DRIVE_HEADLESS_BLOCK_IMAGES=0`` 可关闭）。"""
+        v = (os.environ.get("WEB_DRIVE_HEADLESS_BLOCK_IMAGES") or "1").strip().lower()
+        return v not in ("0", "false", "no", "off")
+
+    @staticmethod
+    async def _apply_headless_optimizations(context: Any, *, headless: bool) -> None:
+        """无头会话：不加载图片（减轻带宽与页面渲染耗时）。"""
+        if not headless or not EdgeWebDriveManager._headless_block_images():
+            return
+
+        async def _block_images(route: Any) -> None:
+            if route.request.resource_type == "image":
+                await route.abort()
+            else:
+                await route.continue_()
+
+        await context.route("**/*", _block_images)
+
+    @staticmethod
     def _launch_retry_delays_sec() -> List[float]:
         raw = (os.environ.get("WEB_DRIVE_LAUNCH_RETRY_DELAYS_SEC") or "0,0.7,1.4").strip()
         out: List[float] = []
@@ -429,17 +449,20 @@ class EdgeWebDriveManager:
 
             pw = await self._ensure_playwright(s)
             udir = profile_dir_for(key)
+            launch_args = [
+                "--disable-blink-features=AutomationControlled",
+                # 减轻启动时再拉起「上次会话」标签（配合 _navigate_one_tab 收敛）
+                "--disable-session-crashed-bubble",
+                "--disable-infobars",
+            ]
+            if headless and self._headless_block_images():
+                launch_args.append("--blink-settings=imagesEnabled=false")
             launch_kw: Dict[str, Any] = {
                 "user_data_dir": udir,
                 "channel": "msedge",
                 "headless": headless,
                 "viewport": {"width": 1280, "height": 800},
-                "args": [
-                    "--disable-blink-features=AutomationControlled",
-                    # 减轻启动时再拉起「上次会话」标签（配合 _navigate_one_tab 收敛）
-                    "--disable-session-crashed-bubble",
-                    "--disable-infobars",
-                ],
+                "args": launch_args,
             }
             ps = (proxy_server or "").strip()
             if ps:
@@ -467,6 +490,7 @@ class EdgeWebDriveManager:
                     f"或关闭其它占用该账号 profile 的 Edge 窗口后重试；已重试 {len(delays)} 次）: {last_exc}"
                 ) from last_exc
 
+            await self._apply_headless_optimizations(context, headless=headless)
             s.contexts[key] = context
             s.session_meta[key] = {"interactive": bool(interactive), "headless": bool(headless)}
             if start_url:
