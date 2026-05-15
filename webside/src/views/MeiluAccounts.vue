@@ -81,7 +81,26 @@
           <el-input v-model="form.account_name" maxlength="60" clearable />
         </el-form-item>
         <el-form-item label="卖家ID" prop="seller_id">
-          <el-input v-model="form.seller_id" maxlength="30" clearable placeholder="纯数字，可留空" />
+          <el-input
+            v-model="form.seller_id"
+            maxlength="30"
+            clearable
+            placeholder="纯数字，可留空"
+          >
+            <template #append>
+              <el-button
+                :loading="fetchSellerIdLoading"
+                @click="fetchSellerIdViaMitm"
+              >获取</el-button>
+            </template>
+          </el-input>
+          <p class="seller-id-hint">
+            点击「获取」将经 MITM 打开
+            <a href="https://jp.mercari.com/mypage/listings" target="_blank" rel="noopener">出品した商品</a>
+            页，从
+            <code>api.mercari.jp/items/get_items</code>
+            （on_sale,stop）请求中解析 seller_id；请先登录对应 Edge 会话。
+          </p>
         </el-form-item>
         <el-form-item label="账号状态" prop="status">
           <el-select v-model="form.status" style="width: 100%">
@@ -313,7 +332,41 @@ function openCreate() {
 }
 
 function onFetchUserInfoPlaceholder() {
-  ElMessage.info('「获取用户信息」实现方式待定，后续版本将在此拉取卖家 ID 等资料。')
+  fetchSellerIdViaMitm()
+}
+
+function sellerIdCaptureAccountKey() {
+  return form.value.id ? browserKeyFor(form.value.id) : MEILU_PREPARE_KEY
+}
+
+async function fetchSellerIdViaMitm() {
+  if (fetchSellerIdLoading.value) return
+  const accountKey = sellerIdCaptureAccountKey()
+  const label = form.value.id
+    ? (form.value.account_name || `账号 #${form.value.id}`)
+    : '新增前登录'
+  fetchSellerIdLoading.value = true
+  try {
+    ElMessage.info(`正在打开 Edge（${label}）并监听在售列表 API，请稍候…`)
+    const res = await meiluAccountApi.fetchSellerIdViaMitm({
+      account_key: accountKey,
+      headless: false,
+      close_browser_after: false,
+    })
+    const sid = String(res?.data?.seller_id || '').trim()
+    if (!sid) {
+      ElMessage.warning('未解析到卖家 ID')
+      return
+    }
+    form.value.seller_id = sid
+    await nextTick()
+    formRef.value?.validateField('seller_id').catch(() => {})
+    ElMessage.success(`已填入卖家 ID：${sid}`)
+  } catch {
+    /* 错误由 axios 拦截器提示 */
+  } finally {
+    fetchSellerIdLoading.value = false
+  }
 }
 
 function openEdit(row) {
@@ -392,6 +445,7 @@ async function removeFromDialog() {
 
 const syncingIds = ref(new Set())
 const browserLoadingKeys = ref(new Set())
+const fetchSellerIdLoading = ref(false)
 
 async function openBrowserByKey(accountKey, label) {
   if (browserLoadingKeys.value.has(accountKey)) return
@@ -580,6 +634,19 @@ onMounted(() => {
   font-size: 12px;
   line-height: 1.55;
   color: #7d8da6;
+}
+.seller-id-hint {
+  margin: 6px 0 0;
+  font-size: 12px;
+  line-height: 1.5;
+  color: #7d8da6;
+}
+.seller-id-hint a {
+  color: #69b1ff;
+}
+.seller-id-hint code {
+  font-size: 11px;
+  color: #a8b4c8;
 }
 .af-task-checks {
   display: flex;

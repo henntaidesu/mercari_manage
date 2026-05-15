@@ -99,6 +99,20 @@ class FetchAuthViaMitmBody(PydanticModel):
     first_item_xpath: str = LISTINGS_FIRST_ITEM_XPATH
 
 
+class FetchSellerIdViaMitmBody(PydanticModel):
+    """打开出品一覧页，经 MITM 截获 items/get_items（on_sale,stop）并从 URL 解析 seller_id。"""
+
+    account_key: str = Field(
+        default="meilu_prepare",
+        min_length=1,
+        max_length=64,
+        pattern=r"^[a-zA-Z0-9_-]+$",
+    )
+    wait_seconds: int = Field(90, ge=10, le=300)
+    headless: bool = False
+    close_browser_after: bool = False
+
+
 def _validate_status(status: str):
     if status not in ALLOWED_STATUS:
         raise HTTPException(status_code=400, detail="账号状态错误")
@@ -413,6 +427,77 @@ def update_meilu_account(aid: int, data: MeiluAccountUpdate):
     if not item.save():
         raise HTTPException(status_code=500, detail="更新失败")
     return _item_api_dict(item)
+
+
+@router.post("/fetch-seller-id-via-mitm")
+async def fetch_seller_id_via_mitm(
+    body: FetchSellerIdViaMitmBody = Body(default_factory=FetchSellerIdViaMitmBody),
+):
+    """
+    启动 MITM，用指定 WebDrive 会话（如 meilu_prepare / meilu_{id}）经代理打开
+    jp.mercari.com/mypage/listings，截获
+    GET api.mercari.jp/items/get_items?status=on_sale,stop&... 并从查询参数读取 seller_id。
+    """
+    r = start_mitm_proxy()
+    if r.get("error"):
+        raise HTTPException(status_code=500, detail=r["error"])
+
+    account_key = (body.account_key or "meilu_prepare").strip()
+    t0 = int(time.time() * 1000)
+    mgr = get_web_drive_manager()
+    opened_here = False
+    try:
+        await mgr.open_session(
+            account_key,
+            headless=body.headless,
+            start_url=MERCARI_LISTINGS_URL,
+            proxy_server=default_mitm_proxy_url(),
+            interactive=not body.headless,
+        )
+        opened_here = True
+
+        cap = await _wait_capture_with_progress(
+            since_ms=t0,
+            capture_type="items_get_items",
+            wait_seconds=body.wait_seconds,
+            dpop_field="dpop_on_sale_list",
+            step_name="在售列表 seller_id",
+        )
+        if not cap:
+            raise HTTPException(
+                status_code=408,
+                detail=(
+                    "超时：未截获 GET /items/get_items（status 含 on_sale/stop）。"
+                    "请确认 MITM 已启动、Edge 已登录煤炉且出品一覧可正常加载。"
+                ),
+            )
+
+        sid = _norm_seller_id(str(cap.get("seller_id") or "").strip())
+        if not sid:
+            raise HTTPException(status_code=500, detail="截获请求中未解析到有效 seller_id")
+
+        log.info(
+            "[MITM] 已解析 seller_id=%s account_key=%s url=%s",
+            sid,
+            account_key,
+            cap.get("url") or "",
+        )
+        return {
+            "success": True,
+            "data": {
+                "seller_id": sid,
+                "url": cap.get("url"),
+                "ts": cap.get("ts"),
+                "account_key": account_key,
+            },
+            "mitm": mitm_status(),
+        }
+    finally:
+        if body.close_browser_after and opened_here:
+            try:
+                await mgr.close_session(account_key, force=True)
+            except Exception as exc:
+                log.warning("[MITM] 获取 seller_id 后关闭浏览器失败 key=%s: %s", account_key, exc)
 
 
 @router.post("/{aid}/fetch-auth-via-mitm")
