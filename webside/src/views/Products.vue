@@ -3097,6 +3097,7 @@ const WEB_DRIVE_LISTING_ERROR_LABELS = [
   ['images_error', '图片上传'],
   ['name_error', '商品名称'],
   ['category_error', '商品类型'],
+  ['sell_wizard_error', '出品向导页'],
   ['condition_error', '商品状态'],
   ['description_error', '商品说明'],
   ['shipping_payer_error', '快递费负担'],
@@ -3104,7 +3105,8 @@ const WEB_DRIVE_LISTING_ERROR_LABELS = [
   ['shipping_from_error', '发货地址'],
   ['shipping_days_error', '发货天数'],
   ['sale_price_error', '销售方式与价格'],
-  ['submit_error', '出品提交']
+  ['submit_error', '出品提交'],
+  ['fatal_error', '上架流程']
 ]
 
 function collectWebDriveListingFailures(data) {
@@ -3282,7 +3284,7 @@ async function onListingFormSaved(data) {
 
   if (listingPostHadStepErrors) {
     ElMessage.info(
-      '出品标题、商品说明与单价已写入本地库存。煤炉自动化有失败步骤，请根据上方红色提示在浏览器中补全或重试。'
+      '出品标题、商品说明与单价已写入本地库存。上架已终止，浏览器保持打开，请根据上方红色提示在煤炉页面补全或重试。'
     )
   } else {
     ElMessage.success('出品标题、商品说明与单价已保存到库存')

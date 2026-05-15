@@ -25,7 +25,7 @@ import os
 import re
 import tempfile
 import urllib.request
-from typing import Any, Callable, Dict, List, Optional, Sequence, Tuple
+from typing import Any, Callable, Dict, List, NoReturn, Optional, Sequence, Tuple
 
 from src.app_paths import backend_root_str
 
@@ -42,6 +42,9 @@ SALE_ELEMENT_TIMEOUT_MS = 8_000
 # 选择商品类型后偶尔会进入向导页，需点此返回出品表单
 SELL_WIZARD_BACK_TEXT = "出品画面に戻る"
 SELL_WIZARD_BACK_BUTTON_TESTID = "back-to-listing-button"
+# sell/wizard 返回出品表单：优先点此区域（用户提供的绝对 XPath）
+SELL_WIZARD_BACK_BUTTON_XPATH = "/html/body/div[2]/div[2]/main/div[2]/div[2]"
+SELL_WIZARD_XPATH_CLICK_TIMEOUT_MS = 5_000
 
 # 写真ブロック内「写真を追加」按钮
 PHOTO_ADD_BUTTON_XPATH = '//*[@id="main"]/form/section[1]/div/div[6]/div[2]/button'
@@ -298,6 +301,38 @@ def _make_listing_progress_reporter(progress_job_id: Optional[str]) -> Callable[
     return report
 
 
+class ListingAborted(Exception):
+    """选择/填写步骤失败，终止后续上架（浏览器保持打开）。"""
+
+    def __init__(self, step: str, label_zh: str, detail: str) -> None:
+        self.step = step
+        self.label_zh = label_zh
+        self.detail = detail
+        super().__init__(f"{label_zh}: {detail}")
+
+
+def _abort_listing(
+    result: Dict[str, Any],
+    report: Optional[Callable[[str, str], None]],
+    *,
+    step: str,
+    label_zh: str,
+    error_key: str,
+    exc: BaseException | str,
+) -> NoReturn:
+    detail = str(exc).strip() or "未知错误"
+    result["aborted"] = True
+    result["abort_step"] = step
+    result["abort_message"] = label_zh
+    result[error_key] = detail
+    msg = f"{label_zh}失败，已终止上架：{detail[:200]}"
+    log.error("[post_to_market] %s", msg)
+    print(f"[出品] {msg}", flush=True)
+    if report:
+        report(f"{step}_failed", msg)
+    raise ListingAborted(step, label_zh, detail)
+
+
 def _url_is_sell_wizard(url: str) -> bool:
     u = (url or "").strip().lower()
     return "sell/wizard" in u or "/sell/wizard" in u
@@ -375,6 +410,63 @@ async def _click_button_by_text(
     raise last_exc if last_exc else RuntimeError(f"未找到按钮文案: {t}")
 
 
+async def _click_sell_wizard_back(page: Any, *, element_timeout_ms: int) -> None:
+    """
+    sell/wizard 页点击返回出品表单：
+    1. 优先 XPath（5s 超时）
+    2. 失败则按文案「出品画面に戻る」等兜底
+    """
+    xpath_ms = SELL_WIZARD_XPATH_CLICK_TIMEOUT_MS
+    try:
+        xp_loc = page.locator(f"xpath={SELL_WIZARD_BACK_BUTTON_XPATH}")
+        await xp_loc.first.wait_for(state="visible", timeout=xpath_ms)
+        await xp_loc.first.scroll_into_view_if_needed()
+        await xp_loc.first.click(timeout=xpath_ms)
+        log.info(
+            "[post_to_market] 已通过 XPath 点击 sell/wizard 返回区域: %s",
+            SELL_WIZARD_BACK_BUTTON_XPATH,
+        )
+        return
+    except Exception as exc:
+        log.info(
+            "[post_to_market] sell/wizard XPath 点击失败(%sms)，改用文案: %s",
+            xpath_ms,
+            exc,
+        )
+
+    text_ms = element_timeout_ms
+    candidates: List[Tuple[str, Any]] = [
+        ("role_button", page.get_by_role("button", name=SELL_WIZARD_BACK_TEXT)),
+        ("role_link", page.get_by_role("link", name=SELL_WIZARD_BACK_TEXT)),
+        (
+            "data-testid",
+            page.locator(f'[data-testid="{SELL_WIZARD_BACK_BUTTON_TESTID}"]'),
+        ),
+        (
+            "has_text",
+            page.locator(
+                f'button:has-text("{SELL_WIZARD_BACK_TEXT}"), '
+                f'a:has-text("{SELL_WIZARD_BACK_TEXT}")'
+            ),
+        ),
+    ]
+    last_exc: Optional[BaseException] = None
+    for tag, loc in candidates:
+        try:
+            if await loc.count() < 1:
+                continue
+            await loc.first.wait_for(state="visible", timeout=text_ms)
+            await loc.first.scroll_into_view_if_needed()
+            await loc.first.click(timeout=text_ms)
+            log.info("[post_to_market] 已通过 %s 文案点击「%s」", tag, SELL_WIZARD_BACK_TEXT)
+            return
+        except Exception as exc:
+            last_exc = exc
+            log.info("[post_to_market] 向导返回 %s 失败: %s", tag, exc)
+            continue
+    raise last_exc if last_exc else RuntimeError(f"未找到「{SELL_WIZARD_BACK_TEXT}」按钮")
+
+
 async def _leave_sell_wizard_if_present(
     page: Any,
     *,
@@ -382,9 +474,8 @@ async def _leave_sell_wizard_if_present(
     report: Optional[Callable[[str, str], None]] = None,
 ) -> bool:
     """
-    若当前为 https://jp.mercari.com/sell/wizard ，点击「出品画面に戻る」返回出品表单。
-    会在「选完商品类型」或「选完商品状态」等步骤后被调用（煤炉可能插入製品情報向导）。
-    按文案「出品画面に戻る」点击（data-testid / role / has-text 兜底，不用 XPath）。
+    若当前为 https://jp.mercari.com/sell/wizard ，点击返回区域/「出品画面に戻る」回到出品表单。
+    优先 XPath（5s），超时或失败则按日文文案点击。
     返回 True 表示检测到向导页并已尝试点击返回。
     """
     try:
@@ -394,58 +485,60 @@ async def _leave_sell_wizard_if_present(
     if not _url_is_sell_wizard(url):
         return False
     if report:
-        report("sell_wizard", "已进入出品向导页，正在点击「出品画面に戻る」…")
-    log.info("[post_to_market] 检测到 sell/wizard，尝试点击「%s」", SELL_WIZARD_BACK_TEXT)
-    print(f"[出品] 检测到 sell/wizard，尝试点击「{SELL_WIZARD_BACK_TEXT}」", flush=True)
+        report("sell_wizard", "已进入出品向导页，正在点击返回…")
+    log.info("[post_to_market] 检测到 sell/wizard，尝试返回出品表单")
+    print(f"[出品] 检测到 sell/wizard，尝试返回出品表单", flush=True)
     try:
-        candidates: List[Tuple[str, Any]] = [
-            (
-                "data-testid",
-                page.locator(f'[data-testid="{SELL_WIZARD_BACK_BUTTON_TESTID}"]'),
-            ),
-            ("role_button", page.get_by_role("button", name=SELL_WIZARD_BACK_TEXT)),
-            ("role_link", page.get_by_role("link", name=SELL_WIZARD_BACK_TEXT)),
-        ]
-        clicked = False
-        for tag, loc in candidates:
-            try:
-                cnt = await loc.count()
-                if cnt < 1:
-                    continue
-                await loc.first.wait_for(state="visible", timeout=element_timeout_ms)
-                await loc.first.scroll_into_view_if_needed()
-                await loc.first.click(timeout=element_timeout_ms)
-                log.info("[post_to_market] 已通过 %s 点击「%s」", tag, SELL_WIZARD_BACK_TEXT)
-                clicked = True
-                break
-            except Exception as exc:
-                log.info("[post_to_market] 向导返回按钮 %s 定位/点击失败: %s", tag, exc)
-                continue
-        if not clicked:
-            alt = page.locator(
-                f'button:has-text("{SELL_WIZARD_BACK_TEXT}"), '
-                f'a:has-text("{SELL_WIZARD_BACK_TEXT}")'
-            )
-            await alt.first.wait_for(state="visible", timeout=element_timeout_ms)
-            await alt.first.scroll_into_view_if_needed()
-            await alt.first.click(timeout=element_timeout_ms)
-            log.info("[post_to_market] 已通过 :has-text 点击「%s」", SELL_WIZARD_BACK_TEXT)
+        await _click_sell_wizard_back(page, element_timeout_ms=element_timeout_ms)
         await asyncio.sleep(0.45)
         try:
             await page.wait_for_load_state("domcontentloaded", timeout=element_timeout_ms)
         except Exception:
             pass
-        log.info("[post_to_market] 已点击「%s」，当前 URL=%s", SELL_WIZARD_BACK_TEXT, page.url)
+        log.info("[post_to_market] 已离开向导页，当前 URL=%s", page.url)
         print(f"[出品] 已返回出品画面，URL={page.url}", flush=True)
         if report:
             report("sell_wizard_done", "已从向导返回出品表单")
         return True
     except Exception as exc:
-        log.warning("[post_to_market] 点击「%s」失败: %s", SELL_WIZARD_BACK_TEXT, exc)
-        print(f"[出品] 点击「{SELL_WIZARD_BACK_TEXT}」失败: {exc}", flush=True)
+        log.warning("[post_to_market] sell/wizard 返回失败: %s", exc)
+        print(f"[出品] sell/wizard 返回失败: {exc}", flush=True)
         if report:
             report("sell_wizard_error", f"点击「{SELL_WIZARD_BACK_TEXT}」失败，请手动返回")
         return True
+
+
+async def _ensure_left_sell_wizard(
+    page: Any,
+    result: Dict[str, Any],
+    report: Optional[Callable[[str, str], None]],
+    *,
+    element_timeout_ms: int,
+) -> None:
+    """选完类型/状态后若仍停留在 sell/wizard，终止流程。"""
+    try:
+        url = str(page.url or "")
+    except Exception:
+        url = ""
+    if not _url_is_sell_wizard(url):
+        return
+    await _leave_sell_wizard_if_present(
+        page, element_timeout_ms=element_timeout_ms, report=report
+    )
+    await asyncio.sleep(0.35)
+    try:
+        url = str(page.url or "")
+    except Exception:
+        url = ""
+    if _url_is_sell_wizard(url):
+        _abort_listing(
+            result,
+            report,
+            step="sell_wizard",
+            label_zh="出品向导页",
+            error_key="sell_wizard_error",
+            exc="无法返回出品表单（仍停留在 sell/wizard）",
+        )
 
 
 async def post_to_market(
@@ -554,284 +647,353 @@ async def post_to_market(
         "sale_type_set": False,
         "price_filled": False,
         "submitted": False,
+        "aborted": False,
+        "browser_kept_open": False,
     }
 
-    # ── 前置：确保 Switch 开关处于 false ─────────────────────────────────── #
-    report("switch", "检查出品页 Switch 开关状态…")
     try:
-        switch_loc = page.locator(f"xpath={SWITCH_INPUT_XPATH}")
-        await switch_loc.first.wait_for(state="attached", timeout=element_timeout_ms)
-        aria_checked = await switch_loc.first.get_attribute("aria-checked")
-        result["switch_checked"] = aria_checked
-        if (aria_checked or "").lower() == "true":
-            label_loc = page.locator(
-                'xpath=//*[@id="main"]/form/section[1]/div/div[2]/label'
+        # ── 前置：确保 Switch 开关处于 false ─────────────────────────────────── #
+        report("switch", "检查出品页 Switch 开关状态…")
+        try:
+            switch_loc = page.locator(f"xpath={SWITCH_INPUT_XPATH}")
+            await switch_loc.first.wait_for(state="attached", timeout=element_timeout_ms)
+            aria_checked = await switch_loc.first.get_attribute("aria-checked")
+            result["switch_checked"] = aria_checked
+            if (aria_checked or "").lower() == "true":
+                label_loc = page.locator(
+                    'xpath=//*[@id="main"]/form/section[1]/div/div[2]/label'
+                )
+                await label_loc.first.click(timeout=element_timeout_ms)
+                result["switch_clicked"] = True
+                try:
+                    await page.wait_for_function(
+                        """(xpath) => {
+                            const el = document.evaluate(xpath, document, null,
+                                XPathResult.FIRST_ORDERED_NODE_TYPE, null).singleNodeValue;
+                            return el && el.getAttribute('aria-checked') !== 'true';
+                        }""",
+                        SWITCH_INPUT_XPATH,
+                        timeout=element_timeout_ms,
+                    )
+                except Exception:
+                    pass
+        except Exception as exc:
+            _abort_listing(
+                result, report,
+                step="switch", label_zh="页面开关",
+                error_key="switch_error", exc=exc,
             )
-            await label_loc.first.click(timeout=element_timeout_ms)
-            result["switch_clicked"] = True
+
+        # ── 步骤 1：图片上传 ──────────────────────────────────────────────────── #
+        if local_images:
+            report("upload_images", f"正在上传商品图片（{len(local_images)} 张）…")
             try:
-                await page.wait_for_function(
-                    """(xpath) => {
-                        const el = document.evaluate(xpath, document, null,
-                            XPathResult.FIRST_ORDERED_NODE_TYPE, null).singleNodeValue;
-                        return el && el.getAttribute('aria-checked') !== 'true';
-                    }""",
-                    SWITCH_INPUT_XPATH,
-                    timeout=element_timeout_ms,
+                btn_loc = page.locator(f"xpath={PHOTO_ADD_BUTTON_XPATH}")
+                await btn_loc.first.wait_for(state="visible", timeout=element_timeout_ms)
+                async with page.expect_file_chooser(timeout=element_timeout_ms) as fc_info:
+                    await btn_loc.first.click()
+                fc = await fc_info.value
+                await fc.set_files(local_images)
+                result["images_uploaded"] = len(local_images)
+                try:
+                    await page.wait_for_selector(
+                        "img[alt*='写真'], img[alt*='photo'], section img",
+                        timeout=element_timeout_ms,
+                    )
+                except Exception:
+                    pass
+            except Exception as exc:
+                _abort_listing(
+                    result, report,
+                    step="upload_images", label_zh="图片上传",
+                    error_key="images_error", exc=exc,
                 )
-            except Exception:
-                pass
-    except Exception as exc:
-        log.warning("[post_to_market] Switch 检查失败: %s", exc)
-        result["switch_error"] = str(exc)
 
-    # ── 步骤 1：图片上传 ──────────────────────────────────────────────────── #
-    if local_images:
-        report("upload_images", f"正在上传商品图片（{len(local_images)} 张）…")
-        try:
-            btn_loc = page.locator(f"xpath={PHOTO_ADD_BUTTON_XPATH}")
-            await btn_loc.first.wait_for(state="visible", timeout=element_timeout_ms)
-            async with page.expect_file_chooser(timeout=element_timeout_ms) as fc_info:
-                await btn_loc.first.click()
-            fc = await fc_info.value
-            await fc.set_files(local_images)
-            result["images_uploaded"] = len(local_images)
+        # ── 步骤 2：填写商品名称 ──────────────────────────────────────────────── #
+        name_str = (name or "").strip()
+        if name_str:
+            report("name", "正在填写商品名称…")
             try:
-                await page.wait_for_selector(
-                    "img[alt*='写真'], img[alt*='photo'], section img",
-                    timeout=element_timeout_ms,
+                name_loc = page.locator(f"xpath={NAME_INPUT_XPATH}").or_(
+                    page.locator('input[name="name"]')
+                ).or_(page.locator('[data-testid="input-name"] input'))
+                await name_loc.first.wait_for(state="visible", timeout=element_timeout_ms)
+                await name_loc.first.scroll_into_view_if_needed()
+                await name_loc.first.click()
+                await page.wait_for_timeout(100)
+                filled = await _react_set_input(page, NAME_INPUT_XPATH, name_str)
+                if not filled:
+                    await name_loc.first.focus()
+                    await page.keyboard.press("Control+a")
+                    await page.keyboard.type(name_str, delay=0)
+                result["name_filled"] = True
+            except Exception as exc:
+                _abort_listing(
+                    result, report,
+                    step="name", label_zh="商品名称",
+                    error_key="name_error", exc=exc,
                 )
-            except Exception:
-                pass
-            # 关闭图像选择弹窗（暂时注释，弹窗可能已自动关闭或 XPath 需确认）
-            # try:
-            #     close_btn = page.locator('xpath=//*[@id="modal"]/div[3]/div/button')
-            #     await close_btn.first.wait_for(state="visible", timeout=element_timeout_ms)
-            #     await close_btn.first.click()
-            #     try:
-            #         await close_btn.first.wait_for(state="hidden", timeout=5_000)
-            #     except Exception:
-            #         pass
-            # except Exception as exc:
-            #     log.warning("[post_to_market] 关闭图像弹窗失败: %s", exc)
-            #     result["modal_close_warning"] = str(exc)
-        except Exception as exc:
-            log.error("[post_to_market] 图片上传失败: %s", exc)
-            result["images_error"] = str(exc)
 
-    # ── 步骤 2：填写商品名称 ──────────────────────────────────────────────── #
-    name_str = (name or "").strip()
-    if name_str:
-        report("name", "正在填写商品名称…")
-        try:
-            name_loc = page.locator(f"xpath={NAME_INPUT_XPATH}").or_(
-                page.locator('input[name="name"]')
-            ).or_(page.locator('[data-testid="input-name"] input'))
-            await name_loc.first.wait_for(state="visible", timeout=element_timeout_ms)
-            await name_loc.first.scroll_into_view_if_needed()
-            await name_loc.first.click()
-            await page.wait_for_timeout(100)
-            filled = await _react_set_input(page, NAME_INPUT_XPATH, name_str)
-            if not filled:
-                await name_loc.first.focus()
-                await page.keyboard.press("Control+a")
-                await page.keyboard.type(name_str, delay=0)
-            result["name_filled"] = True
-        except Exception as exc:
-            log.error("[post_to_market] 填写商品名称失败: %s", exc)
-            result["name_error"] = str(exc)
+        # ── 步骤 3：选择商品类型 ──────────────────────────────────────────────── #
+        if any(p is not None for p in [
+            category_level1_pos, category_level2_pos,
+            category_level3_pos, product_type_pos,
+        ]):
+            try:
+                wizard_back = await _select_category(
+                    page,
+                    category_level1_pos,
+                    category_level2_pos,
+                    category_level3_pos,
+                    product_type_pos,
+                    element_timeout_ms=element_timeout_ms,
+                    page_load_timeout_ms=page_load_timeout_ms,
+                    report=report,
+                )
+                result["category_selected"] = True
+                result["sell_wizard_back_clicked"] = bool(wizard_back)
+            except ListingAborted:
+                raise
+            except Exception as exc:
+                _abort_listing(
+                    result, report,
+                    step="category", label_zh="商品类型",
+                    error_key="category_error", exc=exc,
+                )
+            await _ensure_left_sell_wizard(
+                page, result, report, element_timeout_ms=element_timeout_ms,
+            )
 
-    # ── 步骤 3：选择商品类型 ──────────────────────────────────────────────── #
-    if any(p is not None for p in [
-        category_level1_pos, category_level2_pos,
-        category_level3_pos, product_type_pos,
-    ]):
+        # ── 步骤 4：选择商品状態 ──────────────────────────────────────────────── #
+        if status:
+            report("condition", "正在选择商品状态…")
+            try:
+                await _select_condition(
+                    page,
+                    status,
+                    element_timeout_ms=element_timeout_ms,
+                    page_load_timeout_ms=page_load_timeout_ms,
+                    report=report,
+                )
+                result["condition_set"] = True
+            except ListingAborted:
+                raise
+            except Exception as exc:
+                _abort_listing(
+                    result, report,
+                    step="condition", label_zh="商品状态",
+                    error_key="condition_error", exc=exc,
+                )
+            await _ensure_left_sell_wizard(
+                page, result, report, element_timeout_ms=element_timeout_ms,
+            )
+
+        # ── 步骤 5：填写商品说明 ──────────────────────────────────────────────── #
+        desc_str = (description or "").strip()
+        if desc_str:
+            report("description", "正在填写商品说明…")
+            try:
+                desc_loc = page.locator(f"xpath={DESCRIPTION_TEXTAREA_XPATH}").or_(
+                    page.locator('textarea[name="description"]')
+                ).or_(page.locator('[data-testid="input-description"] textarea'))
+                await desc_loc.first.wait_for(state="visible", timeout=element_timeout_ms)
+                await desc_loc.first.scroll_into_view_if_needed()
+                await desc_loc.first.click()
+                await page.wait_for_timeout(150)
+                filled = await _react_set_textarea(page, DESCRIPTION_TEXTAREA_XPATH, desc_str)
+                if not filled:
+                    await desc_loc.first.focus()
+                    await page.keyboard.press("Control+a")
+                    await page.keyboard.type(desc_str, delay=0)
+                result["description_filled"] = True
+            except Exception as exc:
+                _abort_listing(
+                    result, report,
+                    step="description", label_zh="商品说明",
+                    error_key="description_error", exc=exc,
+                )
+
+        # ── 步骤 6：选择快递費負担 ────────────────────────────────────────────── #
+        if shipping_payer:
+            report("shipping_payer", "正在设置配送费负担…")
+            try:
+                await _set_shipping_payer(
+                    page, shipping_payer,
+                    element_timeout_ms=element_timeout_ms,
+                )
+                result["shipping_payer_set"] = True
+            except Exception as exc:
+                _abort_listing(
+                    result, report,
+                    step="shipping_payer", label_zh="配送费负担",
+                    error_key="shipping_payer_error", exc=exc,
+                )
+
+        # ── 步骤 7：选择配送方法 ──────────────────────────────────────────────── #
+        if shipping_method:
+            report("shipping_method", "正在选择配送方法…")
+            try:
+                await _select_shipping_method(
+                    page, shipping_method,
+                    element_timeout_ms=element_timeout_ms,
+                    page_load_timeout_ms=page_load_timeout_ms,
+                )
+                result["shipping_method_set"] = True
+            except Exception as exc:
+                _abort_listing(
+                    result, report,
+                    step="shipping_method", label_zh="配送方法",
+                    error_key="shipping_method_error", exc=exc,
+                )
+
+        # ── 步骤 8：选择发货地址 ──────────────────────────────────────────────── #
+        if shipping_from_area_id:
+            report("shipping_from", "正在选择发货地址…")
+            try:
+                await _set_shipping_from(
+                    page, shipping_from_area_id,
+                    element_timeout_ms=element_timeout_ms,
+                )
+                result["shipping_from_set"] = True
+            except Exception as exc:
+                _abort_listing(
+                    result, report,
+                    step="shipping_from", label_zh="发货地址",
+                    error_key="shipping_from_error", exc=exc,
+                )
+
+        # ── 步骤 9：选择最大发货天数 ──────────────────────────────────────────── #
+        if shipping_days:
+            report("shipping_days", "正在选择发货天数…")
+            try:
+                await _set_shipping_days(
+                    page, shipping_days,
+                    element_timeout_ms=element_timeout_ms,
+                )
+                result["shipping_days_set"] = True
+            except Exception as exc:
+                _abort_listing(
+                    result, report,
+                    step="shipping_days", label_zh="发货天数",
+                    error_key="shipping_days_error", exc=exc,
+                )
+
+        # ── 步骤 10+11：选择出售类型 + 填写价格 ──────────────────────────────── #
+        report("sale_price", "正在设置销售方式与价格…")
         try:
-            wizard_back = await _select_category(
+            await _set_sale_type_and_price(
                 page,
-                category_level1_pos,
-                category_level2_pos,
-                category_level3_pos,
-                product_type_pos,
-                element_timeout_ms=element_timeout_ms,
-                page_load_timeout_ms=page_load_timeout_ms,
+                sale_type,
+                price,
+                auction_duration=auction_duration,
+                element_timeout_ms=SALE_ELEMENT_TIMEOUT_MS,
+                wizard_timeout_ms=element_timeout_ms,
                 report=report,
             )
-            result["category_selected"] = True
-            result["sell_wizard_back_clicked"] = bool(wizard_back)
+            result["sale_type_set"] = True
+            result["price_filled"] = True
+        except ListingAborted:
+            raise
         except Exception as exc:
-            log.error("[post_to_market] 商品类型选择失败: %s", exc)
-            result["category_error"] = str(exc)
-
-    # ── 步骤 4：选择商品状態 ──────────────────────────────────────────────── #
-    if status:
-        report("condition", "正在选择商品状态…")
-        try:
-            await _select_condition(
-                page,
-                status,
-                element_timeout_ms=element_timeout_ms,
-                page_load_timeout_ms=page_load_timeout_ms,
-                report=report,
+            _abort_listing(
+                result, report,
+                step="sale_price", label_zh="销售方式与价格",
+                error_key="sale_price_error", exc=exc,
             )
-            result["condition_set"] = True
-        except Exception as exc:
-            log.error("[post_to_market] 商品状態選択失败: %s", exc)
-            result["condition_error"] = str(exc)
-
-    # ── 步骤 5：填写商品说明 ──────────────────────────────────────────────── #
-    desc_str = (description or "").strip()
-    if desc_str:
-        report("description", "正在填写商品说明…")
-        try:
-            desc_loc = page.locator(f"xpath={DESCRIPTION_TEXTAREA_XPATH}").or_(
-                page.locator('textarea[name="description"]')
-            ).or_(page.locator('[data-testid="input-description"] textarea'))
-            await desc_loc.first.wait_for(state="visible", timeout=element_timeout_ms)
-            await desc_loc.first.scroll_into_view_if_needed()
-            await desc_loc.first.click()
-            await page.wait_for_timeout(150)
-            filled = await _react_set_textarea(page, DESCRIPTION_TEXTAREA_XPATH, desc_str)
-            if not filled:
-                await desc_loc.first.focus()
-                await page.keyboard.press("Control+a")
-                await page.keyboard.type(desc_str, delay=0)
-            result["description_filled"] = True
-        except Exception as exc:
-            log.error("[post_to_market] 填写商品说明失败: %s", exc)
-            result["description_error"] = str(exc)
-
-    # ── 步骤 6：选择快递費負担 ────────────────────────────────────────────── #
-    if shipping_payer:
-        report("shipping_payer", "正在设置配送费负担…")
-        try:
-            await _set_shipping_payer(
-                page, shipping_payer,
-                element_timeout_ms=element_timeout_ms,
-            )
-            result["shipping_payer_set"] = True
-        except Exception as exc:
-            log.error("[post_to_market] 快递費負担设置失败: %s", exc)
-            result["shipping_payer_error"] = str(exc)
-
-    # ── 步骤 7：选择配送方法 ──────────────────────────────────────────────── #
-    if shipping_method:
-        report("shipping_method", "正在选择配送方法…")
-        try:
-            await _select_shipping_method(
-                page, shipping_method,
-                element_timeout_ms=element_timeout_ms,
-                page_load_timeout_ms=page_load_timeout_ms,
-            )
-            result["shipping_method_set"] = True
-        except Exception as exc:
-            log.error("[post_to_market] 配送方法设置失败: %s", exc)
-            result["shipping_method_error"] = str(exc)
-
-    # ── 步骤 8：选择发货地址 ──────────────────────────────────────────────── #
-    if shipping_from_area_id:
-        report("shipping_from", "正在选择发货地址…")
-        try:
-            await _set_shipping_from(
-                page, shipping_from_area_id,
-                element_timeout_ms=element_timeout_ms,
-            )
-            result["shipping_from_set"] = True
-        except Exception as exc:
-            log.error("[post_to_market] 发货地址设置失败: %s", exc)
-            result["shipping_from_error"] = str(exc)
-
-    # ── 步骤 9：选择最大发货天数 ──────────────────────────────────────────── #
-    if shipping_days:
-        report("shipping_days", "正在选择发货天数…")
-        try:
-            await _set_shipping_days(
-                page, shipping_days,
-                element_timeout_ms=element_timeout_ms,
-            )
-            result["shipping_days_set"] = True
-        except Exception as exc:
-            log.error("[post_to_market] 发货天数设置失败: %s", exc)
-            result["shipping_days_error"] = str(exc)
-
-    # ── 步骤 10+11：选择出售类型 + 填写价格 ──────────────────────────────── #
-    report("sale_price", "正在设置销售方式与价格…")
-    try:
-        await _set_sale_type_and_price(
-            page,
-            sale_type,
-            price,
-            auction_duration=auction_duration,
-            element_timeout_ms=SALE_ELEMENT_TIMEOUT_MS,
-            wizard_timeout_ms=element_timeout_ms,
-            report=report,
+        await _ensure_left_sell_wizard(
+            page, result, report, element_timeout_ms=element_timeout_ms,
         )
-        result["sale_type_set"] = True
-        result["price_filled"] = True
-    except Exception as exc:
-        log.error("[post_to_market] 销售类型/价格设置失败: %s", exc)
-        result["sale_price_error"] = str(exc)
 
-    # ── 步骤 12：点击出品（出售）按钮 ───────────────────────────────────── #
-    report("submit", "正在点击出品按钮提交…")
-    try:
-        main = page.locator("#main")
-        clicked_submit = False
-        for btn_text in SUBMIT_BUTTON_TEXTS:
+        # ── 步骤 12：点击出品（出售）按钮 ───────────────────────────────────── #
+        report("submit", "正在点击出品按钮提交…")
+        try:
+            main = page.locator("#main")
+            clicked_submit = False
+            for btn_text in SUBMIT_BUTTON_TEXTS:
+                try:
+                    loc = main.get_by_role("button", name=btn_text).first
+                    await loc.wait_for(state="visible", timeout=element_timeout_ms)
+                    await loc.scroll_into_view_if_needed()
+                    await loc.click(timeout=element_timeout_ms)
+                    clicked_submit = True
+                    log.info("[post_to_market] 已通过文案「%s」点击出品按钮", btn_text)
+                    break
+                except Exception:
+                    continue
+            if not clicked_submit:
+                await _click_by_texts(
+                    page,
+                    SUBMIT_BUTTON_TEXTS,
+                    scope=main,
+                    element_timeout_ms=element_timeout_ms,
+                    selectors="button",
+                    log_prefix="[post_to_market]",
+                )
+            log.info("[post_to_market] 已点击出品按钮，等待页面跳转…")
+
             try:
-                loc = main.get_by_role("button", name=btn_text).first
-                await loc.wait_for(state="visible", timeout=element_timeout_ms)
-                await loc.scroll_into_view_if_needed()
-                await loc.click(timeout=element_timeout_ms)
-                clicked_submit = True
-                log.info("[post_to_market] 已通过文案「%s」点击出品按钮", btn_text)
-                break
+                await page.wait_for_url(
+                    "**/sell**",
+                    timeout=element_timeout_ms,
+                )
             except Exception:
-                continue
-        if not clicked_submit:
-            await _click_by_texts(
-                page,
-                SUBMIT_BUTTON_TEXTS,
-                scope=main,
-                element_timeout_ms=element_timeout_ms,
-                selectors="button",
-                log_prefix="[post_to_market]",
-            )
-        log.info("[post_to_market] 已点击出品按钮，等待页面跳转…")
+                pass
 
-        # 等待跳转到 https://jp.mercari.com/sell
-        try:
-            await page.wait_for_url(
-                "**/sell**",
-                timeout=element_timeout_ms,
-            )
-        except Exception:
-            pass
+            result["url_after_submit"] = page.url
 
-        result["url_after_submit"] = page.url
-
-        SUCCESS_TEXT = "出品が完了しました"
-        try:
-            success_loc = page.get_by_text(SUCCESS_TEXT, exact=False).first
-            await success_loc.wait_for(state="visible", timeout=element_timeout_ms)
-            span_text = (await success_loc.inner_text()).strip()
-            result["submit_message"] = span_text
-            if SUCCESS_TEXT in span_text:
-                result["submitted"] = True
-                log.info("[post_to_market] 出品成功：%s", span_text)
-            else:
-                result["submitted"] = False
-                log.warning("[post_to_market] 出品提示文本异常: %s", span_text)
+            SUCCESS_TEXT = "出品が完了しました"
+            try:
+                success_loc = page.get_by_text(SUCCESS_TEXT, exact=False).first
+                await success_loc.wait_for(state="visible", timeout=element_timeout_ms)
+                span_text = (await success_loc.inner_text()).strip()
+                result["submit_message"] = span_text
+                if SUCCESS_TEXT in span_text:
+                    result["submitted"] = True
+                    log.info("[post_to_market] 出品成功：%s", span_text)
+                else:
+                    _abort_listing(
+                        result, report,
+                        step="submit", label_zh="出品提交",
+                        error_key="submit_error",
+                        exc=f"完成提示异常: {span_text}",
+                    )
+            except Exception as exc:
+                _abort_listing(
+                    result, report,
+                    step="submit", label_zh="出品提交",
+                    error_key="submit_error", exc=exc,
+                )
+        except ListingAborted:
+            raise
         except Exception as exc:
-            log.warning("[post_to_market] 未找到出品完成提示: %s", exc)
-            result["submit_message"] = ""
-            result["submitted"] = "sell" in page.url
-    except Exception as exc:
-        log.error("[post_to_market] 点击出品按钮失败: %s", exc)
-        result["submit_error"] = str(exc)
+            _abort_listing(
+                result, report,
+                step="submit", label_zh="出品提交",
+                error_key="submit_error", exc=exc,
+            )
 
-    # 出品成功：关闭该账号 WebDriver 浏览器（释放 profile，下次再开干净会话）
-    if result.get("submitted") is True:
+    except ListingAborted:
+        result["browser_kept_open"] = True
+        if report:
+            report(
+                "aborted",
+                f"上架已终止（{result.get('abort_message', '步骤失败')}），浏览器保持打开",
+            )
+    except Exception as exc:
+        result["aborted"] = True
+        result["fatal_error"] = str(exc)
+        result["browser_kept_open"] = True
+        log.exception("[post_to_market] 未预期异常，已终止")
+        if report:
+            report("fatal_error", f"上架流程异常终止：{exc}")
+
+    try:
+        result["url"] = page.url
+    except Exception:
+        pass
+
+    # 仅出品成功时关闭浏览器；失败/终止时保持打开供手动补全
+    if result.get("submitted") is True and not result.get("aborted"):
         if report:
             report("close_browser", "出品成功，正在关闭浏览器…")
         try:
@@ -843,6 +1005,15 @@ async def post_to_market(
             result["browser_closed"] = False
             result["browser_close_error"] = str(exc)
             log.warning("[post_to_market] 出品成功后关闭浏览器失败: %s", exc)
+    elif result.get("aborted") or any(
+        result.get(k) for k in (
+            "switch_error", "images_error", "name_error", "category_error",
+            "condition_error", "description_error", "shipping_payer_error",
+            "shipping_method_error", "shipping_from_error", "shipping_days_error",
+            "sale_price_error", "submit_error", "sell_wizard_error", "fatal_error",
+        )
+    ):
+        result["browser_kept_open"] = True
 
     return result
 
