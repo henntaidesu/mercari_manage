@@ -295,6 +295,15 @@
         <el-button @click="detailViewVisible = false">关闭</el-button>
         <el-button
           v-if="detailViewBase"
+          type="danger"
+          plain
+          :loading="deleteItemLoading"
+          @click="deleteMercariItemFromDetail"
+        >
+          删除物品
+        </el-button>
+        <el-button
+          v-if="detailViewBase"
           type="primary"
           plain
           :loading="detailLoadingIds.has(String(detailViewBase.item_id || '').trim())"
@@ -332,7 +341,7 @@
 
 <script setup>
 import { ref, computed, onMounted, reactive } from 'vue'
-import { ElMessage } from 'element-plus'
+import { ElMessage, ElMessageBox } from 'element-plus'
 import { Download } from '@element-plus/icons-vue'
 import { onSaleItemApi, meiluAccountApi, webDriveApi } from '@/api/index.js'
 
@@ -385,6 +394,7 @@ const detailViewVisible = ref(false)
 const detailViewLoading = ref(false)
 const detailViewBase = ref(null)
 const detailViewOnSaleItems = ref([])
+const deleteItemLoading = ref(false)
 
 const detailInventoryLines = computed(() => {
   const items = detailViewOnSaleItems.value
@@ -634,6 +644,58 @@ async function openDetailView(row) {
 function onDetailViewClosed() {
   detailViewBase.value = null
   detailViewOnSaleItems.value = []
+}
+
+function resolveAccountKeyForRow(row) {
+  const sid = String(row?.seller_id || '').trim()
+  if (!sid) return null
+  const matched = sellerFromAccounts.value.find((a) => String(a.seller_id || '').trim() === sid)
+  if (!matched?.id) return null
+  return { accountKey: `meilu_${matched.id}`, sellerId: sid }
+}
+
+async function deleteMercariItemFromDetail() {
+  const base = detailViewBase.value
+  if (!base?.item_id) {
+    ElMessage.warning('缺少商品 ID')
+    return
+  }
+  const iid = String(base.item_id || '').trim()
+  const resolved = resolveAccountKeyForRow(base)
+  if (!resolved) {
+    ElMessage.warning(`未找到卖家 ${String(base.seller_id || '').trim() || '-'} 对应的 active 账号`)
+    return
+  }
+  try {
+    await ElMessageBox.confirm(
+      `将在煤炉编辑页删除商品 ${iid}，此操作不可撤销。请确认已在浏览器中登录对应账号。`,
+      '删除物品',
+      { type: 'warning', confirmButtonText: '确认删除', cancelButtonText: '取消' }
+    )
+  } catch {
+    return
+  }
+  if (deleteItemLoading.value) return
+  deleteItemLoading.value = true
+  try {
+    const res = await webDriveApi.deleteMercariItem({
+      account_key: resolved.accountKey,
+      item_id: iid,
+      use_mitm_proxy: true
+    })
+    const d = res?.data || {}
+    ElMessage.success(
+      d.delete_confirmed
+        ? `已在煤炉删除商品 ${iid}（请稍后在列表中同步状态）`
+        : '删除流程已执行，请检查浏览器中的煤炉页面'
+    )
+    detailViewVisible.value = false
+    await load()
+  } catch {
+    /* 错误由 axios 拦截器提示 */
+  } finally {
+    deleteItemLoading.value = false
+  }
 }
 
 async function detailViewRefreshFromMercari() {

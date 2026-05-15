@@ -210,3 +210,49 @@ async def post_to_market(body: PostToMarketBody):
     finally:
         if jid:
             clear_listing_progress(jid)
+
+
+# ──────────────────────── 在售商品删除 ──────────────────────── #
+
+class DeleteMercariItemBody(PydanticModel):
+    """通过 WebDrive 在煤炉编辑页删除在售商品。"""
+
+    account_key: str = Field(..., min_length=1, max_length=64, pattern=r"^[a-zA-Z0-9_-]+$")
+    item_id: str = Field(..., min_length=1, max_length=64)
+    proxy_server: Optional[str] = None
+    use_mitm_proxy: bool = True
+
+
+@router.post("/on-sale/delete-item")
+async def delete_on_sale_item(body: DeleteMercariItemBody):
+    """
+    启动（或复用）指定账号的 Edge 会话，打开商品编辑页并执行删除：
+      · 点击「この商品を削除する」
+      · 确认弹窗中点击「削除する」
+    """
+    from ..web_drive.web_operate.delete_order import delete_mercari_item as _do_delete
+    from ..ssl_mitm_proxy.runner import default_mitm_proxy_url
+
+    item_id = (body.item_id or "").strip()
+    if not item_id:
+        raise HTTPException(status_code=400, detail="item_id 不能为空")
+
+    try:
+        proxy: Optional[str] = None
+        if body.use_mitm_proxy:
+            proxy = (body.proxy_server or "").strip() or default_mitm_proxy_url()
+
+        data = await _do_delete(
+            get_web_drive_manager(),
+            body.account_key,
+            item_id=item_id,
+            proxy_server=proxy,
+        )
+        return {"success": True, "data": data}
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    except RuntimeError as exc:
+        raise HTTPException(status_code=500, detail=str(exc)) from exc
+    except Exception as exc:
+        log.exception("delete_on_sale_item 异常")
+        raise HTTPException(status_code=500, detail=str(exc)) from exc

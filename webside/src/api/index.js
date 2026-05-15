@@ -212,7 +212,10 @@ export const webDriveApi = {
     http.post('/web-drive/sessions/open', data, { timeout: 0, ...axiosConfig }),
   closeSession: (data) => http.post('/web-drive/sessions/close', data),
   listSessions: () => http.get('/web-drive/sessions'),
-  profilesRoot: () => http.get('/web-drive/profiles-root')
+  profilesRoot: () => http.get('/web-drive/profiles-root'),
+  /** WebDrive 打开编辑页并删除煤炉在售商品 */
+  deleteMercariItem: (data, axiosConfig = {}) =>
+    http.post('/web-drive/on-sale/delete-item', data, { timeout: 0, ...axiosConfig })
 }
 
 /**
