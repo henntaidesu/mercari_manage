@@ -2720,6 +2720,20 @@ function openNoBarcodeEntry() {
   form.value.barcode = uuid
 }
 
+/** 多条库存合并图片 URL：按行顺序、去重，与列表「全部图」一致 */
+function mergeInventoryListingImageUrls(rows) {
+  const out = []
+  const seen = new Set()
+  for (const r of rows || []) {
+    for (const u of inventoryRowImages(r)) {
+      if (seen.has(u)) continue
+      seen.add(u)
+      out.push(u)
+    }
+  }
+  return out
+}
+
 function buildListingSeedFromInventoryRows(rows) {
   if (!rows?.length) return null
   const first = rows[0]
@@ -2740,10 +2754,11 @@ function buildListingSeedFromInventoryRows(rows) {
       return String(r.description ?? '').trim()
     })
     .filter(Boolean)
-  const imageBack = rows.map((r) => inventoryRowSecondImage(r)).find((x) => x) || ''
+  const listing_image_urls = mergeInventoryListingImageUrls(rows)
   return {
-    image: inventoryRowPrimaryImage(first) || '',
-    image_back: imageBack,
+    image: listing_image_urls[0] || '',
+    image_back: listing_image_urls[1] || '',
+    listing_image_urls,
     name: name || String(first.name || '').trim() || '',
     listing_title: listingTitle || '',
     category_mapping_id: mappingId,
@@ -2941,7 +2956,7 @@ async function onListingFormSaved(data) {
   // account_key 规则：meilu_{id}，与 webdrive profile 目录名一致
   const accountKey = `meilu_${accountId}`
 
-  // 收集图片 URL：正面在前、背面在后；组合出品取所有 combined_images 的正面
+  // 收集图片 URL：单条出品用 listing_image_urls（与库存全部图一致）；否则正面/背面；组合出品用 combined_images
   const imageUrls = []
   if (data.combined_images && Array.isArray(data.combined_images)) {
     for (const block of data.combined_images) {
@@ -2949,8 +2964,15 @@ async function onListingFormSaved(data) {
       if (block.back) imageUrls.push(block.back)
     }
   } else {
-    if (data.image) imageUrls.push(data.image)
-    if (data.image_back) imageUrls.push(data.image_back)
+    const fromList = Array.isArray(data.listing_image_urls)
+      ? data.listing_image_urls.map((u) => String(u || '').trim()).filter(Boolean)
+      : []
+    if (fromList.length) {
+      imageUrls.push(...fromList)
+    } else {
+      if (data.image) imageUrls.push(data.image)
+      if (data.image_back) imageUrls.push(data.image_back)
+    }
   }
 
   const progressJobId =

@@ -91,3 +91,4 @@ backend/data/web_drive_profiles/
 backend/ssl_mitm/
 1.json
 apk_code/
+SyncSettings.ffs_gui

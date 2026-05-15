@@ -24,32 +24,47 @@
       </el-form-item>
       <el-form-item label="商品图片" prop="image" class="listing-form-item--images" required>
         <div class="listing-image-box">
+          <div v-if="form.listing_image_urls?.length > 1" class="listing-image-reorder-hint">
+            拖动缩略图调整顺序（上架顺序与此一致）
+          </div>
           <div class="listing-images-thumbs">
-            <div class="listing-thumb-block">
-              <span class="listing-thumb-label">正面</span>
-              <el-image
-                v-if="form.image"
-                :src="form.image"
-                fit="cover"
-                class="listing-image-preview"
-                :preview-src-list="listingImagePreviewList"
-                :hide-on-click-modal="true"
-                :preview-teleported="true"
-                :initial-index="0"
-              />
-              <div v-else class="listing-image-empty">暂无图片</div>
-            </div>
-            <div v-if="form.image_back" class="listing-thumb-block">
-              <span class="listing-thumb-label">背面</span>
-              <el-image
-                :src="form.image_back"
-                fit="cover"
-                class="listing-image-preview"
-                :preview-src-list="listingImagePreviewList"
-                :hide-on-click-modal="true"
-                :preview-teleported="true"
-                :initial-index="listingImagePreviewList.length > 1 ? 1 : 0"
-              />
+            <template v-if="form.listing_image_urls?.length">
+              <div
+                v-for="(imgUrl, idx) in form.listing_image_urls"
+                :key="`${idx}-${imgUrl}`"
+                class="listing-thumb-block"
+                :class="{
+                  'listing-thumb-block--draggable': form.listing_image_urls.length > 1,
+                  'listing-thumb-block--drag-active': listingImageDragFrom === idx,
+                  'listing-thumb-block--drop-hover':
+                    listingImageDropHoverIndex === idx && listingImageDragFrom >= 0 && listingImageDragFrom !== idx
+                }"
+                :draggable="form.listing_image_urls.length > 1"
+                title="拖动调整顺序"
+                @dragstart="onListingImageDragStart(idx, $event)"
+                @dragend="onListingImageDragEnd"
+                @dragover.prevent="onListingImageDragOver(idx, $event)"
+                @dragleave="onListingImageDragLeave(idx, $event)"
+                @drop.prevent="onListingImageDrop(idx)"
+              >
+                <div class="listing-thumb-head">
+                  <el-icon class="listing-thumb-drag-icon"><Rank /></el-icon>
+                  <span class="listing-thumb-label">图{{ idx + 1 }}</span>
+                </div>
+                <el-image
+                  :src="imgUrl"
+                  fit="cover"
+                  class="listing-image-preview"
+                  :preview-src-list="listingImagePreviewList"
+                  :hide-on-click-modal="true"
+                  :preview-teleported="true"
+                  :initial-index="idx"
+                />
+              </div>
+            </template>
+            <div v-else class="listing-thumb-block">
+              <span class="listing-thumb-label">商品图</span>
+              <div class="listing-image-empty">暂无图片</div>
             </div>
           </div>
         </div>
@@ -197,6 +212,7 @@
 
 <script setup>
 import { ref, watch, computed, nextTick } from 'vue'
+import { Rank } from '@element-plus/icons-vue'
 import { meiluAccountApi } from '@/api/index.js'
 import {
   MERCARI_AREAS,
@@ -237,8 +253,16 @@ const listingFormRules = {
   image: [
     {
       validator: (_, val, cb) => {
-        if (!String(val ?? '').trim()) cb(new Error('请关联或展示商品正面图片'))
-        else cb()
+        const urls = form.value.listing_image_urls || []
+        if (urls.length > 0 && String(urls[0] ?? '').trim()) {
+          cb()
+          return
+        }
+        if (String(val ?? '').trim()) {
+          cb()
+          return
+        }
+        cb(new Error('请关联或展示至少一张商品图片'))
       },
       trigger: 'change'
     }
@@ -343,9 +367,77 @@ function applyListingPriceToForm() {
   listingPriceEdit.value = String(v)
 }
 
-const listingImagePreviewList = computed(() =>
-  [form.value.image, form.value.image_back].filter((u) => u && String(u).trim())
-)
+const MAX_LISTING_DIALOG_IMAGES = 20
+
+function normalizeListingImageUrlList(arr) {
+  if (!Array.isArray(arr)) return []
+  return arr
+    .map((u) => String(u || '').trim())
+    .filter(Boolean)
+    .slice(0, MAX_LISTING_DIALOG_IMAGES)
+}
+
+const listingImagePreviewList = computed(() => {
+  const from = normalizeListingImageUrlList(form.value.listing_image_urls)
+  if (from.length) return from
+  return [form.value.image, form.value.image_back].filter((u) => u && String(u).trim())
+})
+
+/** 商品图拖拽排序（HTML5 DnD，拖动手柄行触发） */
+const listingImageDragFrom = ref(-1)
+const listingImageDropHoverIndex = ref(-1)
+
+function onListingImageDragStart(idx, e) {
+  if (!form.value.listing_image_urls || form.value.listing_image_urls.length < 2) {
+    e.preventDefault()
+    return
+  }
+  listingImageDragFrom.value = idx
+  try {
+    e.dataTransfer.effectAllowed = 'move'
+    e.dataTransfer.setData('text/plain', String(idx))
+  } catch (_) {
+    /* ignore */
+  }
+}
+
+function onListingImageDragEnd() {
+  listingImageDragFrom.value = -1
+  listingImageDropHoverIndex.value = -1
+}
+
+function onListingImageDragOver(idx, e) {
+  if (listingImageDragFrom.value < 0) return
+  e.dataTransfer.dropEffect = 'move'
+  listingImageDropHoverIndex.value = idx
+}
+
+function onListingImageDragLeave(idx, e) {
+  if (listingImageDropHoverIndex.value !== idx) return
+  const next = e.relatedTarget
+  if (next && typeof next.closest === 'function' && e.currentTarget?.contains(next)) return
+  listingImageDropHoverIndex.value = -1
+}
+
+function reorderListingImageUrls(from, to) {
+  const raw = normalizeListingImageUrlList(form.value.listing_image_urls)
+  if (raw.length < 2 || from === to || from < 0 || to < 0 || from >= raw.length || to >= raw.length) return
+  const arr = [...raw]
+  const [item] = arr.splice(from, 1)
+  arr.splice(to, 0, item)
+  form.value.listing_image_urls = arr
+  form.value.image = arr[0] || ''
+  form.value.image_back = arr[1] || ''
+  nextTick(() => listingFormRef.value?.validateField?.('image'))
+}
+
+function onListingImageDrop(to) {
+  const from = listingImageDragFrom.value
+  listingImageDragFrom.value = -1
+  listingImageDropHoverIndex.value = -1
+  if (from < 0 || from === to) return
+  reorderListingImageUrls(from, to)
+}
 
 /** 去掉末尾由本表单自动附加的「管理番号：…」块，避免重复 */
 function stripTrailingManagementBlock(text) {
@@ -539,10 +631,16 @@ watch(
     const cfgMid = cfg.meilu_account_id != null ? Number(cfg.meilu_account_id) : null
     const seedPrice = seed.price != null ? Math.round(Number(seed.price)) : 0
     const priceVal = Number.isFinite(seedPrice) && seedPrice >= 0 ? seedPrice : 0
+    const seedUrls = normalizeListingImageUrlList(seed.listing_image_urls)
+    const fallbackPair = [seed.image, seed.image_back]
+      .map((u) => String(u || '').trim())
+      .filter(Boolean)
+    const listingUrls = seedUrls.length ? seedUrls : normalizeListingImageUrlList(fallbackPair)
     form.value = {
       ...getDefaultForm(),
-      image: seed.image || '',
-      image_back: seed.image_back || '',
+      image: listingUrls[0] || '',
+      image_back: listingUrls[1] || '',
+      listing_image_urls: listingUrls,
       listing_title: seed.listing_title || seed.name || '',
       category_mapping_id: seedMappingId,
       category_mapping_path: seedPath,
@@ -571,6 +669,8 @@ function getDefaultForm() {
   return {
     /** meilu_accounts.id，用于指定以哪一账号出品 */
     meilu_account_id: null,
+    /** 与库存一致的全部商品图 URL，提交自动化时写入 image_urls */
+    listing_image_urls: [],
     image: '',
     image_back: '',
     listing_title: '',
@@ -690,13 +790,49 @@ async function submitStub() {
 }
 .listing-image-box {
   display: flex;
-  flex-direction: row;
+  flex-direction: column;
   align-items: flex-start;
   width: 100%;
+}
+.listing-image-reorder-hint {
+  font-size: 12px;
+  color: #909399;
+  line-height: 1.5;
+  margin-bottom: 4px;
+}
+.listing-thumb-block--draggable {
+  cursor: grab;
+}
+.listing-thumb-block--draggable:active {
+  cursor: grabbing;
+}
+.listing-thumb-block--drag-active {
+  opacity: 0.55;
+}
+.listing-thumb-block--drop-hover {
+  outline: 2px dashed var(--el-color-primary);
+  outline-offset: 3px;
+  border-radius: 8px;
+}
+.listing-thumb-head {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  gap: 6px;
+}
+.listing-thumb-drag-icon {
+  font-size: 14px;
+  color: #909399;
+}
+.listing-thumb-block--draggable :deep(.el-image img),
+.listing-thumb-block--draggable :deep(.el-image__inner) {
+  -webkit-user-drag: none;
+  user-select: none;
 }
 .listing-images-thumbs {
   display: flex;
   flex-direction: row;
+  flex-wrap: wrap;
   align-items: flex-start;
   gap: 14px;
   flex-shrink: 0;
