@@ -533,10 +533,10 @@
                 </div>
               </div>
               <div
-                v-if="isNoBarcodeNewInventory && !form.id && nbImageUploadBySlot[imgIdx]?.uploading"
+                v-if="isNoBarcodeNewInventory && !form.id && noBarcodeImgUpload[imgIdx]?.uploading"
                 class="nb-inventory-upload-progress"
               >
-                <el-progress :percentage="nbImageUploadBySlot[imgIdx].percent" :stroke-width="10" />
+                <el-progress :percentage="noBarcodeImgUpload[imgIdx].percent" :stroke-width="10" />
               </div>
               <div class="img-actions img-actions--inline">
                 <el-button size="small" type="danger" text @click.stop="removeInventoryFormImageAt(imgIdx)">移除</el-button>
@@ -565,10 +565,10 @@
                 </div>
               </div>
               <div
-                v-if="isNoBarcodeNewInventory && !form.id && nbImageUploadBySlot[form.images.length]?.uploading"
+                v-if="isNoBarcodeNewInventory && !form.id && noBarcodeImgUpload[form.images.length]?.uploading"
                 class="nb-inventory-upload-progress"
               >
-                <el-progress :percentage="nbImageUploadBySlot[form.images.length].percent" :stroke-width="10" />
+                <el-progress :percentage="noBarcodeImgUpload[form.images.length].percent" :stroke-width="10" />
               </div>
             </div>
           </div>
