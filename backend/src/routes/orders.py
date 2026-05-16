@@ -328,7 +328,7 @@ def stock_out_order_outbound_line(line_id: int, data: OutboundStockOutBody):
         db.execute_insert(
             """
             INSERT INTO [transactions] (
-                type, product_id, warehouse_id, quantity, remark, created_at
+                type, inventory_id, warehouse_id, quantity, remark, created_at
             ) VALUES (?, ?, ?, ?, ?, ?)
             """,
             (
@@ -449,7 +449,7 @@ def create_manual_outbound_lines(data: ManualOutboundLinesBatchCreateBody):
             db.execute_insert(
                 """
                 INSERT INTO [transactions] (
-                    type, product_id, warehouse_id, quantity, remark, created_at
+                    type, inventory_id, warehouse_id, quantity, remark, created_at
                 ) VALUES (?, ?, ?, ?, ?, ?)
                 """,
                 (

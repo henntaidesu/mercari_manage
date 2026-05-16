@@ -72,7 +72,7 @@
             </el-tag>
           </template>
         </el-table-column>
-        <el-table-column label="商品" prop="product_name" />
+        <el-table-column label="库存" prop="inventory_name" />
         <el-table-column label="仓库" prop="warehouse_name" />
         <el-table-column label="数量" prop="quantity" width="80" align="center" />
         <el-table-column label="操作人" prop="operator" width="90" />

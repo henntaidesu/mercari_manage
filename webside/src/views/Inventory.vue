@@ -269,9 +269,6 @@
             {{ Math.round(Number(row.price || 0)) }}
           </template>
         </el-table-column>
-        <el-table-column label="成本（¥）" prop="cost_cny" width="112" align="center" header-align="center" sortable="custom">
-          <template #default="{ row }">{{ formatCostCny(row.cost_cny) }}</template>
-        </el-table-column>
         <el-table-column label="库存" prop="quantity" width="80" align="center" header-align="center" sortable="custom">
           <template #default="{ row }">
             <el-tag :type="quantityTagType(row.quantity)" size="small">
@@ -412,20 +409,6 @@
             </el-form-item>
           </el-col>
         </el-row>
-        <el-form-item label="成本（¥）" prop="cost_cny">
-          <el-input-number
-            v-model="form.cost_cny"
-            :min="0"
-            :max="99999999"
-            :precision="2"
-            :step="0.01"
-            :controls="false"
-            placeholder="人民币，可小数"
-            class="product-cost-cny-input"
-            style="width: 100%"
-            clearable
-          />
-        </el-form-item>
         <el-form-item label="商品归属" prop="owner_user_id">
           <el-select
             v-model="form.owner_user_id"
@@ -877,21 +860,6 @@
               <el-input v-model="combinedProductForm.price" inputmode="numeric" placeholder="组合商品单价" />
             </el-form-item>
           </el-col>
-          <el-col :xs="24" :sm="12">
-            <el-form-item label="成本（¥）">
-              <el-input-number
-                v-model="combinedProductForm.cost_cny"
-                :min="0"
-                :max="99999999"
-                :precision="2"
-                :step="0.01"
-                :controls="false"
-                placeholder="人民币"
-                style="width: 100%"
-                clearable
-              />
-            </el-form-item>
-          </el-col>
         </el-row>
         <el-form-item label="组成商品" required>
           <div class="combined-product-items">
@@ -1027,16 +995,16 @@
         <el-button type="primary" @click="triggerContCapture">{{ formImageUploadTip }}</el-button>
       </div>
 
-      <!-- 找到商品（须同时有 contProduct，避免二次入库时 contState 仍为 found 但 product 已清空导致渲染报错、弹窗空白） -->
-      <div v-if="contState === 'found' && contProduct" class="cont-result">
+      <!-- 找到商品（须同时有 contInventory，避免二次入库时 contState 仍为 found 但 product 已清空导致渲染报错、弹窗空白） -->
+      <div v-if="contState === 'found' && contInventory" class="cont-result">
         <div class="barcode-tag">
           <el-icon><Tickets /></el-icon>
           <span>{{ contBarcode }}</span>
         </div>
         <div class="product-images-row">
-          <template v-if="inventoryRowImages(contProduct).length">
+          <template v-if="inventoryRowImages(contInventory).length">
             <div
-              v-for="(u, ci) in inventoryRowImages(contProduct)"
+              v-for="(u, ci) in inventoryRowImages(contInventory)"
               :key="`cont-img-${ci}`"
               class="result-img-wrap"
             >
@@ -1050,9 +1018,9 @@
           </div>
         </div>
         <div class="product-meta">
-          <span class="product-meta-name">{{ contProduct.name || '(未命名)' }}</span>
-          <el-tag type="info" size="small">当前库存 {{ contProduct.quantity ?? 0 }} 件</el-tag>
-          <el-tag size="small" effect="plain">仓库 {{ contProduct.warehouse_name || '未设置' }}</el-tag>
+          <span class="product-meta-name">{{ contInventory.name || '(未命名)' }}</span>
+          <el-tag type="info" size="small">当前库存 {{ contInventory.quantity ?? 0 }} 件</el-tag>
+          <el-tag size="small" effect="plain">仓库 {{ contInventory.warehouse_name || '未设置' }}</el-tag>
         </div>
         <div class="cont-quantity-row">
           <span class="cont-quantity-label">本次数量</span>
@@ -1278,7 +1246,6 @@ const combinedProductForm = ref({
   name: '',
   quantity: 1,
   price: 0,
-  cost_cny: null,
   description: ''
 })
 /** 组合商品「在列表中选择」模式 */
@@ -1447,7 +1414,7 @@ const contScanVisible = ref(false)
 const contScanNeedsHttpsHint = ref(false)
 const contState = ref('scanning')   // 'scanning' | 'found' | 'notfound' | 'ios-fallback'
 const contBarcode = ref('')
-const contProduct = ref(null)
+const contInventory = ref(null)
 const contQuantity = ref(1)
 const contScanning = ref(false)
 const contConfirming = ref(false)
@@ -1651,7 +1618,6 @@ const form = ref({
   product_type_id: null,
   warehouse_id: null,
   price: 0,
-  cost_cny: null,
   quantity: 1,
   mercari_item_id: '',
   on_sale_quantity: 0,
@@ -1706,17 +1672,6 @@ const rules = {
       validator: (_, val, cb) => {
         const n = Number(val)
         if (Number.isNaN(n) || n < 0) cb(new Error('单价须为大于等于 0 的数字'))
-        else cb()
-      },
-      trigger: 'blur',
-    },
-  ],
-  cost_cny: [
-    {
-      validator: (_, val, cb) => {
-        if (val == null || val === '') return cb()
-        const n = Number(val)
-        if (Number.isNaN(n) || n < 0) cb(new Error('成本须为大于等于 0 的数字'))
         else cb()
       },
       trigger: 'blur',
@@ -2429,15 +2384,6 @@ const sortedInventoryList = computed(() => {
       if (va > vb) return 1 * mult
       return 0
     }
-    if (prop === 'cost_cny') {
-      const va = Number(a.cost_cny)
-      const vb = Number(b.cost_cny)
-      const na = Number.isFinite(va) ? va : -1
-      const nb = Number.isFinite(vb) ? vb : -1
-      if (na < nb) return -1 * mult
-      if (na > nb) return 1 * mult
-      return 0
-    }
     if (prop === 'quantity') {
       const va = Number(a.quantity) || 0
       const vb = Number(b.quantity) || 0
@@ -2486,37 +2432,6 @@ function quantityTagType(q) {
   if (n === 0) return 'danger'
   if (n <= 3) return 'warning'
   return 'success'
-}
-
-/** 列表/展示：人民币成本，固定两位小数；空为「—」 */
-function formatCostCny(v) {
-  if (v == null || v === '') return '—'
-  const n = Number(v)
-  if (!Number.isFinite(n)) return '—'
-  return n.toFixed(2)
-}
-
-/** 提交 API：人民币成本，最多两位小数；空为 null */
-function normalizeCostCnyForPayload(v) {
-  if (v == null || v === '') return null
-  const n = Number(v)
-  if (!Number.isFinite(n) || n < 0) return null
-  return Math.round(n * 100) / 100
-}
-
-function sumRowsCostCny(rows) {
-  if (!Array.isArray(rows) || !rows.length) return null
-  let sum = 0
-  let any = false
-  for (const r of rows) {
-    const n = Number(r?.cost_cny)
-    if (Number.isFinite(n) && n > 0) {
-      sum += n
-      any = true
-    }
-  }
-  if (!any) return null
-  return Math.round(sum * 100) / 100
 }
 
 /**
@@ -2829,10 +2744,6 @@ function openDialog(row = null) {
         owner_user_id: row.owner_user_id || null,
         warehouse_id: row.warehouse_id || null,
         price: Math.round(Number(row.price ?? 0)),
-        cost_cny: (() => {
-          const c = Number(row.cost_cny)
-          return Number.isFinite(c) && c >= 0 ? Math.round(c * 100) / 100 : null
-        })(),
         quantity: row.quantity ?? 0,
         mercari_item_id: row.mercari_item_id ?? '',
         on_sale_quantity: Number(row.on_sale_quantity ?? 0),
@@ -2855,7 +2766,6 @@ function openDialog(row = null) {
         owner_user_id: null,
         warehouse_id: null,
         price: 0,
-        cost_cny: null,
         quantity: 1,
         mercari_item_id: '',
         on_sale_quantity: 0,
@@ -3018,7 +2928,6 @@ function openCombinedProductDialog(rows) {
     name: `${rows.map((r) => String(r.name || '').trim()).filter(Boolean).join(' + ') || '组合商品'} 组合`,
     quantity: 1,
     price: rows.reduce((sum, r) => sum + Math.round(Number(r.price ?? 0)), 0),
-    cost_cny: sumRowsCostCny(rows),
     description: '',
     category_id: sameCategory ? first.category_id : null,
     product_type_id: sameType ? first.product_type_id : null,
@@ -3067,7 +2976,6 @@ async function submitCombinedProduct() {
     name,
     quantity: comboQty,
     price: Math.max(0, Math.round(Number(combinedProductForm.value.price ?? 0))),
-    cost_cny: normalizeCostCnyForPayload(combinedProductForm.value.cost_cny),
     description: desc || null,
     category_id: combinedProductForm.value.category_id || null,
     product_type_id: combinedProductForm.value.product_type_id || null,
@@ -3695,7 +3603,6 @@ async function submit() {
   try {
     const payload = { ...form.value }
     payload.price = Math.round(Number(payload.price ?? 0))
-    payload.cost_cny = normalizeCostCnyForPayload(payload.cost_cny)
     if (payload.mercari_item_id !== undefined && payload.mercari_item_id !== null) {
       payload.mercari_item_id = String(payload.mercari_item_id).trim() || null
     }
@@ -3829,7 +3736,7 @@ async function openContScan() {
   stopContScan()
   contQuantity.value = 1
   contBarcode.value = ''
-  contProduct.value = null
+  contInventory.value = null
   contScanNeedsHttpsHint.value = false
 
   const canUseStream = typeof navigator.mediaDevices?.getUserMedia === 'function'
@@ -3899,7 +3806,7 @@ async function handleContBarcode(barcode) {
   try {
     const res = await inventoryApi.findByBarcode(barcode)
     if (res?.found) {
-      contProduct.value = res.product
+      contInventory.value = res.inventory
       contQuantity.value = 1
       contState.value = 'found'
     } else {
@@ -3913,7 +3820,7 @@ async function handleContBarcode(barcode) {
 
 function resumeContScan() {
   contBarcode.value = ''
-  contProduct.value = null
+  contInventory.value = null
   if (contScanMode.value === 'fallback') {
     contState.value = 'ios-fallback'
     triggerContCapture()
@@ -3926,15 +3833,15 @@ function resumeContScan() {
 }
 
 async function confirmContAction() {
-  if (!contProduct.value?.warehouse_id) {
+  if (!contInventory.value?.warehouse_id) {
     ElMessage.warning('该商品未设置所属货架，请先编辑商品后再操作')
     return
   }
   contConfirming.value = true
   try {
     const quantity = Math.max(1, Math.round(Number(contQuantity.value) || 1))
-    const res = await inventoryApi.stockIn(contProduct.value.id, {
-      warehouse_id: contProduct.value.warehouse_id,
+    const res = await inventoryApi.stockIn(contInventory.value.id, {
+      warehouse_id: contInventory.value.warehouse_id,
       quantity,
       remark: '连续扫码入库'
     })

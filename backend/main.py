@@ -14,7 +14,7 @@ from src.routes.categories import router as categories_router
 from src.routes.warehouses import router as warehouses_router
 from src.routes.product_types import router as product_types_router
 from src.routes.inventory import router as inventory_router
-from src.routes.products import public_router as inventory_public_router
+from src.routes.inventory import public_router as inventory_public_router
 from src.routes.transactions import router as transactions_router
 from src.routes.scan import router as scan_router
 from src.routes.auth import router as auth_router

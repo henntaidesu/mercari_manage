@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 """
-商品表模型
+库存表模型
 """
 
 import json
@@ -9,8 +9,8 @@ from ..base_model import BaseModel
 from .warehouse import WarehouseModel
 
 
-class ProductModel(BaseModel):
-    """商品表（图片以 Base64 格式存储于 image 字段）"""
+class InventoryModel(BaseModel):
+    """库存表（图片以 Base64 格式存储于 image 字段）"""
 
     @classmethod
     def get_table_name(cls) -> str:
@@ -66,12 +66,6 @@ class ProductModel(BaseModel):
                 'type': 'INTEGER',
                 'not_null': False,
                 'default': 0,
-            },
-            # 人民币成本（小数），与 price（日元整数）分列存储
-            'cost_cny': {
-                'type': 'REAL',
-                'not_null': False,
-                'default': None,
             },
             'quantity': {
                 'type': 'INTEGER',
@@ -290,13 +284,13 @@ class ProductModel(BaseModel):
 
     @classmethod
     def find_with_stock(cls, keyword: Optional[str] = None, category_id: Optional[int] = None) -> List[dict]:
-        """查询商品列表，附带分类名称"""
+        """查询库存列表，附带分类名称"""
         db = cls().db
-        product_fields = list(cls.get_fields().keys())
-        product_select = ", ".join([f"p.[{f}] AS [{f}]" for f in product_fields])
+        inventory_fields = list(cls.get_fields().keys())
+        inventory_select = ", ".join([f"p.[{f}] AS [{f}]" for f in inventory_fields])
         wh_label = WarehouseModel.sql_display_label("w")
         sql = f"""
-            SELECT {product_select}, c.name as category_name, {wh_label} as warehouse_name, ptcm.product_type as product_type_name,
+            SELECT {inventory_select}, c.name as category_name, {wh_label} as warehouse_name, ptcm.product_type as product_type_name,
                    COALESCE(u.display_name, u.username) as owner_user_name
             FROM [inventory] p
             LEFT JOIN [categories] c ON c.id = p.category_id
@@ -317,5 +311,5 @@ class ProductModel(BaseModel):
         rows = db.execute_query(sql, tuple(params))
         if not rows:
             return []
-        field_names = product_fields + ['category_name', 'warehouse_name', 'product_type_name', 'owner_user_name']
+        field_names = inventory_fields + ['category_name', 'warehouse_name', 'product_type_name', 'owner_user_name']
         return [dict(zip(field_names, row)) for row in rows]

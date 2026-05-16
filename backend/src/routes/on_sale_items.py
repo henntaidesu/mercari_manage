@@ -133,7 +133,7 @@ def _attach_inventory_by_item_id(items: list) -> None:
             loc_parts = []
             mgmt_id_parts = []
             barcode_parts = []
-            product_name_parts = []
+            inventory_name_parts = []
             inventory_lines = []
             for iid, iname, qty, osq, barcode, wname, wloc in hits:
                 loc_name = str(wname or "").strip() or str(wloc or "").strip() or "-"
@@ -146,21 +146,21 @@ def _attach_inventory_by_item_id(items: list) -> None:
                     barcode_parts.append(bc)
                 n = str(iname or "").strip()
                 if n:
-                    product_name_parts.append(n)
+                    inventory_name_parts.append(n)
                 inventory_lines.append(
                     {
                         "management_id": str(int(iid)),
                         "barcode": bc or None,
                         "location": loc_name,
                         "on_sale_quantity": _to_int(osq, 0),
-                        "product_name": n or None,
+                        "inventory_name": n or None,
                     }
                 )
             row["inventory_match_count"] = len(hits)
             row["inventory_locations_text"] = "、".join(loc_parts)
             row["inventory_mgmt_ids_text"] = "、".join(mgmt_id_parts)
             row["inventory_barcodes_text"] = "、".join(barcode_parts)
-            row["inventory_product_names_text"] = "、".join(product_name_parts)
+            row["inventory_names_text"] = "、".join(inventory_name_parts)
             row["inventory_lines"] = inventory_lines
         else:
             row["inventory_id"] = None
@@ -170,7 +170,7 @@ def _attach_inventory_by_item_id(items: list) -> None:
             row["inventory_locations_text"] = None
             row["inventory_mgmt_ids_text"] = None
             row["inventory_barcodes_text"] = None
-            row["inventory_product_names_text"] = None
+            row["inventory_names_text"] = None
             row["inventory_lines"] = []
 
 

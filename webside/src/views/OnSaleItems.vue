@@ -86,7 +86,7 @@
                 <el-table-column label="商品名称" min-width="180" show-overflow-tooltip>
                   <template #default="{ row: r }">
                     <div v-if="inventoryLines(r).length" class="multi-line-cell">
-                      <div v-for="(ln, idx) in inventoryLines(r)" :key="`name-${idx}`">{{ ln.product_name || '-' }}</div>
+                      <div v-for="(ln, idx) in inventoryLines(r)" :key="`name-${idx}`">{{ ln.inventory_name || '-' }}</div>
                     </div>
                     <span v-else class="cell-muted">-</span>
                   </template>
@@ -284,7 +284,7 @@
           >
             <el-table-column prop="management_id" label="管理 ID" width="100" align="center" />
             <el-table-column prop="barcode" label="条码" min-width="140" show-overflow-tooltip />
-            <el-table-column prop="product_name" label="库存商品名称" min-width="160" show-overflow-tooltip />
+            <el-table-column prop="inventory_name" label="库存名称" min-width="160" show-overflow-tooltip />
             <el-table-column prop="location" label="存储位置" min-width="140" show-overflow-tooltip />
             <el-table-column prop="on_sale_quantity" label="在售数" width="88" align="center" />
           </el-table>

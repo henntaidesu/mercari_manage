@@ -119,7 +119,7 @@ class WarehouseModel(BaseModel):
         product_types = db.execute_query(
             """
             SELECT COUNT(*) FROM (
-                SELECT product_id,
+                SELECT inventory_id,
                        SUM(
                            CASE
                                WHEN type = 'in' AND warehouse_id = ? THEN quantity
@@ -130,7 +130,7 @@ class WarehouseModel(BaseModel):
                            END
                        ) AS net_qty
                 FROM [transactions]
-                GROUP BY product_id
+                GROUP BY inventory_id
                 HAVING net_qty > 0
             ) t
             """,

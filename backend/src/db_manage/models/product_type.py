@@ -52,8 +52,8 @@ class GameTypeModel(BaseModel):
         return result[0] if result else None
 
     @classmethod
-    def get_product_count(cls, product_type_id: int) -> int:
-        """获取该游戏类型下的商品数量"""
+    def get_inventory_count(cls, product_type_id: int) -> int:
+        """获取该游戏类型下的库存条数"""
         db = cls().db
         result = db.execute_query(
             "SELECT COUNT(*) FROM [inventory] WHERE product_type_id = ?", (product_type_id,)

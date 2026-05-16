@@ -1,6 +1,6 @@
 /**
- * 与库存管理页（Products.vue）一致的筛选项：keyword、分类、仓库级联、商品类型级联、归属用户、隐藏无在库。
- * 用于调用 inventoryApi.list 时组装参数；仓库 / 商品类型 cascader 树逻辑与 Products 保持一致。
+ * 与库存管理页（Inventory.vue）一致的筛选项：keyword、分类、仓库级联、商品类型级联、归属用户、隐藏无在库。
+ * 用于调用 inventoryApi.list 时组装参数；仓库 / 商品类型 cascader 树逻辑与 Inventory 保持一致。
  */
 import { ref, computed, watch, reactive } from 'vue'
 import {

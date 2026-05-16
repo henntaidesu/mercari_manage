@@ -30,7 +30,7 @@
             </el-tag>
           </template>
         </el-table-column>
-        <el-table-column label="商品" prop="product_name" min-width="120" />
+        <el-table-column label="库存" prop="inventory_name" min-width="120" />
         <el-table-column label="来源仓库" prop="warehouse_name" width="120" />
         <el-table-column label="目标仓库" prop="target_warehouse_name" width="120">
           <template #default="{ row }">

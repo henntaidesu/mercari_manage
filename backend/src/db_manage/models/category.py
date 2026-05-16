@@ -47,8 +47,8 @@ class CategoryModel(BaseModel):
         return result[0] if result else None
 
     @classmethod
-    def get_product_count(cls, category_id: int) -> int:
-        """获取该分类下的商品数量"""
+    def get_inventory_count(cls, category_id: int) -> int:
+        """获取该分类下的库存条数"""
         db = cls().db
         result = db.execute_query(
             "SELECT COUNT(*) FROM [inventory] WHERE category_id = ?", (category_id,)

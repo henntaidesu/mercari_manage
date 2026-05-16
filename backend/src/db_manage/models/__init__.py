@@ -2,7 +2,7 @@
 from .category import CategoryModel
 from .warehouse import WarehouseModel
 from .product_type import ProductTypeModel
-from .product import ProductModel
+from .inventory import InventoryModel
 from .transaction import TransactionModel
 from .user import UserModel
 from .cost_record import CostRecordModel
@@ -18,7 +18,7 @@ __all__ = [
     'CategoryModel',
     'WarehouseModel',
     'ProductTypeModel',
-    'ProductModel',
+    'InventoryModel',
     'TransactionModel',
     'UserModel',
     'CostRecordModel',

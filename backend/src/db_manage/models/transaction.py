@@ -40,7 +40,7 @@ class TransactionModel(BaseModel):
                 'not_null': True,
                 'default': None,
             },
-            'product_id': {
+            'inventory_id': {
                 'type': 'INTEGER',
                 'not_null': True,
                 'default': None,
@@ -88,7 +88,7 @@ class TransactionModel(BaseModel):
     @classmethod
     def get_indexes(cls) -> List[Dict[str, Any]]:
         return [
-            {'name': 'idx_transactions_product', 'columns': ['product_id']},
+            {'name': 'idx_transactions_inventory', 'columns': ['inventory_id']},
             {'name': 'idx_transactions_warehouse', 'columns': ['warehouse_id']},
             {'name': 'idx_transactions_created', 'columns': ['created_at']},
         ]
@@ -97,7 +97,7 @@ class TransactionModel(BaseModel):
     def find_detail_list(
         cls,
         tx_type: Optional[str] = None,
-        product_id: Optional[int] = None,
+        inventory_id: Optional[int] = None,
         warehouse_id: Optional[int] = None,
         page: int = 1,
         page_size: int = 20,
@@ -106,7 +106,7 @@ class TransactionModel(BaseModel):
         db = cls().db
         base_sql = """
             FROM [transactions] t
-            LEFT JOIN [inventory] p ON p.id = t.product_id
+            LEFT JOIN [inventory] p ON p.id = t.inventory_id
             LEFT JOIN [warehouses] w ON w.id = t.warehouse_id
             LEFT JOIN [warehouses] tw ON tw.id = t.target_warehouse_id
             WHERE 1=1
@@ -115,9 +115,9 @@ class TransactionModel(BaseModel):
         if tx_type:
             base_sql += " AND t.type = ?"
             params.append(tx_type)
-        if product_id:
-            base_sql += " AND t.product_id = ?"
-            params.append(product_id)
+        if inventory_id:
+            base_sql += " AND t.inventory_id = ?"
+            params.append(inventory_id)
         if warehouse_id:
             base_sql += " AND (t.warehouse_id = ? OR t.target_warehouse_id = ?)"
             params += [warehouse_id, warehouse_id]
@@ -146,8 +146,8 @@ class TransactionModel(BaseModel):
         wh_l = WarehouseModel.sql_display_label("w")
         tw_l = WarehouseModel.sql_display_label("tw")
         select_sql = f"""
-            SELECT t.id, t.type, t.product_id,
-                   COALESCE(NULLIF(p.name, ''), '[ID:' || t.product_id || '] 商品已删除') as product_name,
+            SELECT t.id, t.type, t.inventory_id,
+                   COALESCE(NULLIF(p.name, ''), '[ID:' || t.inventory_id || '] 库存已删除') as inventory_name,
                    t.warehouse_id, {wh_l} as warehouse_name,
                    t.target_warehouse_id, {tw_l} as target_warehouse_name,
                    t.quantity, t.remark, t.operator, t.created_at
@@ -158,7 +158,7 @@ class TransactionModel(BaseModel):
         list_params = tuple(filter_params + [page_size, (page - 1) * page_size])
         rows = db.execute_query(select_sql, list_params)
 
-        keys = ['id', 'type', 'product_id', 'product_name',
+        keys = ['id', 'type', 'inventory_id', 'inventory_name',
                 'warehouse_id', 'warehouse_name',
                 'target_warehouse_id', 'target_warehouse_name',
                 'quantity', 'remark', 'operator', 'created_at']

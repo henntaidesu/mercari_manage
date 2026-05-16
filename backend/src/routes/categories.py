@@ -19,7 +19,7 @@ class CategoryUpdate(PydanticModel):
 
 def _serialize(cat: CategoryModel) -> dict:
     d = cat.to_dict()
-    d['product_count'] = CategoryModel.get_product_count(cat.id)
+    d['inventory_count'] = CategoryModel.get_inventory_count(cat.id)
     return d
 
 
@@ -56,7 +56,7 @@ def delete_category(cid: int):
     cat = CategoryModel.find_by_id(id=cid)
     if not cat:
         raise HTTPException(status_code=404, detail="分类不存在")
-    if CategoryModel.get_product_count(cid) > 0:
+    if CategoryModel.get_inventory_count(cid) > 0:
         raise HTTPException(status_code=400, detail="该分类下存在商品，无法删除")
     cat.delete()
     return {"message": "删除成功"}

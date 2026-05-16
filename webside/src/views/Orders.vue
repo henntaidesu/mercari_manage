@@ -107,10 +107,10 @@
                       {{ line.inventory_id != null ? line.inventory_id : '—' }}
                     </template>
                   </el-table-column>
-                  <el-table-column label="商品名称" prop="product_name" min-width="140" show-overflow-tooltip />
+                  <el-table-column label="库存名称" prop="inventory_name" min-width="140" show-overflow-tooltip />
                   <el-table-column label="商品归属" width="110" align="center" show-overflow-tooltip>
                     <template #default="{ row: line }">
-                      {{ line.product_owner_name || '—' }}
+                      {{ line.inventory_owner_name || '—' }}
                     </template>
                   </el-table-column>
                   <el-table-column label="仓库" width="110" show-overflow-tooltip>
@@ -1650,7 +1650,7 @@ async function openBindOutboundInventoryDialog(orderRow, line) {
   const labelParts = []
   const mid = String(line?.management_id || '').trim()
   if (mid) labelParts.push(mid)
-  const pname = String(line?.product_name || '').trim()
+  const pname = String(line?.inventory_name || '').trim()
   if (pname && pname !== mid) labelParts.push(pname)
   bindOutboundContext.value = {
     order_no: orderNo,

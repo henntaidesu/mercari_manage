@@ -19,7 +19,7 @@ class ProductTypeUpdate(PydanticModel):
 
 def _serialize(game_type: ProductTypeModel) -> dict:
     d = game_type.to_dict()
-    d['product_count'] = ProductTypeModel.get_product_count(game_type.id)
+    d['inventory_count'] = ProductTypeModel.get_inventory_count(game_type.id)
     return d
 
 
@@ -65,7 +65,7 @@ def delete_product_type(type_id: int):
     game_type = ProductTypeModel.find_by_id(id=type_id)
     if not game_type:
         raise HTTPException(status_code=404, detail="游戏类型不存在")
-    if ProductTypeModel.get_product_count(type_id) > 0:
+    if ProductTypeModel.get_inventory_count(type_id) > 0:
         raise HTTPException(status_code=400, detail="该游戏类型下存在商品，无法删除")
     game_type.delete()
     return {"message": "删除成功"}

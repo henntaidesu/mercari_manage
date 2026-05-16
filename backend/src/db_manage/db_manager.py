@@ -9,7 +9,7 @@ from .database import DatabaseManager
 from .models import (
     CategoryModel,
     WarehouseModel,
-    ProductModel,
+    InventoryModel,
     TransactionModel,
     UserModel,
     CostRecordModel,
@@ -104,6 +104,38 @@ class DBManager:
             except Exception:
                 pass
         print("[OK] warehouses 组合唯一迁移完成")
+        return True
+
+    def _migrate_transactions_product_id_to_inventory_id(self) -> bool:
+        """出入库记录表：product_id 列重命名为 inventory_id（与 inventory 表一致）。"""
+        db = self.db
+        if not db.table_exists("transactions"):
+            return True
+        cols = {c["name"] for c in db.get_table_columns("transactions")}
+        if "inventory_id" in cols:
+            return True
+        if "product_id" not in cols:
+            return True
+        print("正在迁移 transactions：product_id -> inventory_id ...")
+        try:
+            db.execute_update(
+                "ALTER TABLE [transactions] RENAME COLUMN [product_id] TO [inventory_id]"
+            )
+            db.execute_update("DROP INDEX IF EXISTS idx_transactions_product")
+            db.execute_update(
+                "CREATE INDEX IF NOT EXISTS idx_transactions_inventory "
+                "ON [transactions]([inventory_id])"
+            )
+        except Exception as e:
+            print(f"[错误] transactions.product_id 迁移失败: {e}")
+            return False
+        cache_attr = "_cached_table_columns"
+        if hasattr(TransactionModel, cache_attr):
+            try:
+                delattr(TransactionModel, cache_attr)
+            except Exception:
+                pass
+        print("[OK] transactions.inventory_id 迁移完成")
         return True
 
     def _migrate_warehouses_name_nullable(self) -> bool:
@@ -302,7 +334,7 @@ class DBManager:
             ConfigEntryModel,  # 键值配置（出品默认值等）
             CategoryModel,    # 无外键依赖
             WarehouseModel,   # 无外键依赖
-            ProductModel,     # 依赖 categories
+            InventoryModel,   # 依赖 categories
             TransactionModel, # 依赖 inventory, warehouses
             CostRecordModel,  # 依赖 warehouses（可为空）
             CostExpenseModel,  # 成本支出
@@ -321,6 +353,8 @@ class DBManager:
         if self.db.table_exists("products") and not self.db.table_exists("inventory"):
             print("检测到旧表 products，正在迁移为 inventory ...")
             self.db.execute_update("ALTER TABLE [products] RENAME TO [inventory]")
+        if not self._migrate_transactions_product_id_to_inventory_id():
+            return False
         if not self._migrate_ptcm_to_independent_module():
             return False
         if not self._migrate_ptcm_category_field_to_mapping_id():
