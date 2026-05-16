@@ -86,6 +86,13 @@ async def startup():
 
     asyncio.create_task(meilu_auto_fetch_loop())
 
+    # 为所有活跃煤炉账号预启动持久化无头浏览器（后台任务，不阻塞 HTTP 服务启动）
+    # 若启动失败，首次操作时会懒启动；可通过环境变量 PERSISTENT_BROWSER_AUTO_START=0 关闭
+    if os.environ.get("PERSISTENT_BROWSER_AUTO_START", "1").strip().lower() not in ("0", "false", "no", "off"):
+        from src.web_drive.persistent_browser import startup_browsers_for_all_active_accounts
+
+        asyncio.create_task(startup_browsers_for_all_active_accounts())
+
 
 @app.on_event("shutdown")
 async def shutdown_web_drive():
