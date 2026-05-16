@@ -3,7 +3,7 @@
 在售商品列表：通过账号 WebDriver + MITM 截获 items/get_items 响应后，
 执行“新增/更新 + 软删除标记”同步。
 
-数据获取见 get_on_sale.on_sale_list.fetch_on_sale_list_items（不再直连 API）。
+数据获取见 get_on_sale.on_sale_list（MITM 截获 listings）；列表写入后可在同一浏览器内自动拉取新增商品的详情（items/get）并回写库存。
 金额入库：日元整数，价格向下取整（math.floor）。
 """
 
@@ -13,11 +13,20 @@ import time
 import re
 from typing import Any, Dict, List, Optional
 
-from .get_order.get_on_sale.on_sale_list import fetch_on_sale_list_items
+from .get_order.get_on_sale.on_sale_list import (
+    LISTINGS_PAGE_URL,
+    _on_sale_sync_headless,
+    capture_on_sale_list_via_mitm_session,
+)
+from .on_sale_item_detail_sync import auto_fetch_details_for_inserted_items
 from .sync_data import _resolve_account_and_seller
 from ..db_manage.models.on_sale_item import OnSaleItemModel
 from ..db_manage.database import DatabaseManager
-from ..ssl_mitm_proxy.capture_config import canonical_mercari_item_id
+from ..ssl_mitm_proxy.capture_config import (
+    canonical_mercari_item_id,
+    clear_on_sale_list_response_file,
+)
+from ..web_drive.mitm_session import mitm_automation_browser
 
 _MERCARI_ID_SEP_RE = re.compile(r"[\n,，、\s]+")
 
@@ -423,10 +432,35 @@ def apply_on_sale_list_sync(
 
 async def sync_on_sale_items_from_mercari(account_id: Optional[int] = None) -> Dict[str, Any]:
     """
-    从煤炉拉取在售列表（网页出品一覧触发的 items/get_items，on_sale,stop）并同步本地。
-    见 ``apply_on_sale_list_sync`` 的库存与软删除规则说明。
+    从煤炉拉取在售列表（网页出品一覧触发的 items/get_items，on_sale,stop）并同步本地；
+    在同一 MITM Edge 会话关闭前，对本次**新增**的商品依次打开详情页截获 ``items/get``，
+    执行与「获取详情」相同的说明解析与库存回写（可用环境变量关闭或限流）。
+
+    见 ``apply_on_sale_list_sync``、``on_sale_item_detail_sync.auto_fetch_details_for_inserted_items``。
     """
     aid, sid = _resolve_account_and_seller(account_id)
     seller_key = str(int(sid))
-    items, meta = await fetch_on_sale_list_items(seller_id=sid, account_id=aid)
-    return apply_on_sale_list_sync(seller_key, items, meta)
+    clear_on_sale_list_response_file(seller_key)
+    since_ms = int(time.time() * 1000)
+    headless = _on_sale_sync_headless()
+    list_timeout_sec = 90
+
+    async with mitm_automation_browser(
+        int(aid),
+        start_url=LISTINGS_PAGE_URL,
+        headless=headless,
+    ) as (mgr, auto_key):
+        items, meta = await capture_on_sale_list_via_mitm_session(
+            mgr,
+            auto_key,
+            seller_key,
+            since_ms=since_ms,
+            timeout=list_timeout_sec,
+        )
+        stats = apply_on_sale_list_sync(seller_key, items, meta)
+        stats["auto_detail_fetch"] = await auto_fetch_details_for_inserted_items(
+            mgr,
+            auto_key,
+            stats.get("inserted_item_ids") or [],
+        )
+    return stats

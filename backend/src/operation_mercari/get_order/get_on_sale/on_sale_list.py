@@ -6,6 +6,7 @@ Mercari 在售商品列表：通过账号对应 WebDriver 打开
 的响应体，不再直接 HTTP 调用 API。
 
 页面存在「もっと見る」时会自动循环点击并合并各次截获的分页数据，直至按钮消失。
+「从煤炉同步」完成后可在**同一浏览器会话**内对本次新增商品自动执行与「获取详情」相同的逻辑（见 ``on_sale_item_detail_sync.auto_fetch_details_for_inserted_items``）。
 
 MITM 无头浏览器使用独立 profile：``meilu_{account_id}__auto``（与账号页有头 ``meilu_{account_id}`` 分离）。
 截获完成后会在 ``finally`` 中关闭该账号浏览器会话。
@@ -177,6 +178,33 @@ async def _expand_on_sale_listings_until_end(
     return list(merged.values()), out_meta
 
 
+async def capture_on_sale_list_via_mitm_session(
+    mgr: EdgeWebDriveManager,
+    auto_key: str,
+    seller_key: str,
+    *,
+    since_ms: int,
+    timeout: int,
+) -> Tuple[List[Dict[str, Any]], Dict[str, Any]]:
+    """
+    在已建立的 MITM Edge 会话内等待首次 ``items/get_items`` 截获，
+    再展开「もっと見る」并合并分页（浏览器须仍为开启状态）。
+    """
+    await wait_mitm_capture(
+        mgr=mgr,
+        auto_key=auto_key,
+        start_url=LISTINGS_PAGE_URL,
+        read_response=lambda: read_on_sale_list_response(seller_key),
+        since_ms=since_ms,
+        wait_seconds=timeout,
+        error_detail=(
+            f"在售列表 items/get_items（on_sale,stop），seller_id={seller_key}"
+        ),
+    )
+    page = await mgr.active_tab_page(auto_key)
+    return await _expand_on_sale_listings_until_end(page, seller_key)
+
+
 async def _fetch_on_sale_via_browser_impl(
     account_id: int,
     seller_id: int,
@@ -193,19 +221,13 @@ async def _fetch_on_sale_via_browser_impl(
         start_url=LISTINGS_PAGE_URL,
         headless=headless,
     ) as (mgr, auto_key):
-        await wait_mitm_capture(
-            mgr=mgr,
-            auto_key=auto_key,
-            start_url=LISTINGS_PAGE_URL,
-            read_response=lambda: read_on_sale_list_response(seller_key),
+        return await capture_on_sale_list_via_mitm_session(
+            mgr,
+            auto_key,
+            seller_key,
             since_ms=since_ms,
-            wait_seconds=timeout,
-            error_detail=(
-                f"在售列表 items/get_items（on_sale,stop），seller_id={seller_key}"
-            ),
+            timeout=timeout,
         )
-        page = await mgr.active_tab_page(auto_key)
-        return await _expand_on_sale_listings_until_end(page, seller_key)
 
 
 async def fetch_on_sale_list_items(
@@ -271,9 +293,15 @@ async def sync_on_sale_from_listings_browser_page(
         ),
     )
 
+    from ...on_sale_item_detail_sync import auto_fetch_details_for_inserted_items
     from ...on_sale_items_sync import apply_on_sale_list_sync
 
     items, meta = await _expand_on_sale_listings_until_end(page, seller_key)
     stats = apply_on_sale_list_sync(seller_key, items, meta)
+    stats["auto_detail_fetch"] = await auto_fetch_details_for_inserted_items(
+        manager,
+        account_key,
+        stats.get("inserted_item_ids") or [],
+    )
     stats["sync_source"] = "listings_page_after_delete"
     return stats
