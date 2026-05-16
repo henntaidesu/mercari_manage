@@ -20,6 +20,7 @@ from ...ssl_mitm_proxy.capture_config import (
     clear_item_get_response_file,
     read_item_get_response,
 )
+from ...web_drive.manager import EdgeWebDriveManager
 from ...web_drive.mitm_session import mitm_automation_browser
 
 _ITEM_GET_BASE = "https://api.mercari.jp/items/get"
@@ -84,6 +85,36 @@ async def _wait_item_get_mitm_response(
     )
 
 
+async def fetch_mercari_item_get_in_browser_session(
+    mgr: EdgeWebDriveManager,
+    auto_key: str,
+    item_id: str,
+    *,
+    timeout: int = 90,
+) -> Dict[str, Any]:
+    """
+    在已打开的 MITM Edge 会话（与在售列表同步同款 ``meilu_{id}__auto``）内导航到商品页，
+    截获 ``items/get`` JSON（含 result / data），供 ``detail_sync_inventory_from_item_get_response`` 使用。
+    """
+    cid = canonical_mercari_item_id(item_id)
+    if not cid:
+        raise RuntimeError("item_id 不能为空")
+    clear_item_get_response_file(cid)
+    since_ms = int(time.time() * 1000)
+    page_url = mercari_item_page_url(cid)
+    await mgr.reload_active_tab(auto_key, page_url)
+    await _wait_item_get_mitm_response(
+        item_id=cid,
+        since_ms=since_ms,
+        wait_seconds=int(timeout),
+    )
+    wrapped = read_item_get_response(cid) or {}
+    body = wrapped.get("body")
+    if not isinstance(body, dict):
+        raise RuntimeError(f"截获的商品详情格式异常: {wrapped!r}")
+    return body
+
+
 async def _fetch_mercari_item_get_via_browser_impl(
     item_id: str,
     account_id: int,
@@ -103,11 +134,12 @@ async def _fetch_mercari_item_get_via_browser_impl(
         account_id,
         start_url=page_url,
         headless=headless,
-    ):
-        await _wait_item_get_mitm_response(
-            item_id=cid,
-            since_ms=since_ms,
-            wait_seconds=timeout,
+    ) as (mgr, auto_key):
+        await fetch_mercari_item_get_in_browser_session(
+            mgr,
+            auto_key,
+            cid,
+            timeout=int(timeout),
         )
 
     wrapped = read_item_get_response(cid) or {}

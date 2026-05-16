@@ -366,6 +366,16 @@ class EdgeWebDriveManager:
             page = ctx.pages[-1] if ctx.pages else await ctx.new_page()
             await page.goto(u, wait_until=wait_until, timeout=timeout_ms)
 
+    async def active_tab_page(self, account_key: str) -> Any:
+        """返回会话当前活动标签页（与 ``reload_active_tab`` 选取规则一致）。"""
+        key = validate_account_key(account_key)
+        s = self._prepare_async()
+        async with s.lock:  # type: ignore[union-attr]
+            ctx = s.contexts.get(key)
+            if ctx is None or not self._is_context_alive(ctx):
+                raise RuntimeError(f"会话不可用或无活动页: {key}")
+            return ctx.pages[-1] if ctx.pages else await ctx.new_page()
+
     async def ensure_session_for_mitm(
         self,
         account_key: str,

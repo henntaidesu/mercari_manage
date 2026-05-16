@@ -9,6 +9,7 @@
 
 from __future__ import annotations
 
+import os
 import re
 from typing import Any, Dict, List, Optional, Tuple
 
@@ -21,7 +22,11 @@ from .get_order.description_mgmt_ids import (
     _resolve_inventory_id_by_bundle_title,
     parse_order_description_outbound_tokens,
 )
-from .get_order.mercari_item_get import fetch_mercari_item_get
+from ..web_drive.manager import EdgeWebDriveManager
+from .get_order.mercari_item_get import (
+    fetch_mercari_item_get,
+    fetch_mercari_item_get_in_browser_session,
+)
 
 _FW_DIGITS = str.maketrans("０１２３４５６７８９", "0123456789")
 _MGMT_ID_PATTERN = re.compile(r"管理\s*ID\s*[:：]\s*([0-9０-９\s,，、*xX×]+)", re.IGNORECASE | re.MULTILINE)
@@ -239,16 +244,14 @@ def _persist_listing_description_for_item(
         return
 
 
-async def fetch_detail_and_sync_inventory(
+def detail_sync_inventory_from_item_get_response(
     item_id: str,
-    account_id: Optional[int] = None,
+    resp: Dict[str, Any],
 ) -> Dict[str, Any]:
     """
-    通过浏览器打开商品页并由 MITM 截获 items/get，将 data.id 与在售数量写入匹配到的库存行。
-
-    :return: { api: 原始响应, sync: { updated, inventory_id, mercari_item_id, on_sale_quantity, message } }
+    ``resp`` 为 MITM 截获的 ``items/get`` JSON（含 result / data）。
+    将说明解析结果写入库存；返回结构与 ``fetch_detail_and_sync_inventory`` 一致。
     """
-    resp = await fetch_mercari_item_get(item_id, account_id=account_id)
     sync: Dict[str, Any] = {
         "updated": False,
         "inventory_id": None,
@@ -420,3 +423,94 @@ async def fetch_detail_and_sync_inventory(
     else:
         sync["message"] = "未匹配到可写入库存"
     return {"api": resp, "sync": sync}
+
+
+async def fetch_detail_and_sync_inventory(
+    item_id: str,
+    account_id: Optional[int] = None,
+) -> Dict[str, Any]:
+    """
+    通过浏览器打开商品页并由 MITM 截获 items/get，将 data.id 与在售数量写入匹配到的库存行。
+
+    :return: { api: 原始响应, sync: { updated, inventory_id, mercari_item_id, on_sale_quantity, message } }
+    """
+    resp = await fetch_mercari_item_get(item_id, account_id=account_id)
+    return detail_sync_inventory_from_item_get_response(item_id, resp)
+
+
+def on_sale_sync_auto_detail_settings() -> Tuple[bool, int, int]:
+    """
+    「从煤炉同步」后是否在**同一浏览器**内自动拉取详情：enabled、单次最多处理的新增商品数、每件超时秒。
+    ``WEB_DRIVE_ON_SALE_SYNC_AUTO_DETAIL`` 默认开启；``0/false`` 关闭。
+    ``WEB_DRIVE_ON_SALE_SYNC_DETAIL_MAX_NEW`` 默认 200（0 表示不限制）。
+    ``WEB_DRIVE_ON_SALE_SYNC_DETAIL_TIMEOUT_SEC`` 默认 90。
+    """
+    v = (os.environ.get("WEB_DRIVE_ON_SALE_SYNC_AUTO_DETAIL") or "1").strip().lower()
+    enabled = v not in ("0", "false", "no", "off")
+    try:
+        max_new = int((os.environ.get("WEB_DRIVE_ON_SALE_SYNC_DETAIL_MAX_NEW") or "200").strip())
+    except ValueError:
+        max_new = 200
+    max_new = max(0, max_new)
+    try:
+        tsec = int((os.environ.get("WEB_DRIVE_ON_SALE_SYNC_DETAIL_TIMEOUT_SEC") or "90").strip())
+    except ValueError:
+        tsec = 90
+    tsec = max(15, min(tsec, 600))
+    return enabled, max_new, tsec
+
+
+async def auto_fetch_details_for_inserted_items(
+    mgr: EdgeWebDriveManager,
+    auto_key: str,
+    inserted_item_ids: List[str],
+) -> Dict[str, Any]:
+    """
+    在售列表同步写入 DB 后，对 ``inserted_item_ids`` 在同一 MITM Edge 会话内依次打开商品页，
+    截获 ``items/get`` 并执行与「获取详情」相同的库存回写逻辑。
+    """
+    enabled, max_new, detail_timeout = on_sale_sync_auto_detail_settings()
+    raw_ids = [str(x or "").strip() for x in (inserted_item_ids or []) if str(x or "").strip()]
+    out: Dict[str, Any] = {
+        "enabled": enabled,
+        "attempted": 0,
+        "inventory_updated": 0,
+        "results": [],
+        "skipped_reason": None,
+        "max_new": max_new,
+        "timeout_sec_per_item": detail_timeout,
+    }
+    if not enabled:
+        out["skipped_reason"] = "WEB_DRIVE_ON_SALE_SYNC_AUTO_DETAIL 已关闭"
+        return out
+    if not raw_ids:
+        out["skipped_reason"] = "无本次新增的 item_id"
+        return out
+
+    if max_new > 0:
+        raw_ids = raw_ids[:max_new]
+        if len(inserted_item_ids or []) > len(raw_ids):
+            out["truncated_from"] = len(inserted_item_ids or [])
+
+    results: List[Dict[str, Any]] = []
+    inventory_updated = 0
+    for iid in raw_ids:
+        try:
+            body = await fetch_mercari_item_get_in_browser_session(
+                mgr,
+                auto_key,
+                iid,
+                timeout=detail_timeout,
+            )
+            payload = detail_sync_inventory_from_item_get_response(iid, body)
+            sync = payload.get("sync") if isinstance(payload.get("sync"), dict) else {}
+            if sync.get("updated"):
+                inventory_updated += 1
+            results.append({"item_id": iid, "sync": sync})
+        except Exception as exc:
+            results.append({"item_id": iid, "error": str(exc)})
+
+    out["attempted"] = len(raw_ids)
+    out["inventory_updated"] = inventory_updated
+    out["results"] = results
+    return out
