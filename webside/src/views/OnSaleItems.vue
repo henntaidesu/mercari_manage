@@ -179,17 +179,8 @@
         <el-table-column label="更新" width="160" align="center" header-align="center">
           <template #default="{ row }">{{ displayTs(row.updated) }}</template>
         </el-table-column>
-        <el-table-column label="操作" width="220" fixed="right" align="center" header-align="center">
+        <el-table-column label="操作" width="120" fixed="right" align="center" header-align="center">
           <template #default="{ row }">
-            <el-button
-              type="primary"
-              link
-              size="small"
-              :loading="manageLoadingIds.has(String(row.item_id || '').trim())"
-              @click="openMercariManage(row)"
-            >
-              浏览器打开
-            </el-button>
             <el-button
               :type="hasDetailViewable(row) ? 'success' : 'warning'"
               link
@@ -381,8 +372,6 @@ function onSaleStatusTagType(status) {
 const loading = ref(false)
 /** 正在请求 items/get 的商品 ID（trim 后） */
 const detailLoadingIds = ref(new Set())
-/** 正在打开管理页的商品 ID（trim 后） */
-const manageLoadingIds = ref(new Set())
 const syncLoading = ref(false)
 const syncVisible = ref(false)
 const syncAccountId = ref(null)
@@ -608,13 +597,6 @@ function formatJsonPretty(raw) {
   }
 }
 
-/** 煤炉商品页路径段：API 多为 m 开头，纯数字时补 m */
-function mercariItemPathSegment(itemId) {
-  const raw = String(itemId ?? '').trim()
-  if (!raw) return ''
-  return raw.startsWith('m') ? raw : `m${raw}`
-}
-
 function onDetailActionClick(row) {
   if (hasDetailViewable(row)) {
     openDetailView(row)
@@ -668,7 +650,7 @@ async function deleteMercariItemFromDetail() {
   }
   try {
     await ElMessageBox.confirm(
-      `将使用无头浏览器在煤炉删除商品 ${iid} 并自动同步列表，此操作不可撤销。请确保该账号已在「浏览器打开」中登录过（用于同步 Cookie）。`,
+      `将使用无头浏览器在煤炉删除商品 ${iid} 并自动同步列表，此操作不可撤销。请确保该账号 Cookie 有效。`,
       '删除物品',
       { type: 'warning', confirmButtonText: '确认删除', cancelButtonText: '取消' }
     )
@@ -720,45 +702,6 @@ async function detailViewRefreshFromMercari() {
     detailViewOnSaleItems.value = []
   } finally {
     detailViewLoading.value = false
-  }
-}
-
-async function openMercariManage(row) {
-  const seg = mercariItemPathSegment(row.item_id)
-  if (!seg) {
-    ElMessage.warning('缺少商品 ID')
-    return
-  }
-  const sid = String(row.seller_id || '').trim()
-  if (!sid) {
-    ElMessage.warning('缺少卖家 ID，无法定位对应账号')
-    return
-  }
-  const matched = sellerFromAccounts.value.find((a) => String(a.seller_id || '').trim() === sid)
-  if (!matched?.id) {
-    ElMessage.warning(`未找到卖家 ${sid} 对应的 active 账号，请先在账号管理配置 seller_id`)
-    return
-  }
-  const iid = String(row.item_id || '').trim()
-  if (manageLoadingIds.value.has(iid)) return
-  const next = new Set(manageLoadingIds.value)
-  next.add(iid)
-  manageLoadingIds.value = next
-  const url = `https://jp.mercari.com/item/${encodeURIComponent(seg)}`
-  try {
-    const res = await webDriveApi.openSession({
-      account_key: `meilu_${matched.id}`,
-      headless: false,
-      start_url: url,
-    })
-    const d = res?.data || {}
-    ElMessage.success(d.already_running ? '已使用系统浏览器会话打开管理页（会话已在运行）' : '已使用系统浏览器会话打开管理页')
-  } catch {
-    /* 错误由 axios 拦截器提示 */
-  } finally {
-    const done = new Set(manageLoadingIds.value)
-    done.delete(iid)
-    manageLoadingIds.value = done
   }
 }
 

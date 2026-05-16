@@ -516,7 +516,7 @@
                 </div>
               </div>
               <div
-                v-if="isNoBarcodeNewInventory && !form.id && noBarcodeImgUpload[imgIdx]?.uploading"
+                v-if="inventoryFormImmediateImageUpload && noBarcodeImgUpload[imgIdx]?.uploading"
                 class="nb-inventory-upload-progress"
               >
                 <el-progress :percentage="noBarcodeImgUpload[imgIdx].percent" :stroke-width="10" />
@@ -548,7 +548,7 @@
                 </div>
               </div>
               <div
-                v-if="isNoBarcodeNewInventory && !form.id && noBarcodeImgUpload[form.images.length]?.uploading"
+                v-if="inventoryFormImmediateImageUpload && noBarcodeImgUpload[form.images.length]?.uploading"
                 class="nb-inventory-upload-progress"
               >
                 <el-progress :percentage="noBarcodeImgUpload[form.images.length].percent" :stroke-width="10" />
@@ -1257,6 +1257,10 @@ const noBarcodeEntryMode = ref(false)
 /** 无码入库且新建：选图后立即上传服务器，保存时只提交 /imges/ 路径 */
 const isNoBarcodeNewInventory = computed(
   () => Boolean(noBarcodeEntryMode.value && !form.value.id)
+)
+/** 选图后立即上传服务器（无码新建、编辑商品）；保存时只提交 /imges/ 路径 */
+const inventoryFormImmediateImageUpload = computed(
+  () => isNoBarcodeNewInventory.value || Boolean(form.value.id)
 )
 const noBarcodeImgUpload = reactive({})
 const nbCameraUploading = ref(false)
@@ -2501,9 +2505,9 @@ function resetNoBarcodeImageUploadState() {
   nbCameraUploadPercent.value = 0
 }
 
-/** 无码新建：上传未结束时不可点保存 */
+/** 即时上传模式：上传未结束时不可点保存 */
 const inventorySaveBlockedByImageUpload = computed(() => {
-  if (!isNoBarcodeNewInventory.value) return false
+  if (!inventoryFormImmediateImageUpload.value) return false
   if (Object.values(noBarcodeImgUpload).some((s) => s?.uploading)) return true
   if (nbCameraUploading.value) return true
   return false
@@ -2512,7 +2516,7 @@ const inventorySaveBlockedByImageUpload = computed(() => {
 function removeInventoryFormImageAt(idx) {
   if (!Array.isArray(form.value.images)) return
   if (idx < 0 || idx >= form.value.images.length) return
-  if (isNoBarcodeNewInventory.value) {
+  if (inventoryFormImmediateImageUpload.value) {
     abortNoBarcodeIndexUpload(idx)
     const slot = noBarcodeImgUpload[idx]
     if (slot) {
@@ -3437,7 +3441,7 @@ async function applyProductImgConfirm() {
   nbCameraUploadPercent.value = 0
   const slot = productImgCameraTargetIndex.value
   try {
-    if (isNoBarcodeNewInventory.value) {
+    if (inventoryFormImmediateImageUpload.value) {
       nbCameraUploading.value = true
       let blob
       try {
@@ -3530,7 +3534,7 @@ async function handleInventoryImageFileChange(e) {
     return
   }
 
-  if (isNoBarcodeNewInventory.value) {
+  if (inventoryFormImmediateImageUpload.value) {
     const writeIdx = targetIdx < 0 ? form.value.images.length : targetIdx
     abortNoBarcodeIndexUpload(writeIdx)
     const ac = new AbortController()
