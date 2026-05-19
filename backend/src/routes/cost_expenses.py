@@ -254,7 +254,7 @@ def _split_int_by_weights(total: int, owner_weights):
             continue
         out.append({"owner": str(it.get("owner") or "").strip(), "share": share})
     return out
-·
+
 
 @router.get("")
 def list_cost_expenses(
