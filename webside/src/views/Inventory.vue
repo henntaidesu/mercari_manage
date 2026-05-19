@@ -490,11 +490,29 @@
           label="商品图片"
           class="inventory-images-form-item inventory-images-form-item--combined inventory-images-form-item--combined-grid"
         >
+          <div v-if="form.images.length > 1" class="inventory-images-reorder-hint">
+            拖动图片调整顺序（第一张为主图）
+          </div>
           <div class="inventory-images-grid inventory-images-grid--combined">
             <div
               v-for="(imgUrl, imgIdx) in form.images"
               :key="`inv-img-${imgIdx}-${imgUrl || ''}`"
               class="inventory-image-cell inventory-image-cell--compact"
+              :class="{
+                'inventory-image-cell--draggable': form.images.length > 1 && !!imgUrl,
+                'inventory-image-cell--drag-active': inventoryImageDragFrom === imgIdx,
+                'inventory-image-cell--drop-hover':
+                  inventoryImageDropHoverIndex === imgIdx &&
+                  inventoryImageDragFrom >= 0 &&
+                  inventoryImageDragFrom !== imgIdx
+              }"
+              :draggable="form.images.length > 1 && !!imgUrl"
+              title="拖动调整顺序"
+              @dragstart="onInventoryImageDragStart(imgIdx, $event)"
+              @dragend="onInventoryImageDragEnd"
+              @dragover.prevent="onInventoryImageDragOver(imgIdx, $event)"
+              @dragleave="onInventoryImageDragLeave(imgIdx, $event)"
+              @drop.prevent="onInventoryImageDrop(imgIdx)"
             >
               <div class="inventory-image-cell__frame inventory-image-cell__frame--badge">
                 <span class="inventory-image-cell__badge">{{ imgIdx === 0 ? '主图' : `图 ${imgIdx + 1}` }}</span>
@@ -2465,6 +2483,76 @@ function syncFormLegacyImageFieldsFromImages() {
   const imgs = Array.isArray(form.value.images) ? form.value.images : []
   form.value.image_front = imgs[0] ?? null
   form.value.image_back = imgs[1] ?? null
+}
+
+/** 编辑弹窗商品图拖拽排序 */
+const inventoryImageDragFrom = ref(-1)
+const inventoryImageDropHoverIndex = ref(-1)
+
+function reorderIndexedSlots(store, from, to, len) {
+  const snapshot = []
+  for (let i = 0; i < len; i++) snapshot[i] = store[i]
+  const [moved] = snapshot.splice(from, 1)
+  snapshot.splice(to, 0, moved)
+  Object.keys(store).forEach((k) => delete store[k])
+  snapshot.forEach((v, i) => {
+    if (v !== undefined) store[i] = v
+  })
+}
+
+function onInventoryImageDragStart(idx, e) {
+  const imgs = form.value.images
+  if (!Array.isArray(imgs) || imgs.length < 2 || !imgs[idx]) {
+    e.preventDefault()
+    return
+  }
+  inventoryImageDragFrom.value = idx
+  try {
+    e.dataTransfer.effectAllowed = 'move'
+    e.dataTransfer.setData('text/plain', String(idx))
+  } catch (_) {
+    /* ignore */
+  }
+}
+
+function onInventoryImageDragEnd() {
+  inventoryImageDragFrom.value = -1
+  inventoryImageDropHoverIndex.value = -1
+}
+
+function onInventoryImageDragOver(idx, e) {
+  if (inventoryImageDragFrom.value < 0) return
+  e.dataTransfer.dropEffect = 'move'
+  inventoryImageDropHoverIndex.value = idx
+}
+
+function onInventoryImageDragLeave(idx, e) {
+  if (inventoryImageDropHoverIndex.value !== idx) return
+  const next = e.relatedTarget
+  if (next && typeof next.closest === 'function' && e.currentTarget?.contains(next)) return
+  inventoryImageDropHoverIndex.value = -1
+}
+
+function reorderInventoryFormImages(from, to) {
+  const imgs = form.value.images
+  if (!Array.isArray(imgs) || imgs.length < 2 || from === to || from < 0 || to < 0 || from >= imgs.length || to >= imgs.length) {
+    return
+  }
+  const [item] = imgs.splice(from, 1)
+  imgs.splice(to, 0, item)
+  const len = imgs.length
+  reorderIndexedSlots(noBarcodeImgUpload, from, to, len)
+  reorderIndexedSlots(noBarcodeUploadAbortByIndex, from, to, len)
+  syncFormLegacyImageFieldsFromImages()
+  formRef.value?.validateField('image_front')
+}
+
+function onInventoryImageDrop(to) {
+  const from = inventoryImageDragFrom.value
+  inventoryImageDragFrom.value = -1
+  inventoryImageDropHoverIndex.value = -1
+  if (from < 0 || from === to) return
+  reorderInventoryFormImages(from, to)
 }
 
 /** 编辑弹窗内预览：已落盘路径走缩略图接口，data URL 原样 */
@@ -4592,6 +4680,31 @@ onBeforeUnmount(() => {
 }
 .inventory-images-form-item--combined-grid :deep(.el-form-item__label) {
   visibility: hidden;
+}
+.inventory-images-reorder-hint {
+  font-size: 12px;
+  color: #909399;
+  line-height: 1.5;
+  margin-bottom: 6px;
+}
+.inventory-image-cell--draggable {
+  cursor: grab;
+}
+.inventory-image-cell--draggable:active {
+  cursor: grabbing;
+}
+.inventory-image-cell--drag-active {
+  opacity: 0.55;
+}
+.inventory-image-cell--drop-hover .inventory-image-cell__frame {
+  outline: 2px dashed var(--el-color-primary);
+  outline-offset: 3px;
+  border-radius: 8px;
+}
+.inventory-image-cell--draggable .inventory-form-preview-img :deep(.el-image img),
+.inventory-image-cell--draggable .inventory-form-preview-img :deep(.el-image__inner) {
+  -webkit-user-drag: none;
+  user-select: none;
 }
 .inventory-images-grid--combined {
   gap: 10px;
