@@ -3,6 +3,21 @@ import vue from '@vitejs/plugin-vue'
 import basicSsl from '@vitejs/plugin-basic-ssl'
 import { fileURLToPath, URL } from 'node:url'
 
+/** 在 @vite/client 之前注入，避免手机切后台后 HMR 重连触发 location.reload */
+function resumeGuardFirstPlugin() {
+  return {
+    name: 'resume-guard-first',
+    transformIndexHtml: {
+      order: 'pre',
+      handler(html) {
+        const tag = '<script type="module" src="/src/resumeGuard.js"></script>'
+        if (html.includes('/src/resumeGuard.js')) return html
+        return html.replace('<head>', `<head>\n    ${tag}`)
+      }
+    }
+  }
+}
+
 const websideRoot = fileURLToPath(new URL('.', import.meta.url))
 const DEV_PORT = 9600
 
@@ -39,7 +54,9 @@ export default defineConfig(({ mode }) => {
     : { protocol: useHttps ? 'wss' : 'ws' }
 
   return {
-    plugins: devHttpOnly ? [vue()] : [vue(), basicSsl()],
+    plugins: devHttpOnly
+      ? [resumeGuardFirstPlugin(), vue()]
+      : [resumeGuardFirstPlugin(), vue(), basicSsl()],
     resolve: {
       alias: {
         '@': fileURLToPath(new URL('./src', import.meta.url))
