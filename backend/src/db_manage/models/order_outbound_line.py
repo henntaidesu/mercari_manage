@@ -141,7 +141,8 @@ class OrderOutboundLineModel(BaseModel):
                 p.quantity AS stock_quantity,
                 COALESCE(u.display_name, u.username) AS inventory_owner_name,
                 p.owner_user_id AS inventory_owner_user_id,
-                COALESCE(NULLIF(TRIM(w.[warehouse]), ''), '默认仓库') AS warehouse_name,
+                p.warehouse_id AS inventory_warehouse_id,
+                NULLIF(TRIM(w.[warehouse]), '') AS warehouse_name,
                 NULLIF(TRIM(w.[shelf_name]), '') AS shelf_name,
                 NULLIF(TRIM(w.[name]), '') AS shelf_code
             FROM [{cls.get_table_name()}] l
@@ -170,6 +171,7 @@ class OrderOutboundLineModel(BaseModel):
             "stock_quantity",
             "inventory_owner_name",
             "inventory_owner_user_id",
+            "inventory_warehouse_id",
             "warehouse_name",
             "shelf_name",
             "shelf_code",

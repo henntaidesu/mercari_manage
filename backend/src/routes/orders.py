@@ -322,6 +322,11 @@ def stock_out_order_outbound_line(line_id: int, data: OutboundStockOutBody):
     current_qty = int(inv_rows[0][0] or 0)
     warehouse_id = inv_rows[0][1]
     if int(line.stock_deducted or 0) == 0:
+        if warehouse_id is None:
+            raise HTTPException(
+                status_code=400,
+                detail="该库存商品未设置仓库，请先在库存中指定仓库后再出库",
+            )
         if current_qty < qty:
             raise HTTPException(status_code=400, detail=f"库存不足，当前库存：{current_qty}")
         updated = db.execute_update(
@@ -434,6 +439,11 @@ def create_manual_outbound_lines(data: ManualOutboundLinesBatchCreateBody):
             current_qty = int(inv_rows[0][0] or 0)
             warehouse_id = inv_rows[0][1]
             inv_name = str(inv_rows[0][2] or "").strip() or f"库存#{inv_id}"
+            if warehouse_id is None:
+                raise HTTPException(
+                    status_code=400,
+                    detail=f"库存商品未设置仓库（inventory_id={inv_id}），无法手动出库",
+                )
             if current_qty < qty:
                 raise HTTPException(status_code=400, detail=f"库存不足（inventory_id={inv_id}），当前库存：{current_qty}")
 
