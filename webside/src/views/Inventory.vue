@@ -356,6 +356,16 @@
             </template>
           </el-input>
         </el-form-item>
+        <el-form-item v-if="form.id && editFormMgmtIdCipher" label="管理暗码">
+          <el-input
+            :model-value="editFormMgmtIdCipher"
+            class="listing-field-fullwidth product-edit-mgmt-cipher-input"
+            size="large"
+            readonly
+            disabled
+            title="末行暗号（-=~<> 五进制），写入煤炉说明最末行"
+          />
+        </el-form-item>
         <el-form-item label="商品名称">
           <el-input v-model="form.name" class="listing-field-fullwidth" type="text" clearable />
         </el-form-item>
@@ -1176,6 +1186,7 @@ import {
   configApi
 } from '@/api/index.js'
 import SingleListingFormDialog from '@/components/SingleListingFormDialog.vue'
+import { encodeMgmtId } from '@/utils/mgmtIdCipher.js'
 import { warehouseShelfLeafLabel } from '@/utils/warehouseLabel.js'
 
 const list = ref([])
@@ -1710,6 +1721,17 @@ const combinedLinkImageDialogVisible = ref(false)
 const showCombinedEditDetail = computed(
   () => Boolean(form.value?.id) && Number(form.value?.is_combined || 0) === 1
 )
+
+/** 编辑商品：管理番号 → 末行暗号（-=~<> 五进制），与出品说明一致 */
+const editFormMgmtIdCipher = computed(() => {
+  const id = Number(form.value?.id)
+  if (!Number.isFinite(id) || id <= 0) return ''
+  try {
+    return encodeMgmtId(id)
+  } catch {
+    return ''
+  }
+})
 
 const PRODUCT_EDIT_DIALOG_FORM_WIDTH = 580
 const COMBINED_EDIT_ASIDE_WIDTH = 280
@@ -4402,6 +4424,10 @@ onBeforeUnmount(() => {
 }
 .product-qty-input :deep(input) {
   text-align: center;
+}
+.product-edit-mgmt-cipher-input :deep(.el-input__inner) {
+  font-family: ui-monospace, 'Cascadia Code', Consolas, monospace;
+  letter-spacing: 0.04em;
 }
 /* 编辑商品弹窗：组合商品左右分栏，右侧组成明细 */
 .product-edit-dialog-layout {
