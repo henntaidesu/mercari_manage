@@ -502,6 +502,26 @@ def get_image_thumb(path: str, size: int = 300):
     return FileResponse(thumb_abs, media_type="image/jpeg")
 
 
+def _sql_inventory_has_image_condition() -> str:
+    """与 _inventory_paths_from_parsed_row 一致：任一有效图片路径即视为有图。"""
+    return """
+        (
+            COALESCE(TRIM(p.image_front), TRIM(p.image), '') != ''
+            OR COALESCE(TRIM(p.image_back), '') != ''
+            OR (
+                p.images_json IS NOT NULL
+                AND TRIM(p.images_json) != ''
+                AND TRIM(p.images_json) != '[]'
+                AND json_valid(p.images_json) = 1
+                AND EXISTS (
+                    SELECT 1 FROM json_each(p.images_json) AS je
+                    WHERE TRIM(COALESCE(je.value, '')) != ''
+                )
+            )
+        )
+    """
+
+
 @router.get("")
 def list_inventory(
     keyword: Optional[str] = None,
@@ -511,6 +531,7 @@ def list_inventory(
     warehouse_id: Optional[int] = None,
     in_stock_only: bool = False,
     warehouse_assigned_only: bool = False,
+    no_image_only: bool = False,
 ):
     where_parts = []
     params = []
@@ -535,6 +556,8 @@ def list_inventory(
         where_parts.append("AND COALESCE(p.quantity, 0) > 0")
     if warehouse_assigned_only:
         where_parts.append("AND p.warehouse_id IS NOT NULL")
+    if no_image_only:
+        where_parts.append(f"AND NOT {_sql_inventory_has_image_condition()}")
     where_sql = " " + " ".join(where_parts) + " ORDER BY p.id DESC"
     return _query_inventory_with_joins(where_sql, tuple(params))
 

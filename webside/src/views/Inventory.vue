@@ -54,6 +54,7 @@
                 <el-option v-for="u in ownerUsers" :key="u.id" :label="u.display_name || u.username" :value="u.id" />
               </el-select>
               <el-checkbox v-model="hideNoWarehouseSlot" class="search-filter-checkbox">隐藏无在库</el-checkbox>
+              <el-checkbox v-model="viewNoImageOnly" class="search-filter-checkbox">查看无图商品</el-checkbox>
             </div>
           </div>
         </el-col>
@@ -1243,6 +1244,19 @@ function readHideNoWarehouseSlotPreference() {
 }
 /** 默认开启（不展示 quantity=0）；写入 localStorage；watch 内会立即重新拉取列表 */
 const hideNoWarehouseSlot = ref(readHideNoWarehouseSlotPreference())
+/** localStorage：勾选后仅展示无商品图的条目 */
+const VIEW_NO_IMAGE_ONLY_STORAGE_KEY = 'mercari.inventory.viewNoImageOnly'
+function readViewNoImageOnlyPreference() {
+  try {
+    const raw = localStorage.getItem(VIEW_NO_IMAGE_ONLY_STORAGE_KEY)
+    if (raw === '1' || raw === 'true') return true
+    if (raw === '0' || raw === 'false') return false
+  } catch {
+    /* ignore */
+  }
+  return false
+}
+const viewNoImageOnly = ref(readViewNoImageOnlyPreference())
 const currentPage = ref(1)
 const pageSize = 15
 const dialogVisible = ref(false)
@@ -2360,6 +2374,7 @@ async function load(options = {}) {
   if (filterProductType.value) params.product_type_id = filterProductType.value
   if (filterOwnerUserId.value) params.owner_user_id = filterOwnerUserId.value
   if (hideNoWarehouseSlot.value) params.in_stock_only = true
+  if (viewNoImageOnly.value) params.no_image_only = true
   list.value = await inventoryApi.list(params).finally(() => (loading.value = false))
   if (resetPage) {
     inventorySortProp.value = ''
@@ -2375,6 +2390,15 @@ async function load(options = {}) {
 watch(hideNoWarehouseSlot, (v) => {
   try {
     localStorage.setItem(HIDE_NO_WAREHOUSE_SLOT_STORAGE_KEY, v ? '1' : '0')
+  } catch {
+    /* ignore */
+  }
+  void load({ resetPage: false })
+})
+
+watch(viewNoImageOnly, (v) => {
+  try {
+    localStorage.setItem(VIEW_NO_IMAGE_ONLY_STORAGE_KEY, v ? '1' : '0')
   } catch {
     /* ignore */
   }
