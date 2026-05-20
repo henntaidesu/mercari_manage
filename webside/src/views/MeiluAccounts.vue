@@ -456,10 +456,17 @@ async function openBrowserByKey(accountKey, label) {
     const res = await webDriveApi.openSession({
       account_key: accountKey,
       headless: false,
-      start_url: MERCARI_HOME,
+      restore_tabs: true
     })
     const d = res.data || {}
-    const tip = d.already_running ? '（已在运行，已跳转首页）' : '已启动 Edge'
+    const tr = d.tab_restore || {}
+    const tabHint =
+      tr.restored && tr.tab_count
+        ? `，已恢复 ${tr.tab_count} 个标签页`
+        : tr.tab_count
+          ? `，已打开 ${tr.tab_count} 个标签页`
+          : ''
+    const tip = d.already_running ? `（已在运行${tabHint}）` : `已启动 Edge${tabHint}`
     ElMessage.success(`${label || accountKey}：${tip}`)
   } catch {
     /* 错误由 axios 拦截器提示 */

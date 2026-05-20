@@ -26,6 +26,8 @@ class OpenSessionBody(PydanticModel):
     )
     headless: bool = False
     start_url: Optional[str] = None
+    """有头交互会话默认从快照恢复标签；设为 false 且提供 start_url 时仅打开单页。"""
+    restore_tabs: Optional[bool] = None
     use_mitm_proxy: bool = False
     mitm_proxy_url: Optional[str] = None
 
@@ -66,6 +68,7 @@ async def open_session(body: OpenSessionBody):
                 start_url=body.start_url,
                 proxy_server=proxy,
                 interactive=not body.headless,
+                restore_tabs=body.restore_tabs,
             ),
         }
     except ValueError as exc:

@@ -295,7 +295,7 @@ const restarting = ref(false)
 async function confirmRestartSystem() {
   try {
     await ElMessageBox.confirm(
-      '将重启 mercari 后端服务（浏览器与 MITM 会一并关闭）。约 10 秒后请刷新页面。是否继续？',
+      '将通过 restart.bat 重启 mercari 服务（会关闭当前后端与浏览器进程）。约 10 秒后请刷新页面。是否继续？',
       '重启系统',
       { type: 'warning', confirmButtonText: '确认重启', cancelButtonText: '取消' }
     )

@@ -19,6 +19,10 @@ import threading
 from contextlib import asynccontextmanager
 from typing import Any, Dict, List, Optional
 
+from .interactive_tab_state import (
+    restore_tabs_to_context,
+    save_snapshot_from_context,
+)
 from .paths import profile_dir_for, profiles_root, validate_account_key
 
 _manager: Optional["EdgeWebDriveManager"] = None
@@ -69,6 +73,19 @@ class EdgeWebDriveManager:
             return float((os.environ.get("WEB_DRIVE_PROFILE_RELEASE_DELAY_SEC") or "0.45").strip())
         except ValueError:
             return 0.45
+
+    @staticmethod
+    def _interactive_no_viewport() -> bool:
+        """有头交互会话：不固定 viewport，窗口可最大化并随用户拖拽改变大小。"""
+        v = (os.environ.get("WEB_DRIVE_INTERACTIVE_NO_VIEWPORT") or "1").strip().lower()
+        return v not in ("0", "false", "no", "off")
+
+    @staticmethod
+    def _interactive_launch_args() -> List[str]:
+        return [
+            "--start-maximized",
+            "--disable-features=RestoreSession",
+        ]
 
     @staticmethod
     def _headless_block_images() -> bool:
@@ -289,14 +306,19 @@ class EdgeWebDriveManager:
         start_url: Optional[str] = None,
         proxy_server: Optional[str] = None,
         interactive: Optional[bool] = None,
+        restore_tabs: Optional[bool] = None,
     ) -> Dict[str, Any]:
         """
         :param interactive: 用户手动打开的可见会话（不会被 MITM 自动化 ``close_session_if_automation`` 关闭）。
             默认：``headless=False`` 时为 True，``headless=True`` 时为 False。
+        :param restore_tabs: 有头交互会话是否从 ``interactive_tabs.snapshot.json`` 恢复标签；
+            默认 interactive 时为 True。
         """
         key = validate_account_key(account_key)
         if interactive is None:
             interactive = not headless
+        if restore_tabs is None:
+            restore_tabs = bool(interactive and not headless)
         async with self._serialize_profile(key):
             return await self._open_session_impl(
                 key,
@@ -304,6 +326,7 @@ class EdgeWebDriveManager:
                 start_url=start_url,
                 proxy_server=proxy_server,
                 interactive=interactive,
+                restore_tabs=bool(restore_tabs),
             )
 
     def is_interactive_session_running(self, account_key: str) -> bool:
@@ -403,6 +426,19 @@ class EdgeWebDriveManager:
         """关闭 ``__auto`` 自动化会话；主 profile 有头会话请用 ``close_session``。"""
         return await self.close_session(account_key, force=True)
 
+    async def snapshot_all_interactive_sessions(self) -> int:
+        """将当前线程内所有有头交互会话的标签 URL 写入 profile 快照。返回成功写入的账号数。"""
+        s = self._prepare_async()
+        saved = 0
+        async with s.lock:  # type: ignore[union-attr]
+            for key, ctx in list(s.contexts.items()):
+                meta = self._session_meta(s, key)
+                if not meta.get("interactive") or not self._is_context_alive(ctx):
+                    continue
+                if await save_snapshot_from_context(key, ctx):
+                    saved += 1
+        return saved
+
     async def _open_session_impl(
         self,
         key: str,
@@ -411,6 +447,7 @@ class EdgeWebDriveManager:
         start_url: Optional[str] = None,
         proxy_server: Optional[str] = None,
         interactive: bool = False,
+        restore_tabs: bool = False,
     ) -> Dict[str, Any]:
         s = self._prepare_async()
         async with s.lock:  # type: ignore[union-attr]
@@ -430,7 +467,7 @@ class EdgeWebDriveManager:
                     ctx = None
             ctx = s.contexts.get(key)
             if ctx is not None and self._is_context_alive(ctx):
-                if start_url:
+                if start_url and not (interactive and restore_tabs):
                     try:
                         await self._navigate_one_tab(ctx, start_url)
                     except Exception:
@@ -438,6 +475,8 @@ class EdgeWebDriveManager:
                         s.session_meta.pop(key, None)
                         ctx = None
                 else:
+                    if interactive:
+                        await save_snapshot_from_context(key, ctx)
                     out = {
                         "account_key": key,
                         "already_running": True,
@@ -461,19 +500,23 @@ class EdgeWebDriveManager:
             udir = profile_dir_for(key)
             launch_args = [
                 "--disable-blink-features=AutomationControlled",
-                # 减轻启动时再拉起「上次会话」标签（配合 _navigate_one_tab 收敛）
                 "--disable-session-crashed-bubble",
                 "--disable-infobars",
             ]
+            if interactive and not headless:
+                launch_args.extend(self._interactive_launch_args())
             if headless and self._headless_block_images():
                 launch_args.append("--blink-settings=imagesEnabled=false")
             launch_kw: Dict[str, Any] = {
                 "user_data_dir": udir,
                 "channel": "msedge",
                 "headless": headless,
-                "viewport": {"width": 1280, "height": 800},
                 "args": launch_args,
             }
+            if interactive and not headless and self._interactive_no_viewport():
+                launch_kw["no_viewport"] = True
+            else:
+                launch_kw["viewport"] = {"width": 1280, "height": 800}
             ps = (proxy_server or "").strip()
             if ps:
                 launch_kw["proxy"] = {"server": ps}
@@ -503,7 +546,14 @@ class EdgeWebDriveManager:
             await self._apply_headless_optimizations(context, headless=headless)
             s.contexts[key] = context
             s.session_meta[key] = {"interactive": bool(interactive), "headless": bool(headless)}
-            if start_url:
+
+            tab_restore: Optional[Dict[str, Any]] = None
+            if interactive and restore_tabs:
+                fallback = (start_url or "").strip() or "https://jp.mercari.com/"
+                tab_restore = await restore_tabs_to_context(
+                    context, key, fallback_url=fallback
+                )
+            elif start_url:
                 await self._navigate_one_tab(context, start_url)
 
             return {
@@ -513,6 +563,7 @@ class EdgeWebDriveManager:
                 "profiles_root": profiles_root(),
                 "proxy_server": ps or None,
                 "interactive": bool(interactive),
+                "tab_restore": tab_restore,
             }
 
     async def _close_session_unlocked(
@@ -534,11 +585,14 @@ class EdgeWebDriveManager:
                     "skipped": "interactive",
                 }
             ctx = s.contexts.pop(key, None)
+            meta_before_close = dict(meta)
             s.session_meta.pop(key, None)
             if ctx is None:
                 return {"account_key": key, "closed": False}
             try:
                 if self._is_context_alive(ctx):
+                    if meta_before_close.get("interactive"):
+                        await save_snapshot_from_context(key, ctx)
                     await ctx.close()
                     closed = True
             except Exception:
@@ -614,6 +668,18 @@ class EdgeWebDriveManager:
         """关闭当前线程内的所有会话与 Playwright（仅影响调用方所在线程）。"""
         s = self._prepare_async()
         async with s.lock:  # type: ignore[union-attr]
+            for key in list(s.contexts.keys()):
+                ctx = s.contexts.get(key)
+                meta = self._session_meta(s, key)
+                if (
+                    ctx is not None
+                    and meta.get("interactive")
+                    and self._is_context_alive(ctx)
+                ):
+                    try:
+                        await save_snapshot_from_context(key, ctx)
+                    except Exception:
+                        pass
             for key in list(s.contexts.keys()):
                 ctx = s.contexts.pop(key, None)
                 if ctx is not None:
