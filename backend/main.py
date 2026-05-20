@@ -27,6 +27,7 @@ from src.routes.on_sale_items import router as on_sale_items_router
 from src.routes.product_type_category_mappings import router as product_type_category_mappings_router
 from src.routes.web_drive import router as web_drive_router
 from src.routes.app_config import router as app_config_router
+from src.routes.system import router as system_router
 from src.routes.ssl_mitm import router as ssl_mitm_router
 from src.operation_mercari.API import router as mercari_router
 from src.app_paths import backend_root
@@ -64,6 +65,7 @@ app.include_router(web_drive_router, dependencies=auth_required)
 app.include_router(ssl_mitm_router, dependencies=auth_required)
 app.include_router(auth_router)
 app.include_router(app_config_router, dependencies=auth_required)
+app.include_router(system_router, dependencies=auth_required)
 
 
 @app.on_event("startup")

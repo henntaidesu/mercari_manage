@@ -57,6 +57,18 @@
 
     <el-card shadow="never" class="search-card">
       <template #header>
+        <div class="card-title">系统维护</div>
+      </template>
+      <p class="sys-maint-tip">
+        重启将关闭当前后端进程（含煤炉浏览器与 MITM 代理），约数秒后自动拉起新进程。进行中的自动化任务会被中断。
+      </p>
+      <el-button type="danger" :loading="restarting" @click="confirmRestartSystem">
+        <el-icon><RefreshRight /></el-icon> 重启系统
+      </el-button>
+    </el-card>
+
+    <el-card shadow="never" class="search-card">
+      <template #header>
         <div class="card-title">出品默认值</div>
       </template>
       <el-form label-width="132px" class="listing-def-form">
@@ -140,9 +152,9 @@
 
 <script setup>
 import { reactive, ref, onMounted, computed } from 'vue'
-import { ElMessage } from 'element-plus'
-import { Plus } from '@element-plus/icons-vue'
-import { authApi, configApi, meiluAccountApi } from '@/api/index.js'
+import { ElMessage, ElMessageBox } from 'element-plus'
+import { Plus, RefreshRight } from '@element-plus/icons-vue'
+import { authApi, configApi, meiluAccountApi, systemApi } from '@/api/index.js'
 import {
   MERCARI_AREAS,
   JP_REGION_OPTIONS,
@@ -287,6 +299,28 @@ async function saveListingDefaults() {
 
 const users = ref([])
 const loading = ref(false)
+const restarting = ref(false)
+
+async function confirmRestartSystem() {
+  try {
+    await ElMessageBox.confirm(
+      '将重启 mercari 后端服务（浏览器与 MITM 会一并关闭）。约 10 秒后请刷新页面。是否继续？',
+      '重启系统',
+      { type: 'warning', confirmButtonText: '确认重启', cancelButtonText: '取消' }
+    )
+  } catch {
+    return
+  }
+  restarting.value = true
+  try {
+    const res = await systemApi.restart()
+    ElMessage.success(res?.message || '系统正在重启，请稍后刷新页面')
+  } catch {
+    /* 拦截器已提示；进程退出时也可能出现网络错误，仍提示用户稍后刷新 */
+  } finally {
+    restarting.value = false
+  }
+}
 
 const userDialogVisible = ref(false)
 const userSubmitting = ref(false)
@@ -393,5 +427,12 @@ onMounted(async () => {
 }
 .listing-def-form {
   max-width: 720px;
+}
+.sys-maint-tip {
+  margin: 0 0 16px;
+  font-size: 13px;
+  color: #64748b;
+  line-height: 1.5;
+  max-width: 640px;
 }
 </style>

@@ -260,6 +260,11 @@ export const configApi = {
   putListingDefaults: (data) => http.put('/config/listing-defaults', data)
 }
 
+// 系统（重启服务等）
+export const systemApi = {
+  restart: () => http.post('/system/restart', {}, { timeout: 30000 })
+}
+
 // 认证
 export const authApi = {
   login: (data) => http.post('/auth/login', data),
