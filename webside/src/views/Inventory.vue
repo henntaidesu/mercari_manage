@@ -55,6 +55,7 @@
               </el-select>
               <el-checkbox v-model="hideNoWarehouseSlot" class="search-filter-checkbox">隐藏无在库</el-checkbox>
               <el-checkbox v-model="viewNoImageOnly" class="search-filter-checkbox">查看无图商品</el-checkbox>
+              <el-checkbox v-model="viewCombinedOnly" class="search-filter-checkbox">查看组合商品</el-checkbox>
             </div>
           </div>
         </el-col>
@@ -1257,6 +1258,19 @@ function readViewNoImageOnlyPreference() {
   return false
 }
 const viewNoImageOnly = ref(readViewNoImageOnlyPreference())
+/** localStorage：勾选后仅展示组合商品（is_combined=1） */
+const VIEW_COMBINED_ONLY_STORAGE_KEY = 'mercari.inventory.viewCombinedOnly'
+function readViewCombinedOnlyPreference() {
+  try {
+    const raw = localStorage.getItem(VIEW_COMBINED_ONLY_STORAGE_KEY)
+    if (raw === '1' || raw === 'true') return true
+    if (raw === '0' || raw === 'false') return false
+  } catch {
+    /* ignore */
+  }
+  return false
+}
+const viewCombinedOnly = ref(readViewCombinedOnlyPreference())
 const currentPage = ref(1)
 const pageSize = 15
 const dialogVisible = ref(false)
@@ -2375,6 +2389,7 @@ async function load(options = {}) {
   if (filterOwnerUserId.value) params.owner_user_id = filterOwnerUserId.value
   if (hideNoWarehouseSlot.value) params.in_stock_only = true
   if (viewNoImageOnly.value) params.no_image_only = true
+  if (viewCombinedOnly.value) params.combined_only = true
   list.value = await inventoryApi.list(params).finally(() => (loading.value = false))
   if (resetPage) {
     inventorySortProp.value = ''
@@ -2399,6 +2414,15 @@ watch(hideNoWarehouseSlot, (v) => {
 watch(viewNoImageOnly, (v) => {
   try {
     localStorage.setItem(VIEW_NO_IMAGE_ONLY_STORAGE_KEY, v ? '1' : '0')
+  } catch {
+    /* ignore */
+  }
+  void load({ resetPage: false })
+})
+
+watch(viewCombinedOnly, (v) => {
+  try {
+    localStorage.setItem(VIEW_COMBINED_ONLY_STORAGE_KEY, v ? '1' : '0')
   } catch {
     /* ignore */
   }
