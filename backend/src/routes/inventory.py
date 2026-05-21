@@ -286,7 +286,11 @@ def _query_inventory_with_joins(where_sql: str = "", params: tuple = ()) -> list
         WHERE 1=1 {where_sql}
     """
     rows = db.execute_query(sql, tuple(params))
-    return [_enrich_inventory_api_dict(_row_to_inventory_detail(r)) for r in rows]
+    items = [_enrich_inventory_api_dict(_row_to_inventory_detail(r)) for r in rows]
+    from ..operation_mercari.on_sale_items_sync import enrich_inventory_rows_on_sale_quantity
+
+    enrich_inventory_rows_on_sale_quantity(items)
+    return items
 
 
 def _inventory_exists(pid: int) -> bool:

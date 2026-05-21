@@ -330,14 +330,13 @@ def detail_sync_inventory_from_item_get_response(
                 # 同一煤炉商品上次关联但本次未命中的库存：仅移除该 mid，不破坏该库存绑定的其他 mid。
                 next_mids = [x for x in mids if x != mid_api]
                 next_mid_text = _join_mercari_item_ids(next_mids)
-                next_osq = 0 if not next_mids else int(osq_raw or 0)
                 db.execute_update(
                     """
                     UPDATE [inventory]
-                    SET [mercari_item_id] = ?, [on_sale_quantity] = ?
+                    SET [mercari_item_id] = ?
                     WHERE [id] = ?
                     """,
-                    (next_mid_text, next_osq, iid),
+                    (next_mid_text, iid),
                 )
         for iid, qty in qty_by_inventory.items():
             row = db.execute_query(
@@ -351,11 +350,21 @@ def detail_sync_inventory_from_item_get_response(
             db.execute_update(
                 """
                 UPDATE [inventory]
-                SET [mercari_item_id] = ?, [on_sale_quantity] = ?
+                SET [mercari_item_id] = ?
                 WHERE [id] = ?
                 """,
-                (merged_mid_text, int(qty), int(iid)),
+                (merged_mid_text, int(iid)),
             )
+        from .on_sale_items_sync import recalculate_and_persist_inventory_on_sale_quantity
+
+        touched_inv: set[int] = set(int(x) for x in qty_by_inventory.keys())
+        for iid_raw, mids_raw, _osq_raw in current_rows:
+            mids = _split_mercari_item_ids(mids_raw)
+            if mid_api in mids:
+                touched_inv.add(int(iid_raw))
+        recalc_by_inv: Dict[int, int] = {}
+        for inv_id in touched_inv:
+            recalc_by_inv[inv_id] = recalculate_and_persist_inventory_on_sale_quantity(inv_id)
     except Exception as exc:
         sync["message"] = f"写入库存失败: {exc}"
         return {"api": resp, "sync": sync}
@@ -363,7 +372,11 @@ def detail_sync_inventory_from_item_get_response(
     sync["updated"] = bool(qty_by_inventory)
     sync["inventory_id"] = int(inv_id) if inv_id is not None else None
     sync["mercari_item_id"] = mid_api
-    sync["on_sale_quantity"] = sum(qty_by_inventory.values()) if qty_by_inventory else 0
+    primary_inv = int(inv_id) if inv_id is not None else None
+    if primary_inv is not None and primary_inv in recalc_by_inv:
+        sync["on_sale_quantity"] = recalc_by_inv[primary_inv]
+    else:
+        sync["on_sale_quantity"] = sum(qty_by_inventory.values()) if qty_by_inventory else 0
     sync["inventory_ids"] = sorted(qty_by_inventory.keys())
     sync["inventory_quantity_map"] = {str(k): int(v) for k, v in qty_by_inventory.items()}
     if qty_by_inventory:
