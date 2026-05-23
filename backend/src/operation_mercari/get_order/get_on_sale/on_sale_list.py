@@ -28,8 +28,8 @@ from ....ssl_mitm_proxy.capture_config import (
     read_on_sale_list_response,
 )
 from ....ssl_mitm_proxy.runner import start_mitm_proxy
-from ....web_drive.manager import EdgeWebDriveManager
-from ....web_drive.mitm_session import mitm_automation_browser, wait_mitm_capture
+from ....web_drive.core.manager import EdgeWebDriveManager
+from ....web_drive.core.mitm_session import mitm_automation_browser, wait_mitm_capture
 
 log = logging.getLogger(__name__)
 

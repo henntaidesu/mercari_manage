@@ -23,7 +23,7 @@ from typing import Optional
 from .db_manage.models.meilu_account import MeiluAccountModel
 from .operation_mercari.on_sale_items_sync import sync_on_sale_items_from_mercari
 from .operation_mercari.sync_data import batch_refresh_orders_info, sync_new_data
-from .web_drive.account_serial_queue import queue_key_for_meilu_account, run_meilu_serial_async
+from .web_drive.core.account_serial_queue import queue_key_for_meilu_account, run_meilu_serial_async
 
 log = logging.getLogger(__name__)
 

@@ -57,7 +57,7 @@ async def startup():
             "no",
             "off",
         ):
-            from src.web_drive.interactive_browser import (
+            from src.web_drive.core.interactive_browser import (
                 startup_interactive_browsers_for_all_active_accounts,
             )
 
@@ -70,7 +70,7 @@ async def startup():
             "no",
             "off",
         ):
-            from src.web_drive.persistent_browser import startup_browsers_for_all_active_accounts
+            from src.web_drive.core.persistent_browser import startup_browsers_for_all_active_accounts
 
             await startup_browsers_for_all_active_accounts()
 

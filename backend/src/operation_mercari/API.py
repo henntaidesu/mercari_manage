@@ -12,7 +12,7 @@ from typing import Optional
 from fastapi import APIRouter, HTTPException, Query
 from pydantic import BaseModel as PydanticModel
 
-from ..web_drive.account_serial_queue import (
+from ..web_drive.core.account_serial_queue import (
     GLOBAL_QUEUE_KEY,
     queue_key_for_meilu_account,
     resolve_meilu_account_id,

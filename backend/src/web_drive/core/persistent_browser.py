@@ -46,7 +46,7 @@ async def ensure_persistent_browser(account_id: int) -> None:
     """
     from .paths import meilu_automation_key, seed_automation_profile_from_account
     from .manager import get_web_drive_manager
-    from ..ssl_mitm_proxy.runner import default_mitm_proxy_url, start_mitm_proxy
+    from ...ssl_mitm_proxy.runner import default_mitm_proxy_url, start_mitm_proxy
 
     auto_key = meilu_automation_key(account_id)
     mgr = get_web_drive_manager()
@@ -108,7 +108,7 @@ async def startup_browsers_for_all_active_accounts() -> None:
     - 若数据库中无活跃账号，则跳过（静默）
     """
     try:
-        from ..db_manage.database import DatabaseManager
+        from ...db_manage.database import DatabaseManager
 
         db = DatabaseManager()
         rows = db.execute_query(

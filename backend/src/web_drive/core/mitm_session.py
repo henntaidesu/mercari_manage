@@ -28,7 +28,7 @@ import time
 from contextlib import asynccontextmanager
 from typing import Any, AsyncIterator, Callable, Dict, Optional, Tuple
 
-from ..ssl_mitm_proxy.runner import default_mitm_proxy_url, start_mitm_proxy
+from ...ssl_mitm_proxy.runner import default_mitm_proxy_url, start_mitm_proxy
 from .manager import EdgeWebDriveManager, get_web_drive_manager
 from .paths import meilu_account_key, meilu_automation_key, seed_automation_profile_from_account
 from .persistent_browser import ensure_persistent_browser, close_task_tab_safely

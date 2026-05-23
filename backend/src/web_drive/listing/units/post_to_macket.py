@@ -304,7 +304,7 @@ async def _react_set_select(page: Any, xpath: str, value: str) -> bool:
 def _make_listing_progress_reporter(progress_job_id: Optional[str]) -> Callable[[str, str], None]:
     """控制台 + 日志 + 可选内存进度（供前端轮询）。"""
 
-    from ..listing_progress import set_listing_progress
+    from .listing_progress import set_listing_progress
 
     jid = (progress_job_id or "").strip() or None
 
@@ -690,7 +690,7 @@ async def post_to_market(
     """
     自动填写 Mercari 出品表单的全部步骤。
     """
-    from ..manager import EdgeWebDriveManager
+    from ...core.manager import EdgeWebDriveManager
 
     if not isinstance(manager, EdgeWebDriveManager):
         raise TypeError("manager 须为 EdgeWebDriveManager 实例")
@@ -702,7 +702,7 @@ async def post_to_market(
     ps = (proxy_server or "").strip()
     if not ps:
         try:
-            from ...ssl_mitm_proxy.runner import default_mitm_proxy_url
+            from ....ssl_mitm_proxy.runner import default_mitm_proxy_url
             ps = default_mitm_proxy_url()
         except Exception:
             ps = "http://127.0.0.1:8890"
@@ -716,7 +716,7 @@ async def post_to_market(
         else:
             log.warning("无法解析图片路径，跳过: %s", u)
 
-    from ..paths import (
+    from ...core.paths import (
         meilu_account_key,
         meilu_id_from_account_key,
         meilu_listing_key,

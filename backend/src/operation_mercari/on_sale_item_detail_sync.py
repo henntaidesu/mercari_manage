@@ -23,7 +23,7 @@ from .get_order.description_mgmt_ids import (
     parse_order_description_outbound_tokens,
     parse_order_description_outbound_tokens_with_quantity,
 )
-from ..web_drive.manager import EdgeWebDriveManager
+from ..web_drive.core.manager import EdgeWebDriveManager
 from .get_order.mercari_item_get import (
     fetch_mercari_item_get,
     fetch_mercari_item_get_in_browser_session,

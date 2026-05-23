@@ -13,7 +13,7 @@ from typing import List, Optional
 from ...db_manage.database import DatabaseManager
 from ...db_manage.models.order import OrderModel
 from ...db_manage.models.order_outbound_line import OrderOutboundLineModel
-from ...web_drive.account_serial_queue import queue_key_for_meilu_account, run_meilu_serial_async
+from ...web_drive.core.account_serial_queue import queue_key_for_meilu_account, run_meilu_serial_async
 from ...operation_mercari.sync_data import resolve_account_id_by_seller_id
 from ...operation_mercari.get_order.get_in_progress_order.get_order_info import apply_item_info_to_order
 from ...operation_mercari.get_order.description_mgmt_ids import (

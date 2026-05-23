@@ -20,8 +20,8 @@ from ...ssl_mitm_proxy.capture_config import (
     clear_item_get_response_file,
     read_item_get_response,
 )
-from ...web_drive.manager import EdgeWebDriveManager
-from ...web_drive.mitm_session import mitm_automation_browser
+from ...web_drive.core.manager import EdgeWebDriveManager
+from ...web_drive.core.mitm_session import mitm_automation_browser
 
 _ITEM_GET_BASE = "https://api.mercari.jp/items/get"
 # 与 App / 测试样例一致的查询参数（顺序固定便于抓包对照）

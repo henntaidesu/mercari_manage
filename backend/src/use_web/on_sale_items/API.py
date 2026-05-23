@@ -14,7 +14,7 @@ from pydantic import BaseModel as PydanticModel
 from ...db_manage.database import DatabaseManager
 from ...db_manage.models.on_sale_item import OnSaleItemModel
 from ...db_manage.models.warehouse import WarehouseModel
-from ...web_drive.account_serial_queue import (
+from ...web_drive.core.account_serial_queue import (
     queue_key_for_meilu_account,
     resolve_meilu_account_id,
     run_meilu_serial_async,

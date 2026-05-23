@@ -15,7 +15,7 @@ import os
 import time
 from typing import Any, Dict, Optional
 
-from .post_to_macket import (
+from ...listing.units.post_to_macket import (
     DEFAULT_ELEMENT_TIMEOUT_MS,
     DEFAULT_PAGE_LOAD_TIMEOUT_MS,
     _click_by_texts,
@@ -120,15 +120,15 @@ async def delete_mercari_item(
     """
     使用无头 MITM 浏览器（``meilu_{id}__auto``）删除商品并同步在售列表；结束后自动关闭浏览器。
     """
-    from ..manager import EdgeWebDriveManager
-    from ..mitm_session import mitm_automation_browser
-    from ..paths import meilu_automation_key, meilu_id_from_account_key
-    from ...operation_mercari.get_order.get_on_sale.on_sale_list import (
+    from ...core.manager import EdgeWebDriveManager
+    from ...core.mitm_session import mitm_automation_browser
+    from ...core.paths import meilu_automation_key, meilu_id_from_account_key
+    from ....operation_mercari.get_order.get_on_sale.on_sale_list import (
         LISTINGS_PAGE_URL,
         sync_on_sale_from_listings_browser_page,
     )
-    from ...operation_mercari.sync_data import _resolve_account_and_seller
-    from ...ssl_mitm_proxy.capture_config import clear_on_sale_list_response_file
+    from ....operation_mercari.sync_data import _resolve_account_and_seller
+    from ....ssl_mitm_proxy.capture_config import clear_on_sale_list_response_file
 
     if not isinstance(manager, EdgeWebDriveManager):
         raise TypeError("manager 须为 EdgeWebDriveManager 实例")

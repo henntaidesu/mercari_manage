@@ -68,7 +68,7 @@ async def startup_interactive_browsers_for_all_active_accounts() -> None:
     - 单个账号失败只记警告，不影响其它账号及 HTTP 服务启动
     """
     try:
-        from ..db_manage.database import DatabaseManager
+        from ...db_manage.database import DatabaseManager
         from .paths import meilu_account_key
         from .manager import get_web_drive_manager
 

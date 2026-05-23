@@ -18,7 +18,7 @@ from ....ssl_mitm_proxy.capture_config import (
     clear_sold_out_list_response_file,
     read_sold_out_list_response,
 )
-from ....web_drive.mitm_session import mitm_automation_browser, wait_mitm_capture
+from ....web_drive.core.mitm_session import mitm_automation_browser, wait_mitm_capture
 from ..get_in_progress_order.get_order_info import apply_item_info_to_order
 from ..get_in_progress_order.get_order_list import _item_to_order_data, _upsert_order
 

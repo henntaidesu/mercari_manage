@@ -152,7 +152,7 @@ def _get_category_positions(mapping_id: Optional[str]) -> dict:
 @router.get("/listing/post-progress/{job_id}")
 def listing_post_progress(job_id: str):
     """出品自动化执行过程中轮询当前步骤（与 POST body.progress_job_id 对应）。"""
-    from ...web_drive.listing_progress import get_listing_progress
+    from ...web_drive.listing.units.listing_progress import get_listing_progress
 
     jid = (job_id or "").strip()
     if not _LISTING_JOB_ID_RE.fullmatch(jid):
@@ -171,8 +171,8 @@ async def post_to_market(body: PostToMarketBody):
       · Switch 检查 → 图片上传 → 商品名/说明填写
       · 商品类型选择 → 販売タイプ+价格 → 发货天数 → 发货地址
     """
-    from ...web_drive.listing_progress import clear_listing_progress
-    from ...web_drive.web_operate.post_to_macket import post_to_market as _do_post
+    from ...web_drive.listing.units.listing_progress import clear_listing_progress
+    from ...web_drive.listing.units.post_to_macket import post_to_market as _do_post
     from ...ssl_mitm_proxy.runner import default_mitm_proxy_url
 
     jid = (body.progress_job_id or "").strip() or None
@@ -237,12 +237,12 @@ async def delete_on_sale_item(body: DeleteMercariItemBody):
     """
     无头 MITM 浏览器（meilu_{id}__auto）打开编辑页删除商品，跳转出品一覧后同步本地列表，完成后自动关闭浏览器。
     """
-    from ...web_drive.account_serial_queue import (
+    from ...web_drive.core.account_serial_queue import (
         queue_key_for_meilu_account,
         run_meilu_serial_async,
     )
-    from ...web_drive.paths import meilu_id_from_account_key
-    from ...web_drive.web_operate.delete_order import delete_mercari_item as _do_delete
+    from ...web_drive.core.paths import meilu_id_from_account_key
+    from ...web_drive.delete.units.delete_order import delete_mercari_item as _do_delete
     from ...ssl_mitm_proxy.runner import default_mitm_proxy_url
 
     item_id = (body.item_id or "").strip()

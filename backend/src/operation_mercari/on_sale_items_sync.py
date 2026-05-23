@@ -26,7 +26,7 @@ from ..ssl_mitm_proxy.capture_config import (
     canonical_mercari_item_id,
     clear_on_sale_list_response_file,
 )
-from ..web_drive.mitm_session import mitm_automation_browser
+from ..web_drive.core.mitm_session import mitm_automation_browser
 
 _MERCARI_ID_SEP_RE = re.compile(r"[\n,，、\s]+")
 

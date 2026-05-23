@@ -536,7 +536,7 @@ async def fetch_auth_via_mitm(
         mgr = None
         if cfg.open_browser:
             mgr = get_web_drive_manager()
-            from ...web_drive.paths import meilu_automation_key, seed_automation_profile_from_account
+            from ...web_drive.core.paths import meilu_automation_key, seed_automation_profile_from_account
 
             auto_key = meilu_automation_key(aid)
             await mgr.close_session(auto_key, force=True)

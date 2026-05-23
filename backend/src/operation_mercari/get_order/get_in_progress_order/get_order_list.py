@@ -31,7 +31,7 @@ from ....ssl_mitm_proxy.capture_config import (
     clear_trading_list_response_file,
     read_trading_list_response,
 )
-from ....web_drive.mitm_session import mitm_automation_browser, wait_mitm_capture
+from ....web_drive.core.mitm_session import mitm_automation_browser, wait_mitm_capture
 from .get_order_info import apply_item_info_to_order
 
 _API_URL = "https://api.mercari.jp/items/get_items"
