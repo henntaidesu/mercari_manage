@@ -167,6 +167,7 @@
       width="1080px"
       :close-on-click-modal="false"
       destroy-on-close
+      @close="onDetailDialogClose"
     >
       <template #header="{ titleId, titleClass }">
         <div class="detail-header">
@@ -229,7 +230,7 @@
             </div>
           </section>
 
-          <section class="detail-section">
+          <section v-if="!isReviewedSeller" class="detail-section">
             <div class="detail-section-title">发货</div>
             <div class="detail-shipping-status">
               <span class="detail-label">当前状态</span>
@@ -255,18 +256,72 @@
           </section>
         </div>
 
-        <!-- 右栏：消息 / 交流（占满整个右侧） -->
+        <!-- 右栏：默认是消息/交流；ReviewedSeller 时切换为取引評価表单 -->
         <div class="detail-col detail-col-right">
-          <section class="detail-section detail-section-grow">
+          <!-- 取引評価（仅 ReviewedSeller） -->
+          <section v-if="isReviewedSeller" class="detail-section detail-section-grow">
+            <div class="detail-section-title">取引評価</div>
+            <div class="detail-empty-hint" style="margin-bottom: 10px">
+              煤炉页面 ｢良かった｣ 默认已选中；填写评价后点提交即可（自动点 ｢購入者を評価して取引完了する｣）。
+            </div>
+            <el-input
+              v-model="detail.review_draft"
+              type="textarea"
+              :autosize="{ minRows: 6, maxRows: 12 }"
+              placeholder="例) このたびはお取引ありがとうございました。"
+              maxlength="140"
+              show-word-limit
+            />
+            <div class="detail-reply-actions">
+              <el-button size="small" @click="onResetReviewDefault">默认评价</el-button>
+              <el-button
+                size="small"
+                type="primary"
+                :loading="reviewLoading"
+                :disabled="!detail.review_draft || !detail.review_draft.trim()"
+                @click="onSubmitReview"
+              >
+                提交评价并完成取引
+              </el-button>
+            </div>
+          </section>
+
+          <!-- 消息 / 交流（默认） -->
+          <section v-else class="detail-section detail-section-grow">
             <div class="detail-section-title">消息 / 交流</div>
             <div v-if="detail.messages && detail.messages.length" class="detail-messages">
-              <div v-for="(m, i) in detail.messages" :key="i" class="detail-msg">
-                <div v-if="m.from" class="detail-msg-from">{{ m.from }}</div>
+              <div
+                v-for="(m, i) in detail.messages"
+                :key="i"
+                :class="['detail-msg', m.is_buyer ? 'detail-msg-buyer' : 'detail-msg-self']"
+              >
+                <div v-if="m.from" class="detail-msg-from">{{ m.from }}<span v-if="!m.is_buyer" class="detail-msg-tag-self">（卖家）</span></div>
                 <div class="detail-msg-text">{{ m.text }}</div>
                 <div v-if="m.at" class="detail-msg-at">{{ m.at }}</div>
               </div>
             </div>
             <div v-else class="detail-empty">待抓取</div>
+
+            <div class="detail-reply">
+              <el-input
+                v-model="detail.reply_draft"
+                type="textarea"
+                :autosize="{ minRows: 4, maxRows: 8 }"
+                placeholder="なにか分からないことがあれば質問してみましょう。"
+              />
+              <div class="detail-reply-actions">
+                <el-button size="small" @click="onResetReplyDefault">默认回复</el-button>
+                <el-button
+                  size="small"
+                  type="primary"
+                  :loading="replyLoading"
+                  :disabled="!detail.reply_draft || !detail.reply_draft.trim()"
+                  @click="onSendReply"
+                >
+                  发送回复
+                </el-button>
+              </div>
+            </div>
           </section>
         </div>
       </div>
@@ -274,6 +329,68 @@
       <template #footer>
         <el-button @click="detailDialogVisible = false">关闭</el-button>
         <el-button type="primary" :disabled="detailLoading" @click="onDetailSubmit">完成处理</el-button>
+      </template>
+    </el-dialog>
+
+    <!-- 选择商品尺寸：纯前端硬编码列表，按当前配送方式区分 -->
+    <el-dialog
+      v-model="shippingDialogVisible"
+      title="选择商品尺寸"
+      width="780px"
+      :close-on-click-modal="false"
+      destroy-on-close
+    >
+      <div class="shipping-dialog-hint">
+        当前配送方式：<strong>{{ detail.shipping_method_name || '未识别' }}</strong>
+        ；选择尺寸后我们会在浏览器内自动点击对应项 + 「選択して次へ」，发货地请在浏览器内继续选。
+      </div>
+      <el-radio-group v-if="shippingOptions.length" v-model="shippingPickedIdx" class="ship-radio-group">
+        <div
+          v-for="(opt, idx) in shippingOptions"
+          :key="`${opt.name}-${idx}`"
+          :class="['ship-card', shippingPickedIdx === idx ? 'ship-card-active' : '']"
+          @click="shippingPickedIdx = idx"
+        >
+          <el-radio :value="idx" class="ship-card-radio">
+            <span class="ship-card-radio-label">{{ opt.name }}</span>
+          </el-radio>
+          <div class="ship-card-body">
+            <div
+              v-for="(row, ri) in (opt.rows || [])"
+              :key="`row-${ri}`"
+              class="ship-card-row"
+            >
+              <span class="ship-card-label">{{ row[0] }}</span>
+              <span :class="['ship-card-value', row[0] === '送料' ? 'ship-card-fee' : '']">{{ row[1] }}</span>
+            </div>
+            <div
+              v-for="(c, ci) in (opt.caveats || [])"
+              :key="`cv-${ci}`"
+              class="ship-card-caveat"
+            >{{ c }}</div>
+            <div v-if="opt.auto_finish_no_facility" class="ship-card-note">無需選擇発送地（直接完了）</div>
+          </div>
+        </div>
+      </el-radio-group>
+      <div v-else class="detail-empty">无可用尺寸列表</div>
+
+      <div v-if="shippingNeedsFacility" class="ship-facility-section">
+        <div class="ship-facility-title">発送地</div>
+        <el-radio-group v-model="shippingFacility" class="ship-facility-radio">
+          <el-radio value="post_office" border>郵便局</el-radio>
+          <el-radio value="lawson" border>ローソン</el-radio>
+        </el-radio-group>
+      </div>
+      <template #footer>
+        <el-button @click="shippingDialogVisible = false">取消</el-button>
+        <el-button
+          type="primary"
+          :disabled="shippingPickedIdx == null"
+          :loading="shippingConfirmLoading"
+          @click="onConfirmShippingSelection"
+        >
+          确认并发送
+        </el-button>
       </template>
     </el-dialog>
   </div>
@@ -290,6 +407,103 @@ const KIND_LABELS = {
   WaitShippingPoint: '待发货',
   TransactionWaitShippingFunds: '待发货',
   MerpayRealcardWaitActivation: 'Merpay 卡激活',
+  ReviewedSeller: '待评价',
+}
+
+const DEFAULT_REPLY = 'ご購入いただきありがとうございます。これから発送の準備をさせていただきます。設定した期日内に発送予定ですので今しばらくお待ちください。取引終了までよろしくお願いいたします。'
+const DEFAULT_REVIEW = 'この度はお取引ありがとうございました。また機会がありましたらよろしくお願いします。'
+
+// 发货尺寸硬编码列表，按 shipping_method_name 区分。
+// name 字段必须与煤炉 /shipping_class 页 radio 卡片标题文本完全一致（用于 Playwright 文本匹配点击）
+const SHIPPING_OPTIONS = {
+  'ゆうゆうメルカリ便': [
+    {
+      name: 'ゆうパケット',
+      rows: [
+        ['サイズ', '3辺合計60cm以内'],
+        ['送料', '¥230'],
+        ['厚さ', '3cm以内'],
+        ['重さ', '1kg以内'],
+      ],
+    },
+    {
+      name: 'ゆうパケットポストmini',
+      rows: [
+        ['サイズ', '専用封筒 (21cm×17cm)'],
+        ['送料', '¥160'],
+        ['重さ', '2kg以内'],
+        ['発送', '郵便ポストから発送'],
+      ],
+      caveats: ['※専用封筒(¥20)の購入が必要です'],
+      auto_finish_no_facility: true,
+    },
+    {
+      name: 'ゆうパケットポスト',
+      rows: [
+        ['サイズ', '郵便ポストに投函可能なもの'],
+        ['送料', '¥215'],
+        ['重さ', '2kg以内'],
+        ['発送', '郵便ポストから発送'],
+      ],
+      caveats: ['※専用箱(¥65)、または発送用シール(20枚入り¥100)の購入が必要です。'],
+      auto_finish_no_facility: true,
+    },
+    {
+      name: 'ゆうパケットプラス',
+      rows: [
+        ['サイズ', '専用箱 (17cm×24cm×7cm)'],
+        ['送料', '¥455'],
+        ['重さ', '2kg以内'],
+      ],
+      caveats: ['※専用箱(¥65)の購入が必要です'],
+    },
+    {
+      name: 'ゆうパック60 - 100',
+      rows: [
+        ['サイズ', '3辺合計100cm以内'],
+        ['送料', '¥750 - ¥1,070'],
+        ['重さ', '25kg以内'],
+      ],
+    },
+    {
+      name: 'ゆうパック120 - 170',
+      rows: [
+        ['サイズ', '3辺合計170cm以内'],
+        ['送料', '¥1,200 - ¥1,900'],
+        ['重さ', '25kg以内'],
+      ],
+    },
+  ],
+  'らくらくメルカリ便': [
+    {
+      name: 'ネコポス',
+      rows: [
+        ['サイズ', '3辺合計60cm以内'],
+        ['長辺', '34cm以内'],
+        ['最小', '23cm × 11.5cm'],
+      ],
+    },
+    {
+      name: '宅急便コンパクト',
+      rows: [
+        ['サイズ', '専用BOX (20cm×25cm×5cm) / 薄型専用BOX (24.8cm×34cm)'],
+        ['送料', '¥450'],
+      ],
+    },
+    {
+      name: '宅急便60 - 160',
+      rows: [
+        ['サイズ', '3辺合計160cm以内'],
+        ['送料', '¥750'],
+      ],
+    },
+    {
+      name: '宅急便180 - 200',
+      rows: [
+        ['サイズ', '3辺合計200cm以内'],
+      ],
+    },
+  ],
 }
 
 const KIND_TAG_TYPES = {
@@ -297,6 +511,7 @@ const KIND_TAG_TYPES = {
   WaitShippingPoint: 'warning',
   TransactionWaitShippingFunds: 'warning',
   MerpayRealcardWaitActivation: 'info',
+  ReviewedSeller: 'success',
 }
 
 const list = ref([])
@@ -335,16 +550,50 @@ function createEmptyDetail() {
     photo_url: '',
     buyer_name: '',
     sender_id: '',
-    // 抓取交易页才有
+    // 抓取 MITM 才有
     product_name: '',
+    shipping_method_name: null,
     sender_address: null,
-    buyer_verified: false,
     current_shipping_status: null,
+    shipment_status: null,
     has_size_location_btn: false,
     has_change_method_btn: false,
-    messages: [], // [{ from, text, at }]
+    messages: [], // [{ from, text, at, is_buyer, user_id }]
+    captured: { shipping_info: false, transaction_messages: false },
+    // 回复草稿（默认为空，点「默认回复」按钮可一键填入模板）
+    reply_draft: '',
+    // 评价草稿（仅 ReviewedSeller 用，预填默认评价）
+    review_draft: DEFAULT_REVIEW,
   }
 }
+
+const replyLoading = ref(false)
+const reviewLoading = ref(false)
+
+// 当前代办是否是「评价买家」类型 → 切换为取引評価表单
+// 条件：kind === 'ReviewedSeller' 且 title === '評価をしてください'
+const isReviewedSeller = computed(() => {
+  const kind = (currentRow.value?.kind || '').trim()
+  const title = (currentRow.value?.title || '').trim()
+  return kind === 'ReviewedSeller' && title === '評価をしてください'
+})
+
+// 选择尺寸 dialog（不再走 MITM 抓取，纯前端硬编码列表）
+const shippingDialogVisible = ref(false)
+const shippingConfirmLoading = ref(false)
+const shippingPickedIdx = ref(null)
+const shippingFacility = ref(null) // 'post_office' | 'lawson' | null
+const shippingOptions = computed(() => {
+  const method = (detail.shipping_method_name || '').trim()
+  if (SHIPPING_OPTIONS[method]) return SHIPPING_OPTIONS[method]
+  // 未识别配送方式时把两套都列出来，让用户自行判断
+  return [...(SHIPPING_OPTIONS['ゆうゆうメルカリ便'] || []), ...(SHIPPING_OPTIONS['らくらくメルカリ便'] || [])]
+})
+const shippingNeedsFacility = computed(() => {
+  if (shippingPickedIdx.value == null) return false
+  const opt = shippingOptions.value[shippingPickedIdx.value]
+  return !!opt && !opt.auto_finish_no_facility
+})
 
 function listParams() {
   const p = { page: page.value, page_size: pageSize.value }
@@ -506,19 +755,128 @@ function onOpenMercariPage() {
   window.open(`https://jp.mercari.com/transaction/${iid}`, '_blank', 'noopener')
 }
 
-function onClickShippingSizeLocation() {
-  // TODO: 调后端在浏览器内点击「商品サイズと発送場所を選択する」
-  ElMessage.info('该操作将由后端浏览器自动化完成（待实现）')
+async function onClickShippingSizeLocation() {
+  if (!currentRow.value?.id) return
+  // 先点开页面上的「商品サイズと発送場所を選択する」让浏览器跳到尺寸选择页
+  try {
+    await todosApi.startShippingClass(currentRow.value.id)
+  } catch (e) {
+    if (!e?.response) ElMessage.error(e?.message || '打开尺寸选择页失败')
+    return
+  }
+  shippingPickedIdx.value = null
+  shippingFacility.value = null
+  shippingDialogVisible.value = true
 }
 
-function onClickShippingChangeMethod() {
-  // TODO: 调后端在浏览器内点击「発送方法を変更する」
-  ElMessage.info('该操作将由后端浏览器自动化完成（待实现）')
+async function onConfirmShippingSelection() {
+  if (!currentRow.value?.id) return
+  const idx = shippingPickedIdx.value
+  if (idx == null) return
+  const opt = shippingOptions.value[idx]
+  if (!opt) return
+  const classText = opt.name
+  const needsFacility = !opt.auto_finish_no_facility
+  if (needsFacility && !shippingFacility.value) {
+    ElMessage.warning('请选择发货地（郵便局 / ローソン）')
+    return
+  }
+  shippingConfirmLoading.value = true
+  try {
+    await todosApi.confirmShippingSelection(currentRow.value.id, {
+      class_text: classText,
+      facility: needsFacility ? shippingFacility.value : null,
+    })
+    ElMessage.success(`「${classText}」 已完成发货设定`)
+    shippingDialogVisible.value = false
+    onDetailRefresh()
+  } catch (e) {
+    if (!e?.response) ElMessage.error(e?.message || '提交失败')
+  } finally {
+    shippingConfirmLoading.value = false
+  }
 }
+
+async function onClickShippingChangeMethod() {
+  if (!currentRow.value?.id) return
+  try {
+    await todosApi.changeShippingMethod(currentRow.value.id)
+    ElMessage.success('已在浏览器内点击「発送方法を変更する」，请在浏览器页面继续操作')
+  } catch (e) {
+    if (!e?.response) ElMessage.error(e?.message || '点击失败')
+  }
+}
+
 
 function onDetailSubmit() {
   // TODO: 完成处理 → 本地标完成 + 关闭面板（具体动作待定）
   ElMessage.info('完成处理动作待定')
+}
+
+function onResetReplyDefault() {
+  detail.reply_draft = DEFAULT_REPLY
+}
+
+async function onSendReply() {
+  if (!currentRow.value?.id) return
+  const text = (detail.reply_draft || '').trim()
+  if (!text) {
+    ElMessage.warning('回复内容不能为空')
+    return
+  }
+  replyLoading.value = true
+  try {
+    await todosApi.sendTransactionMessage(currentRow.value.id, text)
+    ElMessage.success('已点击煤炉发送按钮')
+    // 发送后刷新一次抓取，让消息流更新
+    onDetailRefresh()
+  } catch (e) {
+    if (!e?.response) ElMessage.error(e?.message || '发送失败')
+  } finally {
+    replyLoading.value = false
+  }
+}
+
+function onResetReviewDefault() {
+  detail.review_draft = DEFAULT_REVIEW
+}
+
+async function onSubmitReview() {
+  if (!currentRow.value?.id) return
+  const text = (detail.review_draft || '').trim()
+  if (!text) {
+    ElMessage.warning('评价内容不能为空')
+    return
+  }
+  reviewLoading.value = true
+  try {
+    const result = await todosApi.submitTransactionReview(currentRow.value.id, text)
+    if (result?.completed) {
+      const note = result.order_refresh_error
+        ? `（订单信息刷新失败：${result.order_refresh_error}）`
+        : ''
+      ElMessage.success(`检测到「取引が完了しました」，已关闭浏览器并刷新订单状态${note}`)
+      // 浏览器已由后端关闭；这里关 dialog（onDetailDialogClose 里的 closeBrowser 是幂等的）
+      detailDialogVisible.value = false
+      load() // 刷新代办列表（todo 已软删，列表中应消失）
+    } else {
+      ElMessage.warning('已提交但未检测到「取引が完了しました」，请在浏览器内手动确认')
+    }
+  } catch (e) {
+    if (!e?.response) ElMessage.error(e?.message || '提交失败')
+  } finally {
+    reviewLoading.value = false
+  }
+}
+
+function onDetailDialogClose() {
+  // 关 dialog 时同步关掉对应账号的 __auto 浏览器（fire-and-forget）
+  const aid = currentRow.value?.account_id
+  if (aid) {
+    todosApi.closeDetailBrowser(aid).catch(() => { /* 忽略关浏览器失败 */ })
+  }
+  currentRow.value = null
+  replyLoading.value = false
 }
 
 
@@ -749,7 +1107,29 @@ onMounted(() => {
   border-radius: 6px;
   padding: 8px 10px;
   font-size: 13px;
+}
+.detail-msg-buyer {
   background: var(--el-fill-color);
+}
+.detail-msg-self {
+  background: var(--el-color-primary-light-9);
+}
+.detail-msg-tag-self {
+  color: var(--el-color-primary);
+  font-size: 11px;
+  margin-left: 4px;
+}
+.detail-reply {
+  margin-top: 12px;
+  border-top: 1px dashed var(--el-border-color-lighter);
+  padding-top: 10px;
+  flex-shrink: 0;
+}
+.detail-reply-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  margin-top: 8px;
 }
 .detail-msg-from {
   font-size: 11px;
@@ -777,5 +1157,91 @@ onMounted(() => {
   display: flex;
   gap: 8px;
   flex-wrap: wrap;
+}
+
+/* ─── 选择尺寸 dialog ─── */
+.shipping-dialog-hint {
+  color: var(--el-text-color-secondary);
+  font-size: 12px;
+  line-height: 1.6;
+  margin-bottom: 12px;
+  padding: 8px 10px;
+  background: var(--el-fill-color);
+  border-radius: 4px;
+}
+.ship-radio-group {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 10px;
+  width: 100%;
+}
+.ship-card {
+  border: 1px solid var(--el-border-color);
+  border-radius: 6px;
+  padding: 10px 12px;
+  cursor: pointer;
+  transition: border-color 0.15s, background 0.15s;
+}
+.ship-card:hover {
+  border-color: var(--el-color-primary);
+}
+.ship-card-active {
+  border-color: var(--el-color-primary);
+  background: var(--el-color-primary-light-9);
+}
+.ship-card-radio {
+  margin-right: 0;
+  margin-bottom: 6px;
+}
+.ship-card-radio-label {
+  font-weight: 600;
+  font-size: 14px;
+}
+.ship-card-body {
+  padding-left: 22px;
+}
+.ship-card-row {
+  display: flex;
+  font-size: 12px;
+  line-height: 1.6;
+}
+.ship-card-label {
+  color: var(--el-text-color-secondary);
+  width: 48px;
+  flex-shrink: 0;
+}
+.ship-card-value {
+  color: var(--el-text-color-primary);
+}
+.ship-card-fee {
+  color: var(--el-color-success);
+  font-weight: 600;
+}
+.ship-card-caveat {
+  margin-top: 4px;
+  color: var(--el-color-warning);
+  font-size: 11px;
+  line-height: 1.4;
+}
+.ship-card-note {
+  margin-top: 4px;
+  color: var(--el-color-success);
+  font-size: 11px;
+}
+.ship-facility-section {
+  margin-top: 16px;
+  padding: 12px;
+  border: 1px solid var(--el-border-color-lighter);
+  border-radius: 6px;
+  background: var(--el-fill-color);
+}
+.ship-facility-title {
+  font-weight: 600;
+  font-size: 13px;
+  margin-bottom: 10px;
+}
+.ship-facility-radio {
+  display: flex;
+  gap: 12px;
 }
 </style>

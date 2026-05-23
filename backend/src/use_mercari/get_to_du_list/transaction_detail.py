@@ -1,8 +1,12 @@
 # -*- coding: utf-8 -*-
 """
 代办事项 →「处理」按钮：打开 https://jp.mercari.com/transaction/<item_id>，
-通过 Playwright page.evaluate 提取交易页字段（商品名、发送元、当前发送方式、
-两个发货按钮的可用性、消息流、左侧 sidebar 的费用/时间/配送等）。
+通过 **MITM 抓两个关键 API** 还原交易详情字段（不再做 DOM 爬取）：
+
+- GET ``api.mercari.jp/shipping/get_info?transaction_evidence_id=...``
+  → 商品名、发送方法、发送元、shipment 状态
+- GET ``api.mercari.jp/transaction_messages/get_messages?item_id=...``
+  → 买家·卖家消息流（含用户名、时间）
 
 浏览器在抓取后 **保持打开**，方便用户在原生页面上手动操作；下一次「处理」
 按钮调用会先关掉旧的 ``__auto`` 会话再开新的（``ensure_session_for_mitm`` 自带）。
@@ -12,168 +16,210 @@ from __future__ import annotations
 
 import asyncio
 import logging
-from typing import Any, Dict, Optional
+import time
+from datetime import datetime, timezone
+from typing import Any, Dict, List, Optional, Tuple
 
 from ...db_manage.models.todo_item import TodoItemModel
+from ...ssl_mitm_proxy.capture_config import (
+    clear_shipping_info_response_file,
+    clear_transaction_messages_response_file,
+    read_shipping_info_response,
+    read_transaction_messages_response,
+)
 from ...ssl_mitm_proxy.runner import default_mitm_proxy_url, start_mitm_proxy
-from ...web_drive.core.manager import get_web_drive_manager
+from ...web_drive.core.manager import EdgeWebDriveManager, get_web_drive_manager
 from ...web_drive.core.paths import (
     meilu_automation_key,
     seed_automation_profile_from_account,
 )
+from ..get_order.get_in_progress_order.get_order_info import apply_item_info_to_order
 
 log = logging.getLogger(__name__)
 
 
-_EXTRACT_JS = r"""
-() => {
-  const result = {
-    product_name: null,
-    sender_address: null,
-    current_shipping_status: null,
-    has_size_location_btn: false,
-    has_change_method_btn: false,
-    messages: [],
-    buyer_name: null,
-    buyer_verified: false,
-    price: null,
-    fee: null,
-    profit: null,
-    shipping_fee_label: null,
-    purchase_time: null,
-    delivery_method: null,
-    debug: { url: location.href }
-  };
+# 等待两个 API 都被 MITM 截获的总超时（页面加载 + JS 渲染 + API 往返）
+_WAIT_TIMEOUT_SEC = 30
+# 期间每隔多少秒重新 navigate 一次（兜底：偶发未触发 API）
+_RELOAD_INTERVAL_SEC = 20.0
 
-  const xpath = (expr) => {
-    try {
-      return document.evaluate(expr, document, null, XPathResult.FIRST_ORDERED_NODE_TYPE, null).singleNodeValue;
-    } catch (e) { return null; }
-  };
-  const tx = (el) => (el && el.innerText ? el.innerText.trim() : '');
-  const parseYen = (s) => {
-    if (s == null) return null;
-    const m = String(s).match(/[\d,]+/);
-    if (!m) return null;
-    const n = Number(m[0].replace(/,/g, ''));
-    return Number.isFinite(n) ? n : null;
-  };
 
-  // 商品名（input 的 value）
-  const nameInput = xpath('/html/body/div[2]/div[2]/main/div/div[2]/div[2]/form/div[4]/div/label/div/input');
-  if (nameInput) {
-    const v = (nameInput.value || nameInput.getAttribute('value') || '').trim();
-    if (v) result.product_name = v;
-  }
+async def _wait_for_both_captures(
+    *,
+    mgr: EdgeWebDriveManager,
+    auto_key: str,
+    start_url: str,
+    since_ms: int,
+    timeout: int = _WAIT_TIMEOUT_SEC,
+) -> Tuple[Optional[Dict[str, Any]], Optional[Dict[str, Any]]]:
+    """同一轮询循环里等两个文件，避免互相干扰的 reload。"""
+    deadline = time.monotonic() + timeout
+    next_reload = time.monotonic() + _RELOAD_INTERVAL_SEC
+    shipping: Optional[Dict[str, Any]] = None
+    messages: Optional[Dict[str, Any]] = None
+    while time.monotonic() < deadline:
+        if shipping is None:
+            d = read_shipping_info_response()
+            if d and int(d.get("ts") or 0) >= since_ms:
+                shipping = d
+        if messages is None:
+            d = read_transaction_messages_response()
+            if d and int(d.get("ts") or 0) >= since_ms:
+                messages = d
+        if shipping is not None and messages is not None:
+            return shipping, messages
+        if time.monotonic() >= next_reload:
+            next_reload += _RELOAD_INTERVAL_SEC
+            try:
+                await mgr.reload_active_tab(auto_key, start_url)
+            except Exception as exc:
+                log.debug("[txdetail] reload 失败（忽略）：%s", exc)
+        await asyncio.sleep(0.35)
+    return shipping, messages
 
-  // 发送元 文本块
-  const senderEl = xpath('/html/body/div[2]/div[2]/main/div/div[2]/div[2]/form/div[5]/div[2]');
-  if (senderEl) {
-    const t = tx(senderEl);
-    if (t) result.sender_address = t;
-  }
 
-  // 当前发送方式 banner 文本
-  const banner = xpath('/html/body/div[2]/div[2]/main/div/div[2]/div[2]/form/aside[1]/div/div[1]/div[2]/p');
-  if (banner) {
-    const t = tx(banner);
-    if (t) result.current_shipping_status = t;
-  }
+def _compose_sender_address(origin: Optional[Dict[str, Any]]) -> Optional[str]:
+    if not isinstance(origin, dict):
+        return None
+    parts: List[str] = []
+    postcode = str(origin.get("postcode") or "").strip()
+    if len(postcode) == 7:
+        parts.append(f"〒{postcode[:3]}-{postcode[3:]}")
+    elif postcode:
+        parts.append(f"〒{postcode}")
+    region_line = "".join(
+        [
+            str(origin.get("prefecture") or "").strip(),
+            str(origin.get("city") or "").strip(),
+        ]
+    )
+    if region_line:
+        parts.append(region_line)
+    a1 = str(origin.get("address1") or "").strip()
+    a2 = str(origin.get("address2") or "").strip()
+    if a1:
+        parts.append(a1)
+    if a2:
+        parts.append(a2)
+    family = str(origin.get("family_name") or "").strip()
+    first = str(origin.get("first_name") or "").strip()
+    name = " ".join([s for s in (family, first) if s])
+    if name:
+        parts.append(f"{name} 様")
+    tel = str(origin.get("telephone") or "").strip()
+    if tel:
+        parts.append(tel)
+    return "\n".join(parts) if parts else None
 
-  // 通过文本查找按钮可用性
-  const allClickables = Array.from(document.querySelectorAll('button, a, [role="button"]'));
-  result.has_size_location_btn = allClickables.some(b => (b.innerText || '').includes('商品サイズと発送場所'));
-  result.has_change_method_btn = allClickables.some(b => (b.innerText || '').includes('発送方法を変更'));
 
-  // 消息流：拆分 from / text / at
-  // 每条消息的 innerText 通常形如：
-  //   月雫\nこんにちは...\nよろしくお願い致します\n5時間前\n報告する
-  // 启发：第 1 行短文本视为 from；末尾若是「報告する」「違反内容を報告」剔除；
-  // 倒数第 N 行匹配「N 分前 / N 時間前 / N 日前 / N ヶ月前 / 数字年前」视为 at
-  const msgRoot = xpath('/html/body/div[2]/div[2]/main/div/div[2]/div[5]/div[2]');
-  if (msgRoot) {
-    const items = Array.from(msgRoot.children).filter(el => tx(el));
-    const timeRe = /^\d+\s*(分前|時間前|日前|ヶ月前|年前)$/;
-    const reportRe = /^(報告する|違反内容を報告)$/;
-    for (const item of items) {
-      let lines = tx(item).split('\n').map(s => s.trim()).filter(Boolean);
-      if (!lines.length) continue;
-      // 剔除尾部「報告する」
-      while (lines.length && reportRe.test(lines[lines.length - 1])) lines.pop();
-      // 取尾部相对时间
-      let at = null;
-      while (lines.length && timeRe.test(lines[lines.length - 1])) {
-        at = lines[lines.length - 1];
-        lines.pop();
-      }
-      // 取首行作为 from（短文本视为名字，且后面还有正文）
-      let from = null;
-      if (lines.length >= 2 && lines[0].length <= 32) {
-        from = lines[0];
-        lines = lines.slice(1);
-      }
-      const text = lines.join('\n').trim();
-      if (text || from) {
-        result.messages.push({ from, text, at });
-      }
+def _parse_shipping_info(payload: Optional[Dict[str, Any]], local_sender_id: Optional[str]) -> Dict[str, Any]:
+    out: Dict[str, Any] = {
+        "product_name": None,
+        "shipping_method_name": None,
+        "current_shipping_status": None,
+        "sender_address": None,
+        "shipment_status": None,
+        "has_size_location_btn": False,
+        "has_change_method_btn": False,
     }
-    if (result.messages.length === 0) {
-      const all = tx(msgRoot);
-      if (all) result.messages.push({ from: null, text: all, at: null });
-    }
-  }
+    if not isinstance(payload, dict):
+        return out
+    body = payload.get("body") or {}
+    data = body.get("data") or {}
+    if not isinstance(data, dict):
+        return out
 
-  // 左侧 sidebar 字段：按标签文本就近匹配下一个兄弟节点
-  function findValueByLabel(label) {
-    const cands = Array.from(document.querySelectorAll('dt, th, span, p, div, label'));
-    for (const el of cands) {
-      const direct = (el.firstChild && el.firstChild.nodeType === 3 ? el.firstChild.nodeValue : '').trim();
-      if (direct === label) {
-        if (el.tagName === 'DT' && el.nextElementSibling && el.nextElementSibling.tagName === 'DD') return tx(el.nextElementSibling);
-        if (el.tagName === 'TH' && el.nextElementSibling && el.nextElementSibling.tagName === 'TD') return tx(el.nextElementSibling);
-        if (el.nextElementSibling) return tx(el.nextElementSibling);
-        if (el.parentElement) {
-          const sibs = Array.from(el.parentElement.children).filter(c => c !== el);
-          if (sibs.length) return tx(sibs[sibs.length - 1]);
-        }
-      }
-    }
-    return null;
-  }
-  result.price = parseYen(findValueByLabel('商品代金'));
-  result.fee = parseYen(findValueByLabel('販売手数料'));
-  result.profit = parseYen(findValueByLabel('販売利益'));
-  result.shipping_fee_label = findValueByLabel('送料');
-  result.purchase_time = findValueByLabel('購入日時');
-  result.delivery_method = findValueByLabel('配送の方法');
+    # 商品名：优先 data.item.name，回退 data.name（部分接口直接挂在 data 上）
+    item = data.get("item") or {}
+    if isinstance(item, dict) and item.get("name"):
+        out["product_name"] = str(item.get("name")).strip() or None
+    elif data.get("name"):
+        out["product_name"] = str(data.get("name")).strip() or None
 
-  // 购入者
-  const buyerHdr = Array.from(document.querySelectorAll('h2, h3, h4, dt, p, span, div'))
-    .find(el => (el.firstChild && el.firstChild.nodeType === 3 ? el.firstChild.nodeValue : '').trim() === '購入者情報');
-  if (buyerHdr) {
-    const region = buyerHdr.nextElementSibling || (buyerHdr.parentElement && buyerHdr.parentElement.nextElementSibling);
-    if (region) {
-      const fullTxt = tx(region);
-      const lines = fullTxt.split('\n').map(s => s.trim()).filter(Boolean);
-      if (lines.length) result.buyer_name = lines[0];
-      result.buyer_verified = fullTxt.includes('本人確認済');
-    }
-  }
+    method = (data.get("shipping_method_name") or "").strip()
+    if method:
+        out["shipping_method_name"] = method
+        out["current_shipping_status"] = f"{method}で発送する"
 
-  return result;
-}
-"""
+    shipment = data.get("shipment") or {}
+    if isinstance(shipment, dict):
+        st = (str(shipment.get("status") or "")).strip().lower()
+        if st:
+            out["shipment_status"] = st
+        # 仅当待发货（fillin / shipping）时才可点这两个按钮
+        out["has_change_method_btn"] = st in ("fillin", "shipping")
+        out["has_size_location_btn"] = (
+            st in ("fillin", "shipping") and bool(shipment.get("is_origin_updatable"))
+        )
+        out["sender_address"] = _compose_sender_address(shipment.get("origin"))
+
+    return out
 
 
-# 抓取前等 SPA 渲染：transaction 页面 JS bundle + 异步请求落定通常 1.5～3 秒
-_RENDER_WAIT_SEC = 3.0
+def _parse_messages(
+    payload: Optional[Dict[str, Any]],
+    local_sender_id: Optional[str],
+) -> Dict[str, Any]:
+    """返回 {messages, buyer_name}"""
+    out: Dict[str, Any] = {"messages": [], "buyer_name": None}
+    if not isinstance(payload, dict):
+        return out
+    body = payload.get("body") or {}
+    data = body.get("data") or []
+    if not isinstance(data, list):
+        return out
+
+    buyer_uid: Optional[str] = None
+    if local_sender_id:
+        buyer_uid = str(local_sender_id).strip() or None
+
+    # 按 created 升序
+    items = sorted(
+        [m for m in data if isinstance(m, dict)],
+        key=lambda m: int(m.get("created") or 0),
+    )
+    for m in items:
+        user = m.get("user") or {}
+        uid_raw = m.get("user_id") if m.get("user_id") is not None else user.get("id")
+        uid = str(uid_raw).strip() if uid_raw is not None else ""
+        is_buyer = bool(buyer_uid) and uid == buyer_uid
+        body_text = (m.get("body") or "").strip()
+        if not body_text and not user.get("name"):
+            continue
+        out["messages"].append(
+            {
+                "from": (user.get("name") or "").strip() or None,
+                "text": body_text,
+                "at": _format_ts(m.get("created")),
+                "is_buyer": is_buyer,
+                "user_id": uid or None,
+            }
+        )
+        if is_buyer and not out["buyer_name"]:
+            out["buyer_name"] = (user.get("name") or "").strip() or None
+
+    # 兜底：若没拿到买家名，取第一条非空 user.name
+    if not out["buyer_name"]:
+        for m in out["messages"]:
+            if m.get("from"):
+                out["buyer_name"] = m["from"]
+                break
+    return out
+
+
+def _format_ts(unix_seconds: Any) -> Optional[str]:
+    try:
+        n = int(unix_seconds)
+        if n <= 0:
+            return None
+        dt = datetime.fromtimestamp(n, tz=timezone.utc).astimezone()
+        return dt.strftime("%Y-%m-%d %H:%M")
+    except (TypeError, ValueError, OverflowError):
+        return None
 
 
 async def fetch_transaction_detail(todo_id: int) -> Dict[str, Any]:
-    """打开有头浏览器到 transaction 页，提取关键字段并返回。
-
-    浏览器不会自动关闭——保留给用户在原生页面继续操作。
-    """
+    """打开有头浏览器到 transaction 页 → MITM 等两个 API → 解析返回。"""
     todo = TodoItemModel.find_by_id(id=int(todo_id))
     if not todo:
         raise ValueError(f"代办事项 id={todo_id} 不存在")
@@ -183,6 +229,7 @@ async def fetch_transaction_detail(todo_id: int) -> Dict[str, Any]:
         raise ValueError("该代办无关联 item_id，无法打开交易页")
 
     aid = int(todo.account_id)
+    local_sender_id = (todo.sender_id or "").strip() or None
     url = f"https://jp.mercari.com/transaction/{item_id}"
     log.info("[txdetail] 打开交易页 account_id=%s url=%s", aid, url)
 
@@ -195,39 +242,454 @@ async def fetch_transaction_detail(todo_id: int) -> Dict[str, Any]:
     except Exception as exc:
         log.warning("[txdetail] seed __auto profile 失败（继续，使用磁盘旧 Cookie）：%s", exc)
 
+    # 浏览器打开前清空两个 latest 文件 + 取 since_ms，保证捕到的是本次新响应
+    clear_shipping_info_response_file()
+    clear_transaction_messages_response_file()
+    since_ms = int(time.time() * 1000)
+
     mgr = get_web_drive_manager()
     auto_key = meilu_automation_key(aid)
     proxy = default_mitm_proxy_url()
 
-    # 启动有头非最小化窗口；ensure_session_for_mitm 内部会关掉旧的 __auto
     await mgr.ensure_session_for_mitm(
         auto_key,
         start_url=url,
         proxy_server=proxy,
         headless=False,
         start_minimized=False,
-        block_images=False,  # 用户要看页面，允许加载图片
+        block_images=False,
     )
 
-    # 兜底再 goto 一次（ensure_session_for_mitm 已带 start_url，但偶发未完成跳转）
+    # 兜底再 goto 一次
     try:
         await mgr.reload_active_tab(auto_key, url)
     except Exception as exc:
         log.warning("[txdetail] reload_active_tab 失败（忽略）：%s", exc)
 
-    await asyncio.sleep(_RENDER_WAIT_SEC)
+    shipping, messages = await _wait_for_both_captures(
+        mgr=mgr,
+        auto_key=auto_key,
+        start_url=url,
+        since_ms=since_ms,
+    )
 
-    try:
-        page = await mgr.active_tab_page(auto_key)
-        data = await page.evaluate(_EXTRACT_JS)
-    except Exception as exc:
-        log.exception("[txdetail] DOM 提取失败：%s", exc)
-        data = {}
+    if shipping is None and messages is None:
+        log.warning("[txdetail] 两个 API 均未截获 todo_id=%s", todo_id)
+    elif shipping is None:
+        log.warning("[txdetail] shipping/get_info 未截获 todo_id=%s", todo_id)
+    elif messages is None:
+        log.warning("[txdetail] transaction_messages/get_messages 未截获 todo_id=%s", todo_id)
+
+    shipping_part = _parse_shipping_info(shipping, local_sender_id)
+    messages_part = _parse_messages(messages, local_sender_id)
 
     return {
         "todo_id": int(todo_id),
         "account_id": aid,
         "item_id": item_id,
         "url": url,
-        **(data if isinstance(data, dict) else {}),
+        "captured": {
+            "shipping_info": shipping is not None,
+            "transaction_messages": messages is not None,
+        },
+        **shipping_part,
+        **messages_part,
+    }
+
+
+_REPLY_TEXTAREA_PLACEHOLDER = "なにか分からないことがあれば質問してみましょう。"
+_REPLY_SEND_BUTTON_TEXT = "取引メッセージを送る"
+
+_REVIEW_TEXTAREA_PLACEHOLDER = "例) このたびはお取引ありがとうございました。"
+_REVIEW_SUBMIT_BUTTON_TEXT = "購入者を評価して取引完了する"
+_REVIEW_CONFIRM_BUTTON_TEXT = "取引を完了する"
+_REVIEW_COMPLETED_TEXT = "取引が完了しました"
+
+
+async def send_transaction_message(todo_id: int, text: str) -> Dict[str, Any]:
+    """在已开的 __auto 浏览器内填回复并点击「取引メッセージを送る」。
+
+    要求 ``fetch_transaction_detail`` 已先打开过对应账号的交易页（否则会话不存在/不在目标 URL）。
+    """
+    todo = TodoItemModel.find_by_id(id=int(todo_id))
+    if not todo:
+        raise ValueError(f"代办事项 id={todo_id} 不存在")
+    item_id = (todo.item_id or "").strip()
+    if not item_id:
+        raise ValueError("该代办无关联 item_id")
+    body = (text or "").strip()
+    if not body:
+        raise ValueError("消息内容不能为空")
+
+    aid = int(todo.account_id)
+    mgr = get_web_drive_manager()
+    auto_key = meilu_automation_key(aid)
+
+    try:
+        page = await mgr.active_tab_page(auto_key)
+    except Exception as exc:
+        raise RuntimeError("浏览器未打开或已关闭，请先点「处理」打开交易页") from exc
+
+    # 找到回复 textarea（按 placeholder）
+    textarea = page.locator(
+        f'textarea[placeholder="{_REPLY_TEXTAREA_PLACEHOLDER}"]'
+    )
+    try:
+        await textarea.first.wait_for(state="visible", timeout=8000)
+    except Exception as exc:
+        raise RuntimeError(
+            f"未找到回复输入框（placeholder 不匹配；当前 URL: {page.url}）"
+        ) from exc
+
+    await textarea.first.fill(body)
+
+    # 找到「取引メッセージを送る」按钮（按文本）
+    btn = page.get_by_role("button", name=_REPLY_SEND_BUTTON_TEXT)
+    try:
+        await btn.first.wait_for(state="visible", timeout=4000)
+    except Exception:
+        # fallback：直接 :has-text
+        btn = page.locator(f'button:has-text("{_REPLY_SEND_BUTTON_TEXT}")')
+        try:
+            await btn.first.wait_for(state="visible", timeout=2000)
+        except Exception as exc:
+            raise RuntimeError(
+                f"未找到「{_REPLY_SEND_BUTTON_TEXT}」按钮（当前 URL: {page.url}）"
+            ) from exc
+
+    await btn.first.click()
+    log.info(
+        "[txdetail] 已点击发送消息 account_id=%s item_id=%s text_len=%s",
+        aid,
+        item_id,
+        len(body),
+    )
+    return {
+        "todo_id": int(todo_id),
+        "account_id": aid,
+        "item_id": item_id,
+        "sent": True,
+        "text_len": len(body),
+    }
+
+
+# ====================================================================
+# 选择商品尺寸与发送地
+# ====================================================================
+
+_SIZE_SELECT_BUTTON_TEXT = "商品サイズと発送場所を選択する"
+_CHANGE_METHOD_BUTTON_TEXT = "発送方法を変更する"
+_SELECT_NEXT_BUTTON_TEXT = "選択して次へ"
+_SELECT_FINISH_BUTTON_TEXT = "選択して完了する"
+
+
+async def start_select_shipping_class(todo_id: int) -> Dict[str, Any]:
+    """点 transaction 页的「商品サイズと発送場所を選択する」按钮 → 等浏览器跳到 /shipping_class。
+
+    尺寸列表由前端硬编码（按 shipping_method_name 区分），不再依赖 MITM 抓取。
+    """
+    todo = TodoItemModel.find_by_id(id=int(todo_id))
+    if not todo:
+        raise ValueError(f"代办事项 id={todo_id} 不存在")
+    aid = int(todo.account_id)
+
+    mgr = get_web_drive_manager()
+    auto_key = meilu_automation_key(aid)
+    try:
+        page = await mgr.active_tab_page(auto_key)
+    except Exception as exc:
+        raise RuntimeError("浏览器未打开或已关闭，请先点「处理」打开交易页") from exc
+
+    btn = page.get_by_role("button", name=_SIZE_SELECT_BUTTON_TEXT)
+    try:
+        await btn.first.wait_for(state="visible", timeout=4000)
+    except Exception:
+        btn = page.locator(f'button:has-text("{_SIZE_SELECT_BUTTON_TEXT}")')
+        try:
+            await btn.first.wait_for(state="visible", timeout=2000)
+        except Exception as exc:
+            raise RuntimeError(
+                f"未找到「{_SIZE_SELECT_BUTTON_TEXT}」按钮（当前 URL: {page.url}）"
+            ) from exc
+    await btn.first.click()
+    log.info("[shipping] 已点击「%s」 account_id=%s", _SIZE_SELECT_BUTTON_TEXT, aid)
+
+    # 等浏览器跳到 /shipping_class（用户后续在我们 dialog 内选 size）
+    try:
+        await page.wait_for_url("**/shipping_class*", timeout=8000)
+    except Exception:
+        log.warning("[shipping] 未观察到 /shipping_class 导航（可能已经在该页）")
+
+    return {
+        "todo_id": int(todo_id),
+        "account_id": aid,
+        "clicked": True,
+    }
+
+
+_FACILITY_XPATHS = {
+    "post_office": '//*[@id="main"]/div/form/div[1]/div/div[1]/div/div[1]',
+    "lawson": '//*[@id="main"]/div/form/div[1]/div/div[1]/div/div[2]',
+}
+
+
+async def confirm_shipping_selection(
+    todo_id: int,
+    class_text: str,
+    facility: Optional[str] = None,
+) -> Dict[str, Any]:
+    """在 /shipping_class 页选 size → 次へ → 在 /shipping_facilities 页按需点 facility → 完了する。
+
+    ``facility``：
+      - ``None``：不点 facility（用于 POST_BOX 唯一选项的 size，页面会自动选好）
+      - ``"post_office"`` / ``"lawson"``：按对应 XPath 点击卡片
+    """
+    todo = TodoItemModel.find_by_id(id=int(todo_id))
+    if not todo:
+        raise ValueError(f"代办事项 id={todo_id} 不存在")
+    aid = int(todo.account_id)
+    class_text = (class_text or "").strip()
+    if not class_text:
+        raise ValueError("class_text 不能为空")
+    facility = (facility or "").strip().lower() or None
+    if facility is not None and facility not in _FACILITY_XPATHS:
+        raise ValueError(f"facility 取值非法：{facility}")
+
+    mgr = get_web_drive_manager()
+    auto_key = meilu_automation_key(aid)
+    try:
+        page = await mgr.active_tab_page(auto_key)
+    except Exception as exc:
+        raise RuntimeError("浏览器未打开或已关闭") from exc
+
+    # ── Step 1: 按精确文本匹配点击 size ──
+    size_loc = page.get_by_text(class_text, exact=True).first
+    try:
+        await size_loc.wait_for(state="visible", timeout=8000)
+    except Exception as exc:
+        raise RuntimeError(
+            f"未找到尺寸选项「{class_text}」（当前 URL: {page.url}）"
+        ) from exc
+    await size_loc.click()
+    log.info("[shipping] 已选择尺寸「%s」 account_id=%s", class_text, aid)
+    await asyncio.sleep(0.2)
+
+    # ── Step 2: 点「選択して次へ」──
+    next_btn = page.get_by_role("button", name=_SELECT_NEXT_BUTTON_TEXT)
+    try:
+        await next_btn.first.wait_for(state="visible", timeout=4000)
+    except Exception:
+        next_btn = page.locator(f'button:has-text("{_SELECT_NEXT_BUTTON_TEXT}")')
+        await next_btn.first.wait_for(state="visible", timeout=4000)
+    await next_btn.first.click()
+    log.info("[shipping] 已点击「%s」 account_id=%s", _SELECT_NEXT_BUTTON_TEXT, aid)
+
+    # ── Step 3: 等浏览器跳到 /shipping_facilities ──
+    try:
+        await page.wait_for_url("**/shipping_facilities*", timeout=10000)
+    except Exception:
+        log.warning("[shipping] 未观察到 /shipping_facilities 导航 (当前 URL: %s)", page.url)
+
+    # ── Step 4: 按需点 facility 卡片 ──
+    if facility is not None:
+        xpath_expr = _FACILITY_XPATHS[facility]
+        fac_loc = page.locator(f"xpath={xpath_expr}")
+        try:
+            await fac_loc.first.wait_for(state="visible", timeout=8000)
+        except Exception as exc:
+            raise RuntimeError(
+                f"未找到发货地卡片（facility={facility}，XPath={xpath_expr}，当前 URL: {page.url}）"
+            ) from exc
+        await fac_loc.first.click()
+        log.info("[shipping] 已点击发货地 facility=%s", facility)
+        await asyncio.sleep(0.2)
+    else:
+        log.info("[shipping] 无需选择 facility（auto_finish），直接点完了")
+
+    # ── Step 5: 点「選択して完了する」──
+    finish_btn = page.get_by_role("button", name=_SELECT_FINISH_BUTTON_TEXT)
+    try:
+        await finish_btn.first.wait_for(state="visible", timeout=6000)
+    except Exception:
+        finish_btn = page.locator(f'button:has-text("{_SELECT_FINISH_BUTTON_TEXT}")')
+        try:
+            await finish_btn.first.wait_for(state="visible", timeout=4000)
+        except Exception as exc:
+            raise RuntimeError(
+                f"未找到「{_SELECT_FINISH_BUTTON_TEXT}」按钮（当前 URL: {page.url}）"
+            ) from exc
+    await finish_btn.first.click()
+    log.info("[shipping] 已点击「%s」 account_id=%s", _SELECT_FINISH_BUTTON_TEXT, aid)
+
+    return {
+        "todo_id": int(todo_id),
+        "account_id": aid,
+        "class_text": class_text,
+        "facility": facility,
+        "success": True,
+    }
+
+
+async def submit_transaction_review(todo_id: int, text: str) -> Dict[str, Any]:
+    """在已打开的浏览器（取引評価页）填评价文本 + 点「購入者を評価して取引完了する」。
+
+    页面上 ``良かった`` 通常默认选中，不需要再点。
+    """
+    todo = TodoItemModel.find_by_id(id=int(todo_id))
+    if not todo:
+        raise ValueError(f"代办事项 id={todo_id} 不存在")
+    body = (text or "").strip()
+    if not body:
+        raise ValueError("评价文本不能为空")
+
+    aid = int(todo.account_id)
+    item_id = (todo.item_id or "").strip()
+    mgr = get_web_drive_manager()
+    auto_key = meilu_automation_key(aid)
+    try:
+        page = await mgr.active_tab_page(auto_key)
+    except Exception as exc:
+        raise RuntimeError("浏览器未打开或已关闭，请先点「处理」打开交易页") from exc
+
+    # 找到评价 textarea（按 placeholder）
+    textarea = page.locator(
+        f'textarea[placeholder="{_REVIEW_TEXTAREA_PLACEHOLDER}"]'
+    )
+    try:
+        await textarea.first.wait_for(state="visible", timeout=8000)
+    except Exception as exc:
+        raise RuntimeError(
+            f"未找到评价输入框（placeholder 不匹配；当前 URL: {page.url}）"
+        ) from exc
+    await textarea.first.fill(body)
+    log.info("[review] 已填入评价文本 text_len=%s", len(body))
+
+    # 找到「購入者を評価して取引完了する」按钮
+    btn = page.get_by_role("button", name=_REVIEW_SUBMIT_BUTTON_TEXT)
+    try:
+        await btn.first.wait_for(state="visible", timeout=4000)
+    except Exception:
+        btn = page.locator(f'button:has-text("{_REVIEW_SUBMIT_BUTTON_TEXT}")')
+        try:
+            await btn.first.wait_for(state="visible", timeout=2000)
+        except Exception as exc:
+            raise RuntimeError(
+                f"未找到「{_REVIEW_SUBMIT_BUTTON_TEXT}」按钮（当前 URL: {page.url}）"
+            ) from exc
+    await btn.first.click()
+    log.info(
+        "[review] 已点击「%s」 account_id=%s",
+        _REVIEW_SUBMIT_BUTTON_TEXT,
+        aid,
+    )
+
+    # 二次确认弹窗：「購入者を評価して取引を完了しますか？」→ 点「取引を完了する」
+    await asyncio.sleep(0.3)
+    confirm_btn = page.get_by_role("button", name=_REVIEW_CONFIRM_BUTTON_TEXT)
+    try:
+        await confirm_btn.first.wait_for(state="visible", timeout=6000)
+    except Exception:
+        confirm_btn = page.locator(f'button:has-text("{_REVIEW_CONFIRM_BUTTON_TEXT}")')
+        try:
+            await confirm_btn.first.wait_for(state="visible", timeout=3000)
+        except Exception as exc:
+            raise RuntimeError(
+                f"未找到二次确认按钮「{_REVIEW_CONFIRM_BUTTON_TEXT}」（当前 URL: {page.url}）"
+            ) from exc
+    await confirm_btn.first.click()
+    log.info(
+        "[review] 已点击二次确认「%s」 account_id=%s",
+        _REVIEW_CONFIRM_BUTTON_TEXT,
+        aid,
+    )
+
+    # 等页面刷新 + 检测「取引が完了しました」文案
+    completed = False
+    try:
+        completed_loc = page.get_by_text(_REVIEW_COMPLETED_TEXT, exact=False).first
+        await completed_loc.wait_for(state="visible", timeout=15000)
+        completed = True
+        log.info("[review] 检测到「%s」 account_id=%s", _REVIEW_COMPLETED_TEXT, aid)
+    except Exception:
+        log.warning(
+            "[review] 15s 内未检测到「%s」（可能已完成但页面文案变化；当前 URL: %s）",
+            _REVIEW_COMPLETED_TEXT,
+            page.url,
+        )
+
+    order_refresh_error: Optional[str] = None
+    if completed:
+        # 软删除本地 todo（页面已结案，对应煤炉端 todolist 也会下次同步剔除）
+        try:
+            todo.is_delete = 1
+            todo.synced_at = int(time.time() * 1000)
+            todo.save()
+            log.info("[review] 已软删除 todo_id=%s", todo_id)
+        except Exception as exc:
+            log.warning("[review] 软删除 todo 失败: %s", exc)
+
+        # 关浏览器
+        try:
+            await mgr.close_session_if_automation(auto_key)
+            log.info("[review] 已关闭 __auto 浏览器 account_id=%s", aid)
+        except Exception as exc:
+            log.warning("[review] 关浏览器失败: %s", exc)
+
+        # 刷新订单信息（按 item_id 等于 order_no 查 orders 表，回填 transaction_evidences 字段）
+        if item_id:
+            try:
+                order_refresh_error = await apply_item_info_to_order(item_id, account_id=aid)
+                if order_refresh_error:
+                    log.warning("[review] 订单刷新返回错误: %s", order_refresh_error)
+                else:
+                    log.info("[review] 订单刷新完成 item_id=%s", item_id)
+            except Exception as exc:
+                order_refresh_error = f"exception:{exc}"
+                log.warning("[review] 订单刷新异常: %s", exc)
+        else:
+            log.warning("[review] todo 无 item_id，跳过订单刷新")
+
+    return {
+        "todo_id": int(todo_id),
+        "account_id": aid,
+        "item_id": item_id,
+        "submitted": True,
+        "confirmed": True,
+        "completed": completed,
+        "order_refresh_error": order_refresh_error,
+        "text_len": len(body),
+    }
+
+
+async def click_change_shipping_method(todo_id: int) -> Dict[str, Any]:
+    """点 transaction 页的「発送方法を変更する」（导航到修改发送方式页；后续由用户在浏览器内手动）。"""
+    todo = TodoItemModel.find_by_id(id=int(todo_id))
+    if not todo:
+        raise ValueError(f"代办事项 id={todo_id} 不存在")
+    aid = int(todo.account_id)
+
+    mgr = get_web_drive_manager()
+    auto_key = meilu_automation_key(aid)
+    try:
+        page = await mgr.active_tab_page(auto_key)
+    except Exception as exc:
+        raise RuntimeError("浏览器未打开或已关闭，请先点「处理」打开交易页") from exc
+
+    btn = page.get_by_role("button", name=_CHANGE_METHOD_BUTTON_TEXT)
+    try:
+        await btn.first.wait_for(state="visible", timeout=4000)
+    except Exception:
+        btn = page.locator(f'button:has-text("{_CHANGE_METHOD_BUTTON_TEXT}")')
+        try:
+            await btn.first.wait_for(state="visible", timeout=2000)
+        except Exception as exc:
+            raise RuntimeError(
+                f"未找到「{_CHANGE_METHOD_BUTTON_TEXT}」按钮（当前 URL: {page.url}）"
+            ) from exc
+    await btn.first.click()
+    log.info("[shipping] 已点击「%s」 account_id=%s", _CHANGE_METHOD_BUTTON_TEXT, aid)
+    return {
+        "todo_id": int(todo_id),
+        "account_id": aid,
+        "clicked": True,
     }

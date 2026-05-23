@@ -21,10 +21,13 @@ from src.ssl_mitm_proxy.capture_config import (  # noqa: E402
     atomic_write_capture_file,
     atomic_write_item_get_response,
     atomic_write_on_sale_list_response,
+    atomic_write_shipping_classes_response,
+    atomic_write_shipping_info_response,
     atomic_write_sold_out_list_response,
     atomic_write_todolist_response,
     atomic_write_trading_list_response,
     atomic_write_transaction_evidence_response,
+    atomic_write_transaction_messages_response,
     canonical_mercari_item_id,
     headers_to_value_dict,
     parse_capture_target,
@@ -232,6 +235,56 @@ class MercariCapture:
                 data_len = len(body_json.get("data") or []) if isinstance(body_json, dict) else 0
                 _log_line(
                     f"[MITM] todolist/list 响应已写入 data_len={data_len} nextPageToken={npt!r}"
+                )
+                return
+
+            if ctype == "shipping_get_info" and dpop == "dpop_shipping_info":
+                teid = str(meta.get("transaction_evidence_id") or "")
+                atomic_write_shipping_info_response(
+                    {
+                        "ts": int(time.time() * 1000),
+                        "transaction_evidence_id": teid,
+                        "request_url": str(meta.get("full_url") or url),
+                        "http_status": code,
+                        "body": body_json,
+                    },
+                )
+                _log_line(f"[MITM] shipping/get_info 响应已写入 teid={teid}")
+                return
+
+            if ctype == "transaction_messages_get" and dpop == "dpop_transaction_messages":
+                iid = str(meta.get("item_id") or "")
+                msg_n = len(body_json.get("data") or []) if isinstance(body_json, dict) else 0
+                atomic_write_transaction_messages_response(
+                    {
+                        "ts": int(time.time() * 1000),
+                        "item_id": iid,
+                        "request_url": str(meta.get("full_url") or url),
+                        "http_status": code,
+                        "body": body_json,
+                    },
+                )
+                _log_line(
+                    f"[MITM] transaction_messages/get_messages 响应已写入 item_id={iid} count={msg_n}"
+                )
+                return
+
+            if ctype == "shipping_get_shipping_classes" and dpop == "dpop_shipping_classes":
+                atomic_write_shipping_classes_response(
+                    {
+                        "ts": int(time.time() * 1000),
+                        "request_url": str(meta.get("full_url") or url),
+                        "http_status": code,
+                        "body": body_json,
+                    },
+                )
+                grp_n = (
+                    len((body_json.get("data") or {}).get("shipping_groups") or [])
+                    if isinstance(body_json, dict)
+                    else 0
+                )
+                _log_line(
+                    f"[MITM] shipping/get_shipping_classes 响应已写入 groups={grp_n}"
                 )
                 return
         except Exception:

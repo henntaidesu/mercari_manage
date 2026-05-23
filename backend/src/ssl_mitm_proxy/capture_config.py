@@ -98,7 +98,9 @@ def parse_capture_target(
             return None
         norm_path = (parsed.path or "").rstrip("/")
         qd = parse_qs(parsed.query)
-        if m and m != "GET" and not norm_path.endswith("services/todolist/v1/list"):
+        # 仅过滤明显非数据请求的方法（OPTIONS/HEAD/PUT/DELETE 等）；
+        # GET / POST 都放行，由下面具体路径分支决定是否要捕获。
+        if m and m not in ("GET", "POST"):
             return None
         if norm_path.endswith("items/get_items"):
             sid_list = qd.get("seller_id") or qd.get("sellerId") or []
@@ -150,6 +152,33 @@ def parse_capture_target(
                 "capture_type": "todolist_list",
                 "http_method": m or "POST",
                 "dpop_field": "dpop_todolist",
+                "full_url": u,
+            }
+        if norm_path.endswith("shipping/get_info"):
+            teid_list = qd.get("transaction_evidence_id") or qd.get("transactionEvidenceId") or []
+            teid = (teid_list[0] or "").strip() if teid_list else ""
+            return {
+                "capture_type": "shipping_get_info",
+                "transaction_evidence_id": teid,
+                "http_method": m or "GET",
+                "dpop_field": "dpop_shipping_info",
+                "full_url": u,
+            }
+        if norm_path.endswith("transaction_messages/get_messages"):
+            iid_list = qd.get("item_id") or qd.get("itemId") or []
+            iid = (iid_list[0] or "").strip() if iid_list else ""
+            return {
+                "capture_type": "transaction_messages_get",
+                "item_id": iid,
+                "http_method": m or "GET",
+                "dpop_field": "dpop_transaction_messages",
+                "full_url": u,
+            }
+        if norm_path.endswith("shipping/get_shipping_classes"):
+            return {
+                "capture_type": "shipping_get_shipping_classes",
+                "http_method": m or "GET",
+                "dpop_field": "dpop_shipping_classes",
                 "full_url": u,
             }
         return None
@@ -471,6 +500,124 @@ def atomic_write_todolist_response(payload: Dict[str, Any]) -> None:
 
 def read_todolist_response() -> Optional[Dict[str, Any]]:
     path = todolist_response_path()
+    if not os.path.isfile(path):
+        return None
+    with _lock:
+        try:
+            with open(path, "r", encoding="utf-8") as f:
+                return json.load(f)
+        except (json.JSONDecodeError, OSError):
+            return None
+
+
+# ============ 交易详情：shipping/get_info（按 transaction_evidence_id 但用 latest 即可） ============
+# 同 todolist：浏览器在 run_meilu_serial_async 内串行，单一 latest 文件就够。
+
+def shipping_info_response_path() -> str:
+    return os.path.join(ssl_mitm_data_dir(), "shipping_info_latest_response.json")
+
+
+def clear_shipping_info_response_file() -> None:
+    p = shipping_info_response_path()
+    with _lock:
+        try:
+            if os.path.isfile(p):
+                os.remove(p)
+        except OSError:
+            pass
+
+
+def atomic_write_shipping_info_response(payload: Dict[str, Any]) -> None:
+    d = ssl_mitm_data_dir()
+    os.makedirs(d, exist_ok=True)
+    path = shipping_info_response_path()
+    tmp = path + ".tmp"
+    with _lock:
+        with open(tmp, "w", encoding="utf-8") as f:
+            json.dump(payload, f, ensure_ascii=False, indent=2)
+        os.replace(tmp, path)
+
+
+def read_shipping_info_response() -> Optional[Dict[str, Any]]:
+    path = shipping_info_response_path()
+    if not os.path.isfile(path):
+        return None
+    with _lock:
+        try:
+            with open(path, "r", encoding="utf-8") as f:
+                return json.load(f)
+        except (json.JSONDecodeError, OSError):
+            return None
+
+
+# ============ 交易详情：transaction_messages/get_messages ============
+
+def transaction_messages_response_path() -> str:
+    return os.path.join(ssl_mitm_data_dir(), "transaction_messages_latest_response.json")
+
+
+def clear_transaction_messages_response_file() -> None:
+    p = transaction_messages_response_path()
+    with _lock:
+        try:
+            if os.path.isfile(p):
+                os.remove(p)
+        except OSError:
+            pass
+
+
+def atomic_write_transaction_messages_response(payload: Dict[str, Any]) -> None:
+    d = ssl_mitm_data_dir()
+    os.makedirs(d, exist_ok=True)
+    path = transaction_messages_response_path()
+    tmp = path + ".tmp"
+    with _lock:
+        with open(tmp, "w", encoding="utf-8") as f:
+            json.dump(payload, f, ensure_ascii=False, indent=2)
+        os.replace(tmp, path)
+
+
+def read_transaction_messages_response() -> Optional[Dict[str, Any]]:
+    path = transaction_messages_response_path()
+    if not os.path.isfile(path):
+        return None
+    with _lock:
+        try:
+            with open(path, "r", encoding="utf-8") as f:
+                return json.load(f)
+        except (json.JSONDecodeError, OSError):
+            return None
+
+
+# ============ 发货尺寸：shipping/get_shipping_classes ============
+
+def shipping_classes_response_path() -> str:
+    return os.path.join(ssl_mitm_data_dir(), "shipping_classes_latest_response.json")
+
+
+def clear_shipping_classes_response_file() -> None:
+    p = shipping_classes_response_path()
+    with _lock:
+        try:
+            if os.path.isfile(p):
+                os.remove(p)
+        except OSError:
+            pass
+
+
+def atomic_write_shipping_classes_response(payload: Dict[str, Any]) -> None:
+    d = ssl_mitm_data_dir()
+    os.makedirs(d, exist_ok=True)
+    path = shipping_classes_response_path()
+    tmp = path + ".tmp"
+    with _lock:
+        with open(tmp, "w", encoding="utf-8") as f:
+            json.dump(payload, f, ensure_ascii=False, indent=2)
+        os.replace(tmp, path)
+
+
+def read_shipping_classes_response() -> Optional[Dict[str, Any]]:
+    path = shipping_classes_response_path()
     if not os.path.isfile(path):
         return None
     with _lock:
