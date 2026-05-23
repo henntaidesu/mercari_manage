@@ -7,7 +7,6 @@
             v-model="filters.keyword"
             placeholder="搜索消息 / 商品 ID / 商品名"
             clearable
-            size="small"
             @change="onFilterChange"
           />
           <el-select
@@ -15,8 +14,7 @@
             placeholder="账号"
             clearable
             filterable
-            size="small"
-            style="min-width: 180px"
+            style="min-width: 200px"
             @change="onFilterChange"
           >
             <el-option
@@ -31,7 +29,6 @@
             placeholder="类型"
             clearable
             filterable
-            size="small"
             style="min-width: 200px"
             @change="onFilterChange"
           >
@@ -51,7 +48,6 @@
             v-model="globalAccountId"
             placeholder="选择煤炉账号"
             filterable
-            size="small"
             class="sync-account-select"
             :loading="mercariAccountStore.loading"
           >
@@ -62,8 +58,7 @@
               :value="acc.id"
             />
           </el-select>
-          <el-button size="small" :disabled="!hasUnread" @click="onMarkAllRead">全部已读</el-button>
-          <el-button type="primary" size="small" :icon="Download" :loading="syncLoading" @click="runSync">
+          <el-button type="primary" :icon="Download" :loading="syncLoading" @click="runSync">
             从煤炉同步
           </el-button>
         </el-col>
@@ -97,7 +92,6 @@
             <el-tag :type="kindTagType(row.kind)" size="small" effect="light">
               {{ kindLabel(row.kind) }}
             </el-tag>
-            <div v-if="!row.is_read" class="row-tag-unread">未读</div>
           </template>
         </el-table-column>
 
@@ -107,14 +101,7 @@
               {{ row.message || '-' }}
             </div>
             <div v-if="row.item_id" class="cell-itemid">
-              <el-link
-                :href="itemUrlFor(row)"
-                target="_blank"
-                type="primary"
-                :underline="false"
-              >
-                {{ row.item_id }}
-              </el-link>
+              <span class="cell-itemid-text">{{ row.item_id }}</span>
               <span v-if="row.item_name" class="cell-itemname">{{ row.item_name }}</span>
             </div>
             <div v-if="row.price" class="cell-extra">值下げ依頼: ¥{{ formatYen(row.price) }}</div>
@@ -140,7 +127,6 @@
         <el-table-column label="时间" width="170" align="center" header-align="center">
           <template #default="{ row }">
             <div>{{ displayTs(row.mercari_created) }}</div>
-            <div v-if="row.synced_at" class="cell-muted-sm">同步: {{ displayTs(row.synced_at) }}</div>
           </template>
         </el-table-column>
 
@@ -150,9 +136,10 @@
           </template>
         </el-table-column>
 
-        <el-table-column label="操作" width="160" align="center" header-align="center" fixed="right">
+        <el-table-column label="操作" width="120" align="center" header-align="center" fixed="right">
           <template #default="{ row }">
             <el-button
+              v-if="actionForKind(row.kind) === 'open'"
               type="primary"
               link
               size="small"
@@ -162,13 +149,15 @@
               打开
             </el-button>
             <el-button
+              v-else-if="actionForKind(row.kind) === 'detail'"
               type="primary"
               link
               size="small"
-              @click="onToggleRead(row)"
+              @click="onViewDetail(row)"
             >
-              {{ row.is_read ? '标未读' : '标已读' }}
+              查看详情
             </el-button>
+            <span v-else class="cell-muted">-</span>
           </template>
         </el-table-column>
       </el-table>
@@ -202,16 +191,16 @@ const globalAccountId = computed({
 })
 
 const KIND_LABELS = {
-  Like: 'いいね！',
-  Comment: 'コメント',
-  LikedItemReceiveComment: 'いいねした商品コメント',
-  DesiredPriceOfferCreated: '値下げ依頼',
-  AuctionBidCreated: 'オークション入札',
-  BundleRequestCreated: 'まとめ買い依頼',
-  WaitPayment: '支払い待ち',
-  PrivateMessage: '事務局メッセージ',
-  'merpay-egp-ian-promotion': 'メルペイ告知',
-  'merpay-egp-ian-promotion-action-url': 'メルペイ告知（リンク）',
+  Like: '点赞',
+  Comment: '留言',
+  LikedItemReceiveComment: '关注商品留言',
+  DesiredPriceOfferCreated: '降价请求',
+  AuctionBidCreated: '拍卖出价',
+  BundleRequestCreated: '合并购买请求',
+  WaitPayment: '待支付',
+  PrivateMessage: '事务局消息',
+  'merpay-egp-ian-promotion': '活动公告',
+  'merpay-egp-ian-promotion-action-url': '活动公告',
 }
 
 const KIND_TAG_TYPES = {
@@ -225,6 +214,23 @@ const KIND_TAG_TYPES = {
   PrivateMessage: 'info',
   'merpay-egp-ian-promotion': 'info',
   'merpay-egp-ian-promotion-action-url': 'info',
+}
+
+// 操作列按 kind 区分动作类型：
+// - 'none'   不显示业务按钮（仅保留 标已读/标未读）
+// - 'detail' 显示「查看详情」按钮（占位，暂不对接）
+// - 'open'   其他默认走「打开」（跳 target_url / action_url / item 页）
+const KIND_ACTION = {
+  Like: 'none',
+  AuctionBidCreated: 'none',
+  'merpay-egp-ian-promotion': 'none',
+  'merpay-egp-ian-promotion-action-url': 'none',
+  Comment: 'detail',
+  BundleRequestCreated: 'detail',
+}
+
+function actionForKind(kind) {
+  return KIND_ACTION[kind] || 'open'
 }
 
 const list = ref([])
@@ -243,8 +249,6 @@ const filters = ref({
 const accountOptions = ref([])
 const kindOptions = ref([])
 const syncLoading = ref(false)
-
-const hasUnread = computed(() => list.value.some((r) => !r.is_read))
 
 function listParams() {
   const p = { page: page.value, page_size: pageSize.value }
@@ -339,36 +343,6 @@ async function runSync() {
   }
 }
 
-async function onMarkAllRead() {
-  if (!hasUnread.value) return
-  try {
-    await ElMessageBox.confirm('将把当前账号筛选下的未读通知全部标记为已读？', '提示', {
-      type: 'info',
-      confirmButtonText: '确认',
-      cancelButtonText: '取消',
-    })
-  } catch {
-    return
-  }
-  try {
-    const d = (await notificationsApi.markAllRead(filters.value.account_id || undefined)) || {}
-    ElMessage.success(`已标记 ${d.updated ?? 0} 条为已读`)
-    load()
-  } catch (e) {
-    ElMessage.error(e?.message || '操作失败')
-  }
-}
-
-async function onToggleRead(row) {
-  const next = !row.is_read
-  try {
-    await notificationsApi.markRead([row.id], next)
-    row.is_read = next ? 1 : 0
-  } catch (e) {
-    ElMessage.error(e?.message || '操作失败')
-  }
-}
-
 function hasTargetUrl(row) {
   return !!(row?.target_url || row?.action_url || row?.item_id)
 }
@@ -377,6 +351,11 @@ function itemUrlFor(row) {
   const iid = String(row?.item_id || '').trim()
   if (iid) return `https://jp.mercari.com/item/${iid}`
   return '#'
+}
+
+function onViewDetail(row) {
+  // 占位：留言 / 合并购买请求的详情页对接待补
+  ElMessage.info(`查看详情功能待对接（kind=${row.kind}）`)
 }
 
 async function onOpenTarget(row) {
