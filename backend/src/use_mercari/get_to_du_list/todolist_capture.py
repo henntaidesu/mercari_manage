@@ -32,13 +32,18 @@ _PER_PAGE_TIMEOUT_SEC = 45
 async def capture_todolist_via_mitm_session(
     mgr: EdgeWebDriveManager,
     auto_key: str,
+    *,
+    since_ms: int,
 ) -> List[Dict[str, Any]]:
-    """打开 /todos 页 → 轮询截获 → 必要时滚动加载更多页。"""
-    clear_todolist_response_file()
-    since_ms = int(time.time() * 1000)
+    """轮询截获 MITM 写入的 todolist 响应 → 必要时滚动加载更多页。
 
+    调用方需在打开浏览器**之前**先 ``clear_todolist_response_file()``
+    并取 ``since_ms=int(time.time()*1000)``，否则浏览器首次请求的响应会被
+    本函数误判为旧数据而丢弃。
+    """
     items: List[Dict[str, Any]] = []
     page_no = 0
+    cur_since_ms = since_ms
     while page_no < _MAX_PAGES:
         page_no += 1
         data = await wait_mitm_capture(
@@ -46,7 +51,7 @@ async def capture_todolist_via_mitm_session(
             auto_key=auto_key,
             start_url=TODOS_PAGE_URL,
             read_response=read_todolist_response,
-            since_ms=since_ms,
+            since_ms=cur_since_ms,
             wait_seconds=_PER_PAGE_TIMEOUT_SEC,
             error_detail="services/todolist/v1/list",
         )
@@ -67,7 +72,7 @@ async def capture_todolist_via_mitm_session(
             next_token[:24],
         )
         clear_todolist_response_file()
-        since_ms = int(time.time() * 1000)
+        cur_since_ms = int(time.time() * 1000)
         try:
             page = await mgr.active_tab_page(auto_key)
             await page.evaluate("window.scrollTo(0, document.body.scrollHeight)")

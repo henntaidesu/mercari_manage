@@ -19,6 +19,7 @@ from typing import Any, Dict, List, Optional
 
 from ...db_manage.database import DatabaseManager
 from ...db_manage.models.meilu_account import MeiluAccountModel
+from ...ssl_mitm_proxy.capture_config import clear_todolist_response_file
 from ...web_drive.core.mitm_session import mitm_automation_browser
 from .todolist_capture import TODOS_PAGE_URL, capture_todolist_via_mitm_session
 
@@ -206,8 +207,13 @@ async def sync_todos_from_mercari(account_id: Optional[int] = None) -> Dict[str,
     aid = _resolve_account_id(account_id)
     log.info("[todolist] 开始同步 account_id=%s", aid)
 
+    # 浏览器打开 /todos 时立刻发起 API；必须先清空旧文件并取 since_ms，
+    # 否则首批响应会先于 capture 入参就位而被误判为旧数据。
+    clear_todolist_response_file()
+    since_ms = int(time.time() * 1000)
+
     async with mitm_automation_browser(int(aid), start_url=TODOS_PAGE_URL) as (mgr, auto_key):
-        items = await capture_todolist_via_mitm_session(mgr, auto_key)
+        items = await capture_todolist_via_mitm_session(mgr, auto_key, since_ms=since_ms)
 
     stats = apply_todolist_sync(int(aid), items)
     stats["account_id"] = int(aid)
