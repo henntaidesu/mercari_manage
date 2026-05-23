@@ -141,6 +141,12 @@
                 :false-value="0"
                 @change="onAutoFetchTaskChange"
               >在售：从煤炉同步</el-checkbox>
+              <el-checkbox
+                v-model="form.auto_fetch_todos"
+                :true-value="1"
+                :false-value="0"
+                @change="onAutoFetchTaskChange"
+              >代办：从煤炉同步</el-checkbox>
             </div>
           </el-form-item>
           <el-form-item label="间隔" prop="fetch_interval">
@@ -236,6 +242,7 @@ function autoFetchTasksLabel(row) {
   if (row.auto_fetch_order_status === 1) parts.push('订单状态')
   if (row.auto_fetch_order_list === 1) parts.push('订单列表')
   if (row.auto_fetch_on_sale === 1) parts.push('在售同步')
+  if (row.auto_fetch_todos === 1) parts.push('代办同步')
   return parts.join('、')
 }
 
@@ -245,6 +252,7 @@ function onAutoFetchToggle() {
     form.value.auto_fetch_order_status = 0
     form.value.auto_fetch_order_list = 0
     form.value.auto_fetch_on_sale = 0
+    form.value.auto_fetch_todos = 0
   }
   nextTick(() => formRef.value?.clearValidate(['fetch_interval']))
 }
@@ -264,6 +272,7 @@ const createDefaultForm = () => ({
   auto_fetch_order_status: 0,
   auto_fetch_order_list: 0,
   auto_fetch_on_sale: 0,
+  auto_fetch_todos: 0,
 })
 
 const form = ref(createDefaultForm())
@@ -296,7 +305,8 @@ const formRules = {
           const anyTask =
             form.value.auto_fetch_order_status === 1 ||
             form.value.auto_fetch_order_list === 1 ||
-            form.value.auto_fetch_on_sale === 1
+            form.value.auto_fetch_on_sale === 1 ||
+            form.value.auto_fetch_todos === 1
           if (!anyTask) {
             cb(new Error('请至少选择一项同步任务'))
             return
@@ -383,6 +393,7 @@ function openEdit(row) {
     auto_fetch_order_status: row.auto_fetch_order_status === 1 ? 1 : 0,
     auto_fetch_order_list: row.auto_fetch_order_list === 1 ? 1 : 0,
     auto_fetch_on_sale: row.auto_fetch_on_sale === 1 ? 1 : 0,
+    auto_fetch_todos: row.auto_fetch_todos === 1 ? 1 : 0,
   }
   dialogVisible.value = true
 }
@@ -401,6 +412,7 @@ function buildPayload() {
     auto_fetch_order_status: open === 1 && form.value.auto_fetch_order_status === 1 ? 1 : 0,
     auto_fetch_order_list: open === 1 && form.value.auto_fetch_order_list === 1 ? 1 : 0,
     auto_fetch_on_sale: open === 1 && form.value.auto_fetch_on_sale === 1 ? 1 : 0,
+    auto_fetch_todos: open === 1 && form.value.auto_fetch_todos === 1 ? 1 : 0,
   }
   if (form.value.id) {
     return base

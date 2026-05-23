@@ -20,6 +20,7 @@ from .models import (
     OnSaleItemModel,
     ProductTypeCategoryMappingModel,
     ConfigEntryModel,
+    TodoItemModel,
 )
 
 
@@ -372,6 +373,7 @@ class DBManager:
             OrderOutboundLineModel,  # 订单解析出的待出库明细（依赖 orders / inventory 逻辑）
             MeiluAccountModel,  # 煤炉账号
             OnSaleItemModel,  # 在售商品缓存
+            TodoItemModel,  # 代办事项缓存（依赖 meilu_accounts，仅顺序习惯）
             ProductTypeCategoryMappingModel,  # 商品类型与类别字段映射
         ]
 

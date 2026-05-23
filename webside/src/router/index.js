@@ -16,6 +16,7 @@ const routes = [
       { path: 'inventory', name: 'Inventory', component: () => import('@/views/Inventory.vue'), meta: { title: '库存管理', icon: 'Goods' } },
       { path: 'orders', name: 'Orders', component: () => import('@/views/Orders.vue'), meta: { title: '订单管理', icon: 'Tickets' } },
       { path: 'on-sale-items', name: 'OnSaleItems', component: () => import('@/views/OnSaleItems.vue'), meta: { title: '在售商品', icon: 'ShoppingBag' } },
+      { path: 'todos', name: 'Todos', component: () => import('@/views/Todos.vue'), meta: { title: '代办事项', icon: 'BellFilled' } },
       { path: 'meilu-accounts', name: 'MeiluAccounts', component: () => import('@/views/MeiluAccounts.vue'), meta: { title: '煤炉账号', icon: 'User' } },
       // 系统管理（一级，二级菜单由 Layout 侧边栏右侧弹出，URL 嵌套到 /system/*）
       { path: 'system', name: 'System', component: () => import('@/views/system/System.vue'), meta: { title: '系统总览', icon: 'Setting' } },

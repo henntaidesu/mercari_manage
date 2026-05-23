@@ -144,6 +144,13 @@ def parse_capture_target(
                 "dpop_field": "dpop_item_get_info",
                 "full_url": u,
             }
+        if norm_path.endswith("services/todolist/v1/list"):
+            return {
+                "capture_type": "todolist_list",
+                "http_method": "GET",
+                "dpop_field": "dpop_todolist",
+                "full_url": u,
+            }
         return None
     except Exception:
         return None
@@ -422,6 +429,47 @@ def atomic_write_transaction_evidence_response(item_id: str, payload: Dict[str, 
 
 def read_transaction_evidence_response(item_id: str) -> Optional[Dict[str, Any]]:
     path = transaction_evidence_response_path(item_id)
+    if not os.path.isfile(path):
+        return None
+    with _lock:
+        try:
+            with open(path, "r", encoding="utf-8") as f:
+                return json.load(f)
+        except (json.JSONDecodeError, OSError):
+            return None
+
+
+# ============ 代办事项 services/todolist/v1/list ============
+# 请求路径不含 seller_id，多账号通过 run_meilu_serial_async 串行隔离；
+# 单一 latest 文件即可，同步函数进入时 clear、抓取后 read。
+
+def todolist_response_path() -> str:
+    return os.path.join(ssl_mitm_data_dir(), "todolist_latest_response.json")
+
+
+def clear_todolist_response_file() -> None:
+    p = todolist_response_path()
+    with _lock:
+        try:
+            if os.path.isfile(p):
+                os.remove(p)
+        except OSError:
+            pass
+
+
+def atomic_write_todolist_response(payload: Dict[str, Any]) -> None:
+    d = ssl_mitm_data_dir()
+    os.makedirs(d, exist_ok=True)
+    path = todolist_response_path()
+    tmp = path + ".tmp"
+    with _lock:
+        with open(tmp, "w", encoding="utf-8") as f:
+            json.dump(payload, f, ensure_ascii=False, indent=2)
+        os.replace(tmp, path)
+
+
+def read_todolist_response() -> Optional[Dict[str, Any]]:
+    path = todolist_response_path()
     if not os.path.isfile(path):
         return None
     with _lock:

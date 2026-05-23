@@ -21,6 +21,7 @@ from datetime import datetime, timezone
 from typing import Optional
 
 from .db_manage.models.meilu_account import MeiluAccountModel
+from .use_mercari.get_to_du_list.todolist_sync import sync_todos_from_mercari
 from .use_mercari.on_sale_items_sync import sync_on_sale_items_from_mercari
 from .use_mercari.sync_data import batch_refresh_orders_info, sync_new_data
 from .web_drive.core.account_serial_queue import queue_key_for_meilu_account, run_meilu_serial_async
@@ -79,6 +80,7 @@ def _any_auto_task_enabled(item: MeiluAccountModel) -> bool:
         _normalize_row_is_open(getattr(item, "auto_fetch_order_status", 0))
         or _normalize_row_is_open(getattr(item, "auto_fetch_order_list", 0))
         or _normalize_row_is_open(getattr(item, "auto_fetch_on_sale", 0))
+        or _normalize_row_is_open(getattr(item, "auto_fetch_todos", 0))
     )
 
 
@@ -101,7 +103,8 @@ async def _run_auto_fetch_for_account(aid: int, item: MeiluAccountModel) -> None
     st = _normalize_row_is_open(getattr(item, "auto_fetch_order_status", 0))
     li = _normalize_row_is_open(getattr(item, "auto_fetch_order_list", 0))
     os_ = _normalize_row_is_open(getattr(item, "auto_fetch_on_sale", 0))
-    if not (st or li or os_):
+    td = _normalize_row_is_open(getattr(item, "auto_fetch_todos", 0))
+    if not (st or li or os_ or td):
         return
 
     async def _body():
@@ -111,6 +114,8 @@ async def _run_auto_fetch_for_account(aid: int, item: MeiluAccountModel) -> None
             await sync_new_data(account_id=aid)
         if os_:
             await sync_on_sale_items_from_mercari(account_id=aid)
+        if td:
+            await sync_todos_from_mercari(account_id=aid)
 
     await run_meilu_serial_async(queue_key_for_meilu_account(aid), _body)
 

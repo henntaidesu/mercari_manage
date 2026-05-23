@@ -55,6 +55,7 @@ class MeiluAccountCreate(PydanticModel):
     auto_fetch_order_status: int = 0
     auto_fetch_order_list: int = 0
     auto_fetch_on_sale: int = 0
+    auto_fetch_todos: int = 0
 
 
 class MeiluAccountUpdate(PydanticModel):
@@ -69,6 +70,7 @@ class MeiluAccountUpdate(PydanticModel):
     auto_fetch_order_status: Optional[int] = None
     auto_fetch_order_list: Optional[int] = None
     auto_fetch_on_sale: Optional[int] = None
+    auto_fetch_todos: Optional[int] = None
 
 
 class FetchAuthViaMitmBody(PydanticModel):

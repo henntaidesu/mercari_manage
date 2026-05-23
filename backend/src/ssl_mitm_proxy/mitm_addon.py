@@ -22,6 +22,7 @@ from src.ssl_mitm_proxy.capture_config import (  # noqa: E402
     atomic_write_item_get_response,
     atomic_write_on_sale_list_response,
     atomic_write_sold_out_list_response,
+    atomic_write_todolist_response,
     atomic_write_trading_list_response,
     atomic_write_transaction_evidence_response,
     canonical_mercari_item_id,
@@ -215,6 +216,22 @@ class MercariCapture:
                 _log_line(
                     f"[MITM] items/get 商品详情响应已写入 item_id={iid} "
                     f"result={body_json.get('result') if isinstance(body_json, dict) else '?'}"
+                )
+                return
+
+            if ctype == "todolist_list" and dpop == "dpop_todolist":
+                atomic_write_todolist_response(
+                    {
+                        "ts": int(time.time() * 1000),
+                        "request_url": str(meta.get("full_url") or url),
+                        "http_status": code,
+                        "body": body_json,
+                    },
+                )
+                npt = body_json.get("nextPageToken") if isinstance(body_json, dict) else None
+                data_len = len(body_json.get("data") or []) if isinstance(body_json, dict) else 0
+                _log_line(
+                    f"[MITM] todolist/list 响应已写入 data_len={data_len} nextPageToken={npt!r}"
                 )
                 return
         except Exception:

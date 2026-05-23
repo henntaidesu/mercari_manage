@@ -13,6 +13,7 @@ from .on_sale_item import OnSaleItemModel
 from .order_outbound_line import OrderOutboundLineModel
 from .product_type_category_mapping import ProductTypeCategoryMappingModel
 from .config_entry import ConfigEntryModel
+from .todo_item import TodoItemModel
 
 __all__ = [
     'CategoryModel',
@@ -29,4 +30,5 @@ __all__ = [
     'OrderOutboundLineModel',
     'ProductTypeCategoryMappingModel',
     'ConfigEntryModel',
+    'TodoItemModel',
 ]

@@ -32,6 +32,7 @@ from .orders.API import router as orders_router
 from .inventory.API import router as inventory_router
 from .inventory.API import public_router as inventory_public_router
 from .meilu_accounts.API import router as meilu_accounts_router
+from .todos.API import router as todos_router
 
 router = APIRouter(prefix="/use_web")
 
@@ -52,3 +53,4 @@ router.include_router(on_sale_items_router, prefix="/on-sale-items", tags=["on-s
 router.include_router(orders_router, prefix="/orders", tags=["orders"], dependencies=_AUTH)
 router.include_router(inventory_router, prefix="/inventory", tags=["inventory"], dependencies=_AUTH)
 router.include_router(meilu_accounts_router, prefix="/meilu-accounts", tags=["meilu-accounts"], dependencies=_AUTH)
+router.include_router(todos_router, prefix="/todos", tags=["todos"], dependencies=_AUTH)

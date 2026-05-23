@@ -50,6 +50,7 @@ def _norm_auto_fetch(
     order_status: int,
     order_list: int,
     on_sale: int,
+    todos: int = 0,
 ) -> tuple:
     """
     规范化自动同步：总开关关闭时清空间隔与子任务；
@@ -57,16 +58,17 @@ def _norm_auto_fetch(
     """
     io = 1 if is_open else 0
     if io == 0:
-        return 0, None, 0, 0, 0
+        return 0, None, 0, 0, 0, 0
     iv = (fetch_interval or "").strip()
     if iv not in ALLOWED_FETCH_INTERVALS:
         raise HTTPException(status_code=400, detail="开启自动数据获取时，请选择有效的时间间隔")
     st = 1 if order_status else 0
     li = 1 if order_list else 0
     os_ = 1 if on_sale else 0
-    if not (st or li or os_):
+    td = 1 if todos else 0
+    if not (st or li or os_ or td):
         raise HTTPException(status_code=400, detail="开启自动数据获取时，请至少选择一项同步任务")
-    return 1, iv, st, li, os_
+    return 1, iv, st, li, os_, td
 
 
 def _norm_headers_dict(d: Optional[dict]) -> dict:
@@ -99,4 +101,5 @@ def _item_api_dict(item: MeiluAccountModel) -> dict:
     d['auto_fetch_order_status'] = 1 if d.get('auto_fetch_order_status') else 0
     d['auto_fetch_order_list'] = 1 if d.get('auto_fetch_order_list') else 0
     d['auto_fetch_on_sale'] = 1 if d.get('auto_fetch_on_sale') else 0
+    d['auto_fetch_todos'] = 1 if d.get('auto_fetch_todos') else 0
     return d
