@@ -828,10 +828,17 @@ async function onSendReply() {
   }
   replyLoading.value = true
   try {
-    await todosApi.sendTransactionMessage(currentRow.value.id, text)
-    ElMessage.success('已点击煤炉发送按钮')
-    // 发送后刷新一次抓取，让消息流更新
-    onDetailRefresh()
+    const result = await todosApi.sendTransactionMessage(currentRow.value.id, text)
+    if (result?.completed) {
+      // 待回复（IncomingMessage）：后端已软删 + 关浏览器，前端关 dialog + 刷列表
+      ElMessage.success('已回复，浏览器已关闭，待办已完成')
+      detailDialogVisible.value = false
+      load()
+    } else {
+      ElMessage.success('已点击煤炉发送按钮')
+      // 普通发送：刷新一次抓取让消息流更新
+      onDetailRefresh()
+    }
   } catch (e) {
     if (!e?.response) ElMessage.error(e?.message || '发送失败')
   } finally {

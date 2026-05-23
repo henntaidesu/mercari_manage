@@ -377,11 +377,33 @@ async def send_transaction_message(todo_id: int, text: str) -> Dict[str, Any]:
         item_id,
         len(body),
     )
+
+    # 待回复（IncomingMessage）类型：发送即视为待办完成
+    # → 等 1.5s 让 send API 落地 → 软删 todo + 关浏览器（不再次刷新）
+    kind = (todo.kind or "").strip()
+    completed = False
+    if kind == "IncomingMessage":
+        await asyncio.sleep(1.5)
+        try:
+            todo.is_delete = 1
+            todo.synced_at = int(time.time() * 1000)
+            todo.save()
+            log.info("[reply] IncomingMessage 已软删 todo_id=%s", todo_id)
+        except Exception as exc:
+            log.warning("[reply] 软删 todo 失败: %s", exc)
+        try:
+            await mgr.close_session_if_automation(auto_key)
+            log.info("[reply] IncomingMessage 已关闭 __auto 浏览器 account_id=%s", aid)
+        except Exception as exc:
+            log.warning("[reply] 关浏览器失败: %s", exc)
+        completed = True
+
     return {
         "todo_id": int(todo_id),
         "account_id": aid,
         "item_id": item_id,
         "sent": True,
+        "completed": completed,
         "text_len": len(body),
     }
 
