@@ -51,7 +51,7 @@ async def startup():
 
     async def _startup_web_drive_browsers() -> None:
         # 煤炉账号页「打开浏览器」：有头 meilu_{id}；INTERACTIVE_BROWSER_AUTO_START=0 可关闭
-        if os.environ.get("INTERACTIVE_BROWSER_AUTO_START", "1").strip().lower() not in (
+        if os.environ.get("INTERACTIVE_BROWSER_AUTO_START", "0").strip().lower() not in (
             "0",
             "false",
             "no",
@@ -64,7 +64,7 @@ async def startup():
             await startup_interactive_browsers_for_all_active_accounts()
 
         # 自动化无头 meilu_{id}__auto；PERSISTENT_BROWSER_AUTO_START=0 可关闭
-        if os.environ.get("PERSISTENT_BROWSER_AUTO_START", "1").strip().lower() not in (
+        if os.environ.get("PERSISTENT_BROWSER_AUTO_START", "0").strip().lower() not in (
             "0",
             "false",
             "no",
@@ -74,12 +74,12 @@ async def startup():
 
             await startup_browsers_for_all_active_accounts()
 
-    if os.environ.get("INTERACTIVE_BROWSER_AUTO_START", "1").strip().lower() not in (
+    if os.environ.get("INTERACTIVE_BROWSER_AUTO_START", "0").strip().lower() not in (
         "0",
         "false",
         "no",
         "off",
-    ) or os.environ.get("PERSISTENT_BROWSER_AUTO_START", "1").strip().lower() not in (
+    ) or os.environ.get("PERSISTENT_BROWSER_AUTO_START", "0").strip().lower() not in (
         "0",
         "false",
         "no",
