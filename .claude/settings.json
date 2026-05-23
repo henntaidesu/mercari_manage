@@ -4,7 +4,9 @@
       "Bash(python -m compileall -q src/use_web src/API.py src/operation_mercari/API.py)",
       "Bash(python -m compileall -q backend/main.py backend/src/API.py backend/src/use_web)",
       "Bash(rm -rf web_operate/__pycache__)",
-      "Bash(rmdir web_operate)"
+      "Bash(rmdir web_operate)",
+      "Bash(python -c \"import ast; files=[r'd:/Project/mercari/backend/src/use_web/auth/API.py', r'd:/Project/mercari/backend/src/use_web/auth/units/auth_handler.py', r'd:/Project/mercari/backend/src/use_web/app_config/API.py', r'd:/Project/mercari/backend/src/use_web/app_config/units/app_config_handler.py', r'd:/Project/mercari/backend/src/use_web/cost_expenses/API.py', r'd:/Project/mercari/backend/src/use_web/cost_expenses/units/cost_expenses_handler.py', r'd:/Project/mercari/backend/src/use_web/cost_records/API.py', r'd:/Project/mercari/backend/src/use_web/cost_records/units/cost_records_handler.py', r'd:/Project/mercari/backend/src/operation_mercari/get_order/get_in_progress_order/get_order_info.py']; [ast.parse\\(open\\(f, encoding='utf-8'\\).read\\(\\), f\\) for f in files]; print\\('All files parse OK'\\)\")",
+      "Bash(python -c ' *)"
     ]
   }
 }

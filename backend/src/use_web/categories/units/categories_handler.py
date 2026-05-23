@@ -1,0 +1,57 @@
+# -*- coding: utf-8 -*-
+"""分类管理处理器。"""
+from fastapi import HTTPException
+from pydantic import BaseModel as PydanticModel
+from typing import Optional
+from ....db_manage.models.category import CategoryModel
+
+
+class CategoryCreate(PydanticModel):
+    name: str
+    description: Optional[str] = None
+
+
+class CategoryUpdate(PydanticModel):
+    name: Optional[str] = None
+    description: Optional[str] = None
+
+
+def _serialize(cat: CategoryModel) -> dict:
+    d = cat.to_dict()
+    d['inventory_count'] = CategoryModel.get_inventory_count(cat.id)
+    return d
+
+
+def list_categories():
+    return [_serialize(c) for c in CategoryModel.find_all(order_by="id ASC")]
+
+
+def create_category(data: CategoryCreate):
+    if CategoryModel.find_by_name(data.name):
+        raise HTTPException(status_code=400, detail="分类名称已存在")
+    cat = CategoryModel(name=data.name, description=data.description)
+    if not cat.save():
+        raise HTTPException(status_code=500, detail="保存失败")
+    return _serialize(cat)
+
+
+def update_category(cid: int, data: CategoryUpdate):
+    cat = CategoryModel.find_by_id(id=cid)
+    if not cat:
+        raise HTTPException(status_code=404, detail="分类不存在")
+    if data.name is not None:
+        cat.name = data.name
+    if data.description is not None:
+        cat.description = data.description
+    cat.save()
+    return _serialize(cat)
+
+
+def delete_category(cid: int):
+    cat = CategoryModel.find_by_id(id=cid)
+    if not cat:
+        raise HTTPException(status_code=404, detail="分类不存在")
+    if CategoryModel.get_inventory_count(cid) > 0:
+        raise HTTPException(status_code=400, detail="该分类下存在商品，无法删除")
+    cat.delete()
+    return {"message": "删除成功"}

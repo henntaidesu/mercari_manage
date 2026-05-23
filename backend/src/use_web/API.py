@@ -1,27 +1,38 @@
 # -*- coding: utf-8 -*-
 """
-use_web V2 API 聚合模块
+use_web V2 API 聚合模块（按前端页面归类）
 
 层级蓝图注册：
 - 从 src/API.py 接收前缀 /mercariV2/src
-- 向下传递给各资源模块，添加 /use_web/<resource> 路径段
-- 完整 URL 格式: /mercariV2/src/use_web/<resource>/<endpoint>
+- 向下传递给各资源模块，添加 /use_web/<page> 路径段
+- 完整 URL 格式: /mercariV2/src/use_web/<page>/<endpoint>
+
+页面归类：
+- login           前端 /login 页（含启动种子管理员事件）
+- inventory       前端 /inventory 页（含 ocr/scan 辅助识别）
+- orders          前端 /orders 页
+- on_sale_items   前端 /on-sale-items 页
+- transactions    前端 /transactions 页
+- cost_records    前端 /cost-records 页
+- cost_expenses   前端 /cost-expenses 页
+- meilu_accounts  前端 /meilu-accounts 页
+- warehouses      前端 /warehouses 页
+- categories      前端 /categories 页
+- product_type_category_mappings  前端 /product-type-category-mappings 页
+- system          前端 /system 页（含 ssl_mitm/app_config/用户管理）
+- web_drive       跨页面共享的浏览器自动化基础设施
 """
 
 from fastapi import APIRouter, Depends
 
 from ..auth import require_auth
 
-from .auth.API import router as auth_router
+from .login.API import router as login_router
 from .system.API import router as system_router
-from .ssl_mitm.API import router as ssl_mitm_router
-from .ocr.API import router as ocr_router
-from .scan.API import router as scan_router
 from .categories.API import router as categories_router
 from .transactions.API import router as transactions_router
 from .product_types.API import router as product_types_router
 from .product_type_category_mappings.API import router as ptcm_router
-from .app_config.API import router as app_config_router
 from .cost_records.API import router as cost_records_router
 from .cost_expenses.API import router as cost_expenses_router
 from .warehouses.API import router as warehouses_router
@@ -35,8 +46,8 @@ from .meilu_accounts.API import router as meilu_accounts_router
 router = APIRouter(prefix="/use_web")
 
 # ============ 公开端点（无需认证） ============
-# auth 模块：login 不需要 auth，其他端点在函数签名里各自加 Depends(require_auth)
-router.include_router(auth_router, prefix="/auth", tags=["auth"])
+# 登录页：login 端点 + 启动种子事件
+router.include_router(login_router, prefix="/login", tags=["login"])
 # 库存公开缩略图
 router.include_router(inventory_public_router, prefix="/inventory", tags=["inventory-public"])
 
@@ -44,9 +55,6 @@ router.include_router(inventory_public_router, prefix="/inventory", tags=["inven
 _AUTH = [Depends(require_auth)]
 
 router.include_router(system_router, prefix="/system", tags=["system"], dependencies=_AUTH)
-router.include_router(ssl_mitm_router, prefix="/ssl-mitm", tags=["ssl-mitm"], dependencies=_AUTH)
-router.include_router(ocr_router, prefix="/ocr", tags=["ocr"], dependencies=_AUTH)
-router.include_router(scan_router, prefix="/scan", tags=["scan"], dependencies=_AUTH)
 router.include_router(categories_router, prefix="/categories", tags=["categories"], dependencies=_AUTH)
 router.include_router(transactions_router, prefix="/transactions", tags=["transactions"], dependencies=_AUTH)
 router.include_router(product_types_router, prefix="/product-types", tags=["product-types"], dependencies=_AUTH)
@@ -56,7 +64,6 @@ router.include_router(
     tags=["product-type-category-mappings"],
     dependencies=_AUTH,
 )
-router.include_router(app_config_router, prefix="/app-config", tags=["app-config"], dependencies=_AUTH)
 router.include_router(cost_records_router, prefix="/cost-records", tags=["cost-records"], dependencies=_AUTH)
 router.include_router(cost_expenses_router, prefix="/cost-expenses", tags=["cost-expenses"], dependencies=_AUTH)
 router.include_router(warehouses_router, prefix="/warehouses", tags=["warehouses"], dependencies=_AUTH)

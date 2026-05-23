@@ -1,20 +1,13 @@
 # -*- coding: utf-8 -*-
-"""应用配置：出品默认值等（存于 [config] 表）。
-
-层级蓝图注册：
-- 从 use_web/API.py 接收前缀 /mercariV2/src/use_web/app_config
-- 完整 URL 示例: GET /mercariV2/src/use_web/app_config/<endpoint>
-"""
+"""应用配置处理器：出品默认值读写。"""
 
 from typing import Any, Dict, Optional
 
-from fastapi import APIRouter, HTTPException
+from fastapi import HTTPException
 from pydantic import BaseModel, Field, field_validator
 
-from ...db_manage.models.config_entry import ConfigEntryModel
-from ...db_manage.models.meilu_account import MeiluAccountModel
-
-router = APIRouter()
+from ....db_manage.models.config_entry import ConfigEntryModel
+from ....db_manage.models.meilu_account import MeiluAccountModel
 
 _K_SHIP_FROM = "listing_defaults_shipping_from_area_id"
 _K_SHIP_METHOD = "listing_defaults_shipping_method"
@@ -84,12 +77,10 @@ def _read_listing_defaults() -> Dict[str, Any]:
     }
 
 
-@router.get("/listing-defaults", response_model=ListingDefaultsOut)
 def get_listing_defaults():
     return ListingDefaultsOut(**_read_listing_defaults())
 
 
-@router.put("/listing-defaults", response_model=ListingDefaultsOut)
 def put_listing_defaults(body: ListingDefaultsUpdate):
     data = body.model_dump(exclude_unset=True)
 

@@ -1,17 +1,13 @@
 # -*- coding: utf-8 -*-
-"""OCR 识别接口。
+"""OCR 识别处理器（EasyOCR 中英文识别）。"""
 
-层级蓝图注册：
-- 从 use_web/API.py 接收前缀 /mercariV2/src/use_web/ocr
-- 完整 URL 示例: POST /mercariV2/src/use_web/ocr/ocr-region
-"""
 import io
 import base64
-from fastapi import APIRouter, HTTPException
+
+from fastapi import HTTPException
 from pydantic import BaseModel
 from PIL import Image
 
-router = APIRouter()
 
 _reader = None
 
@@ -25,7 +21,7 @@ def _get_reader():
         except ImportError:
             raise HTTPException(
                 status_code=500,
-                detail="OCR 功能未安装，请在后端环境中执行: pip install easyocr"
+                detail="OCR 功能未安装，请在后端环境中执行: pip install easyocr",
             )
     return _reader
 
@@ -34,7 +30,6 @@ class OcrRequest(BaseModel):
     image: str  # data:image/...;base64,... 或纯 base64
 
 
-@router.post("/ocr-region")
 def ocr_region(req: OcrRequest):
     """接收前端裁剪好的图片区域 base64，返回识别到的文字。"""
     try:
