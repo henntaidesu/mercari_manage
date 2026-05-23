@@ -7,8 +7,8 @@ from typing import Optional
 from fastapi import HTTPException, UploadFile, File
 from pydantic import BaseModel as PydanticModel
 
-from ....db_manage.models.cost_record import CostRecordModel
-from ...image_storage import save_upload_image, delete_image_file
+from .....db_manage.models.cost_record import CostRecordModel
+from ....image_storage import save_upload_image, delete_image_file
 
 ALLOWED_TYPES = {"purchase", "shipping", "packaging", "operation", "other"}
 

@@ -21,7 +21,7 @@
       </button>
     </Teleport>
 
-    <!-- 手机端挂到 body：避免任意祖先 transform 导致侧栏 fixed 错位，保证从左缘滑入 -->
+    <!-- 主侧边栏（一级菜单） -->
     <Teleport to="body" :disabled="!isMobile">
       <el-aside
         width="220px"
@@ -50,17 +50,30 @@
         </div>
         <div class="sidebar-menu-wrap">
           <el-menu
-            :default-active="$route.path"
+            :default-active="activePrimary"
             :collapse="false"
-            router
             background-color="#001529"
             text-color="#a6adb4"
             active-text-color="#ffffff"
-            @select="onMenuSelect"
+            @select="onPrimarySelect"
           >
-            <el-menu-item v-for="item in menuItems" :key="item.path" :index="item.path">
+            <el-menu-item
+              v-for="item in menuItems"
+              :key="item.path"
+              :index="item.path"
+              :class="{ 'has-children': !!item.children }"
+            >
               <el-icon><component :is="item.icon" /></el-icon>
-              <template #title>{{ item.title }}</template>
+              <template #title>
+                <span class="menu-title">{{ item.title }}</span>
+                <el-icon
+                  v-if="item.children"
+                  class="menu-arrow"
+                  :class="{ 'menu-arrow--open': secondaryOpen && activeWithChildren === item.path }"
+                >
+                  <ArrowRight />
+                </el-icon>
+              </template>
             </el-menu-item>
           </el-menu>
         </div>
@@ -76,6 +89,36 @@
     </el-aside>
     </Teleport>
 
+    <!-- 二级侧边栏（位于一级右侧；选中后自动收缩） -->
+    <transition name="slide-secondary">
+      <el-aside
+        v-if="secondaryOpen && currentSecondaryItems.length > 0"
+        width="200px"
+        class="secondary-sidebar"
+      >
+        <div class="secondary-header">
+          <span class="secondary-title">{{ activePrimaryTitle }}</span>
+          <el-button text class="secondary-close" @click="closeSecondary">
+            <el-icon :size="16"><Close /></el-icon>
+          </el-button>
+        </div>
+        <div class="secondary-menu-wrap">
+          <el-menu
+            :default-active="$route.path"
+            background-color="#0e1830"
+            text-color="#a6adb4"
+            active-text-color="#ffffff"
+            @select="onSecondarySelect"
+          >
+            <el-menu-item v-for="c in currentSecondaryItems" :key="c.path" :index="c.path">
+              <el-icon><component :is="c.icon" /></el-icon>
+              <template #title>{{ c.title }}</template>
+            </el-menu-item>
+          </el-menu>
+        </div>
+      </el-aside>
+    </transition>
+
     <el-main class="main-content">
       <router-view v-slot="{ Component }">
         <transition name="fade" mode="out-in">
@@ -87,17 +130,24 @@
 </template>
 
 <script setup>
-import { computed, ref, onMounted, onUnmounted } from 'vue'
-import { useRouter } from 'vue-router'
+import { computed, ref, onMounted, onUnmounted, watch } from 'vue'
+import { useRouter, useRoute } from 'vue-router'
 import { ElMessageBox } from 'element-plus'
-import { Menu, Close } from '@element-plus/icons-vue'
+import { Menu, Close, ArrowRight } from '@element-plus/icons-vue'
 
 const router = useRouter()
+const route = useRoute()
+
 const isMobile = ref(false)
 /** 仅手机端：抽屉侧栏是否打开；电脑端忽略 */
 const mobileDrawerOpen = ref(false)
 
-/** 与库存页等一致：(max-width: 768px)，避免 768px 宽度下 Layout/页面判断不一致 */
+/** 二级菜单是否展开 */
+const secondaryOpen = ref(false)
+/** 当前正在展开二级面板的一级菜单 path（仅对带 children 的一级有意义） */
+const activeWithChildren = ref(null)
+
+/** 与库存页等一致：(max-width: 768px) */
 let mqMobile = null
 
 function syncMobileFromMedia() {
@@ -105,12 +155,6 @@ function syncMobileFromMedia() {
   const next = mqMobile.matches
   isMobile.value = next
   if (!next) {
-    mobileDrawerOpen.value = false
-  }
-}
-
-function onMenuSelect() {
-  if (isMobile.value) {
     mobileDrawerOpen.value = false
   }
 }
@@ -138,15 +182,91 @@ const menuItems = [
   { path: '/inventory', title: '库存管理', icon: 'Goods' },
   { path: '/orders', title: '订单管理', icon: 'Tickets' },
   { path: '/on-sale-items', title: '在售商品', icon: 'ShoppingBag' },
-  { path: '/transactions', title: '库存记录', icon: 'List' },
-  { path: '/cost-records', title: '库存包材', icon: 'Money' },
-  { path: '/cost-expenses', title: '包材使用记录', icon: 'Wallet' },
   { path: '/meilu-accounts', title: '煤炉账号', icon: 'User' },
-  { path: '/warehouses', title: '仓库管理', icon: 'OfficeBuilding' },
-  { path: '/categories', title: '游戏分类', icon: 'Collection' },
-  { path: '/product-type-category-mappings', title: '商品类型映射', icon: 'Connection' },
-  { path: '/system', title: '系统管理', icon: 'Setting' },
+  {
+    path: '/system',
+    title: '系统管理',
+    icon: 'Setting',
+    children: [
+      { path: '/system', title: '系统总览', icon: 'Setting' },
+      { path: '/system/transactions', title: '库存记录', icon: 'List' },
+      { path: '/system/cost-records', title: '库存包材', icon: 'Money' },
+      { path: '/system/cost-expenses', title: '包材使用记录', icon: 'Wallet' },
+      { path: '/system/warehouses', title: '仓库管理', icon: 'OfficeBuilding' },
+      { path: '/system/categories', title: '游戏分类', icon: 'Collection' },
+      { path: '/system/product-type-category-mappings', title: '商品类型映射', icon: 'Connection' }
+    ]
+  }
 ]
+
+/** 当前路由所属的一级菜单 path（用于一级 active 高亮） */
+const activePrimary = computed(() => {
+  for (const item of menuItems) {
+    if (item.children) {
+      if (item.children.some(c => c.path === route.path)) return item.path
+      if (item.path === route.path) return item.path
+    } else if (item.path === route.path) {
+      return item.path
+    }
+  }
+  return route.path
+})
+
+/** 当前展开的二级菜单项列表 */
+const currentSecondaryItems = computed(() => {
+  if (!activeWithChildren.value) return []
+  const found = menuItems.find(m => m.path === activeWithChildren.value)
+  return found?.children || []
+})
+
+const activePrimaryTitle = computed(() => {
+  const found = menuItems.find(m => m.path === activeWithChildren.value)
+  return found?.title || ''
+})
+
+function onPrimarySelect(path) {
+  const item = menuItems.find(m => m.path === path)
+  if (!item) return
+
+  if (item.children) {
+    // 一级带 children：切换二级面板展开状态，不跳路由
+    if (activeWithChildren.value === path) {
+      secondaryOpen.value = !secondaryOpen.value
+    } else {
+      activeWithChildren.value = path
+      secondaryOpen.value = true
+    }
+  } else {
+    // 普通一级菜单：关闭二级，跳转
+    secondaryOpen.value = false
+    activeWithChildren.value = null
+    if (route.path !== path) router.push(path)
+    if (isMobile.value) mobileDrawerOpen.value = false
+  }
+}
+
+function onSecondarySelect(path) {
+  if (route.path !== path) router.push(path)
+  // 选中二级后自动收缩
+  secondaryOpen.value = false
+  if (isMobile.value) mobileDrawerOpen.value = false
+}
+
+function closeSecondary() {
+  secondaryOpen.value = false
+}
+
+/** 直接通过 URL 进入二级页时：高亮一级 + 初始化 activeWithChildren（但不展开二级面板） */
+watch(
+  () => route.path,
+  (p) => {
+    const owner = menuItems.find(item => item.children && item.children.some(c => c.path === p))
+    if (owner) {
+      activeWithChildren.value = owner.path
+    }
+  },
+  { immediate: true }
+)
 
 const handleLogout = async () => {
   await ElMessageBox.confirm('确认退出当前账号？', '提示', {
@@ -175,7 +295,61 @@ const handleLogout = async () => {
   min-height: 0;
 }
 
-/* 手机：抽屉侧栏从左侧滑入（挂到 body，相对视口固定） */
+/* 二级侧边栏：位于主侧边栏右侧，深色稍浅，with 200px */
+.secondary-sidebar {
+  background: #0e1830;
+  border-left: 1px solid rgba(255, 255, 255, 0.06);
+  overflow: hidden;
+  flex-shrink: 0;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+
+.secondary-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 14px 16px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+  color: #b8c4d0;
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.secondary-title {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.secondary-close {
+  color: #a6adb4 !important;
+  padding: 4px !important;
+  flex-shrink: 0;
+}
+
+.secondary-menu-wrap {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  overflow-x: hidden;
+}
+
+/* 二级菜单滑入/滑出动画 */
+.slide-secondary-enter-active,
+.slide-secondary-leave-active {
+  transition: width 0.22s cubic-bezier(0.32, 0.72, 0, 1), opacity 0.18s ease;
+}
+.slide-secondary-enter-from,
+.slide-secondary-leave-to {
+  width: 0 !important;
+  opacity: 0;
+}
+
+/* 手机：抽屉侧栏从左侧滑入 */
 .sidebar--mobile {
   position: fixed !important;
   left: 0;
@@ -289,6 +463,28 @@ const handleLogout = async () => {
   border-radius: 6px;
   margin: 2px 8px;
   width: calc(100% - 16px);
+}
+
+/* 一级菜单中带 children 的项：在 title 右侧显示箭头 */
+:deep(.el-menu-item.has-children .el-tooltip__trigger),
+:deep(.el-menu-item.has-children) {
+  position: relative;
+}
+
+.menu-title {
+  flex: 1;
+  min-width: 0;
+}
+
+.menu-arrow {
+  margin-left: auto;
+  font-size: 12px;
+  transition: transform 0.2s ease;
+  color: #9ba8bf;
+}
+
+.menu-arrow--open {
+  transform: rotate(90deg);
 }
 
 .main-content {

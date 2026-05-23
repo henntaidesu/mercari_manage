@@ -6,7 +6,7 @@ from typing import Optional
 from fastapi import HTTPException
 from pydantic import BaseModel as PydanticModel
 
-from ....db_manage.models.product_type_category_mapping import ProductTypeCategoryMappingModel
+from .....db_manage.models.product_type_category_mapping import ProductTypeCategoryMappingModel
 
 
 class MappingCreate(PydanticModel):

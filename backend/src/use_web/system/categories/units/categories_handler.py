@@ -3,7 +3,7 @@
 from fastapi import HTTPException
 from pydantic import BaseModel as PydanticModel
 from typing import Optional
-from ....db_manage.models.category import CategoryModel
+from .....db_manage.models.category import CategoryModel
 
 
 class CategoryCreate(PydanticModel):

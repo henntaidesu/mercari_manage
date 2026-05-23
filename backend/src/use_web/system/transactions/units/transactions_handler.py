@@ -3,8 +3,8 @@
 from fastapi import HTTPException
 from pydantic import BaseModel as PydanticModel
 from typing import Optional
-from ....db_manage.models.transaction import TransactionModel
-from ....db_manage.models.inventory import InventoryModel
+from .....db_manage.models.transaction import TransactionModel
+from .....db_manage.models.inventory import InventoryModel
 
 
 class TransactionCreate(PydanticModel):

@@ -13,13 +13,9 @@ use_web V2 API 聚合模块（按前端页面归类）
 - orders          前端 /orders 页
 - on_sale_items   前端 /on-sale-items 页
 - transactions    前端 /transactions 页
-- cost_records    前端 /cost-records 页
-- cost_expenses   前端 /cost-expenses 页
 - meilu_accounts  前端 /meilu-accounts 页
-- warehouses      前端 /warehouses 页
-- categories      前端 /categories 页
 - product_type_category_mappings  前端 /product-type-category-mappings 页
-- system          前端 /system 页（含 ssl_mitm/app_config/用户管理）
+- system          前端 /system 页（一级 + 二级：cost_records/cost_expenses/warehouses/categories）
 - web_drive       跨页面共享的浏览器自动化基础设施
 """
 
@@ -29,13 +25,7 @@ from ..auth import require_auth
 
 from .login.API import router as login_router
 from .system.API import router as system_router
-from .categories.API import router as categories_router
-from .transactions.API import router as transactions_router
 from .product_types.API import router as product_types_router
-from .product_type_category_mappings.API import router as ptcm_router
-from .cost_records.API import router as cost_records_router
-from .cost_expenses.API import router as cost_expenses_router
-from .warehouses.API import router as warehouses_router
 from .web_drive.API import router as web_drive_router
 from .on_sale_items.API import router as on_sale_items_router
 from .orders.API import router as orders_router
@@ -54,19 +44,9 @@ router.include_router(inventory_public_router, prefix="/inventory", tags=["inven
 # ============ 需要认证的端点 ============
 _AUTH = [Depends(require_auth)]
 
+# 系统管理（含 6 个二级页面：cost-records / cost-expenses / warehouses / categories / transactions / product-type-category-mappings）
 router.include_router(system_router, prefix="/system", tags=["system"], dependencies=_AUTH)
-router.include_router(categories_router, prefix="/categories", tags=["categories"], dependencies=_AUTH)
-router.include_router(transactions_router, prefix="/transactions", tags=["transactions"], dependencies=_AUTH)
 router.include_router(product_types_router, prefix="/product-types", tags=["product-types"], dependencies=_AUTH)
-router.include_router(
-    ptcm_router,
-    prefix="/product-type-category-mappings",
-    tags=["product-type-category-mappings"],
-    dependencies=_AUTH,
-)
-router.include_router(cost_records_router, prefix="/cost-records", tags=["cost-records"], dependencies=_AUTH)
-router.include_router(cost_expenses_router, prefix="/cost-expenses", tags=["cost-expenses"], dependencies=_AUTH)
-router.include_router(warehouses_router, prefix="/warehouses", tags=["warehouses"], dependencies=_AUTH)
 router.include_router(web_drive_router, prefix="/web-drive", tags=["web-drive"], dependencies=_AUTH)
 router.include_router(on_sale_items_router, prefix="/on-sale-items", tags=["on-sale-items"], dependencies=_AUTH)
 router.include_router(orders_router, prefix="/orders", tags=["orders"], dependencies=_AUTH)

@@ -16,14 +16,15 @@ const routes = [
       { path: 'inventory', name: 'Inventory', component: () => import('@/views/Inventory.vue'), meta: { title: '库存管理', icon: 'Goods' } },
       { path: 'orders', name: 'Orders', component: () => import('@/views/Orders.vue'), meta: { title: '订单管理', icon: 'Tickets' } },
       { path: 'on-sale-items', name: 'OnSaleItems', component: () => import('@/views/OnSaleItems.vue'), meta: { title: '在售商品', icon: 'ShoppingBag' } },
-      { path: 'transactions', name: 'Transactions', component: () => import('@/views/Transactions.vue'), meta: { title: '库存记录', icon: 'List' } },
-      { path: 'cost-records', name: 'CostRecords', component: () => import('@/views/CostRecords.vue'), meta: { title: '库存包材', icon: 'Money' } },
-      { path: 'cost-expenses', name: 'CostExpenses', component: () => import('@/views/CostExpenses.vue'), meta: { title: '包材使用记录', icon: 'Wallet' } },
       { path: 'meilu-accounts', name: 'MeiluAccounts', component: () => import('@/views/MeiluAccounts.vue'), meta: { title: '煤炉账号', icon: 'User' } },
-      { path: 'warehouses', name: 'Warehouses', component: () => import('@/views/Warehouses.vue'), meta: { title: '仓库管理', icon: 'OfficeBuilding' } },
-      { path: 'categories', name: 'Categories', component: () => import('@/views/Categories.vue'), meta: { title: '游戏分类', icon: 'Collection' } },
-      { path: 'product-type-category-mappings', name: 'ProductTypeCategoryMappings', component: () => import('@/views/ProductTypeCategoryMappings.vue'), meta: { title: '商品类型映射', icon: 'Connection' } },
-      { path: 'system', name: 'System', component: () => import('@/views/System.vue'), meta: { title: '系统管理', icon: 'Setting' } }
+      // 系统管理（一级，二级菜单由 Layout 侧边栏右侧弹出，URL 嵌套到 /system/*）
+      { path: 'system', name: 'System', component: () => import('@/views/system/System.vue'), meta: { title: '系统总览', icon: 'Setting' } },
+      { path: 'system/transactions', name: 'Transactions', component: () => import('@/views/system/Transactions.vue'), meta: { title: '库存记录', icon: 'List' } },
+      { path: 'system/cost-records', name: 'CostRecords', component: () => import('@/views/system/CostRecords.vue'), meta: { title: '库存包材', icon: 'Money' } },
+      { path: 'system/cost-expenses', name: 'CostExpenses', component: () => import('@/views/system/CostExpenses.vue'), meta: { title: '包材使用记录', icon: 'Wallet' } },
+      { path: 'system/warehouses', name: 'Warehouses', component: () => import('@/views/system/Warehouses.vue'), meta: { title: '仓库管理', icon: 'OfficeBuilding' } },
+      { path: 'system/categories', name: 'Categories', component: () => import('@/views/system/Categories.vue'), meta: { title: '游戏分类', icon: 'Collection' } },
+      { path: 'system/product-type-category-mappings', name: 'ProductTypeCategoryMappings', component: () => import('@/views/system/ProductTypeCategoryMappings.vue'), meta: { title: '商品类型映射', icon: 'Connection' } }
     ]
   }
 ]

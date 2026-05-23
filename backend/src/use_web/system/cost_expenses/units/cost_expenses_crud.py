@@ -5,8 +5,8 @@ from typing import Optional
 
 from fastapi import HTTPException
 
-from ....db_manage.models.cost_expense import CostExpenseModel
-from ....db_manage.models.order import OrderModel
+from .....db_manage.models.cost_expense import CostExpenseModel
+from .....db_manage.models.order import OrderModel
 
 from .cost_expenses_models import CostExpenseCreate, CostExpenseUpdate
 from .cost_expenses_helpers import (
