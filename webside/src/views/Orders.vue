@@ -384,7 +384,7 @@
           layout="total, sizes, prev, pager, next"
           @change="load"
           background
-          small
+          size="small"
         />
       </div>
     </el-card>
