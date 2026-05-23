@@ -20,6 +20,7 @@ from mitmproxy import http  # noqa: E402
 from src.ssl_mitm_proxy.capture_config import (  # noqa: E402
     atomic_write_capture_file,
     atomic_write_item_get_response,
+    atomic_write_notification_response,
     atomic_write_on_sale_list_response,
     atomic_write_shipping_classes_response,
     atomic_write_shipping_info_response,
@@ -235,6 +236,22 @@ class MercariCapture:
                 data_len = len(body_json.get("data") or []) if isinstance(body_json, dict) else 0
                 _log_line(
                     f"[MITM] todolist/list 响应已写入 data_len={data_len} nextPageToken={npt!r}"
+                )
+                return
+
+            if ctype == "notification_list" and dpop == "dpop_notification":
+                atomic_write_notification_response(
+                    {
+                        "ts": int(time.time() * 1000),
+                        "request_url": str(meta.get("full_url") or url),
+                        "http_status": code,
+                        "body": body_json,
+                    },
+                )
+                npt = body_json.get("nextPageToken") if isinstance(body_json, dict) else None
+                data_len = len(body_json.get("data") or []) if isinstance(body_json, dict) else 0
+                _log_line(
+                    f"[MITM] notification/list 响应已写入 data_len={data_len} nextPageToken={npt!r}"
                 )
                 return
 

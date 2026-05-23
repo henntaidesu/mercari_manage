@@ -1,0 +1,17 @@
+import http from './http'
+
+// お知らせ通知（本地缓存 services/notification/v1/list）→ /mercariV2/src/use_web/notifications/*
+export const notificationsApi = {
+  list: (params) => http.get('/use_web/notifications', { params }),
+  kinds: () => http.get('/use_web/notifications/kinds'),
+  sync: (data, axiosConfig = {}) =>
+    http.post('/use_web/notifications/sync', data, { timeout: 0, ...axiosConfig }),
+  markRead: (ids, is_read = true) =>
+    http.post('/use_web/notifications/mark-read', { ids, is_read }),
+  markAllRead: (account_id) =>
+    http.post(
+      '/use_web/notifications/mark-all-read',
+      null,
+      account_id ? { params: { account_id } } : undefined,
+    ),
+}

@@ -21,6 +21,7 @@ from .models import (
     ProductTypeCategoryMappingModel,
     ConfigEntryModel,
     TodoItemModel,
+    NotificationModel,
 )
 
 
@@ -374,6 +375,7 @@ class DBManager:
             MeiluAccountModel,  # 煤炉账号
             OnSaleItemModel,  # 在售商品缓存
             TodoItemModel,  # 待办事项缓存（依赖 meilu_accounts，仅顺序习惯）
+            NotificationModel,  # お知らせ通知缓存（依赖 meilu_accounts，仅顺序习惯）
             ProductTypeCategoryMappingModel,  # 商品类型与类别字段映射
         ]
 

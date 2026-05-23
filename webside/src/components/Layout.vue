@@ -183,6 +183,7 @@ const menuItems = [
   { path: '/orders', title: '订单管理', icon: 'Tickets' },
   { path: '/on-sale-items', title: '在售商品', icon: 'ShoppingBag' },
   { path: '/todos', title: '待办事项', icon: 'BellFilled' },
+  { path: '/notifications', title: 'お知らせ', icon: 'Bell' },
   { path: '/meilu-accounts', title: '煤炉账号', icon: 'User' },
   {
     path: '/system',

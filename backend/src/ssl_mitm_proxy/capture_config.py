@@ -154,6 +154,13 @@ def parse_capture_target(
                 "dpop_field": "dpop_todolist",
                 "full_url": u,
             }
+        if norm_path.endswith("services/notification/v1/list"):
+            return {
+                "capture_type": "notification_list",
+                "http_method": m or "POST",
+                "dpop_field": "dpop_notification",
+                "full_url": u,
+            }
         if norm_path.endswith("shipping/get_info"):
             teid_list = qd.get("transaction_evidence_id") or qd.get("transactionEvidenceId") or []
             teid = (teid_list[0] or "").strip() if teid_list else ""
@@ -500,6 +507,47 @@ def atomic_write_todolist_response(payload: Dict[str, Any]) -> None:
 
 def read_todolist_response() -> Optional[Dict[str, Any]]:
     path = todolist_response_path()
+    if not os.path.isfile(path):
+        return None
+    with _lock:
+        try:
+            with open(path, "r", encoding="utf-8") as f:
+                return json.load(f)
+        except (json.JSONDecodeError, OSError):
+            return None
+
+
+# ============ お知らせ：services/notification/v1/list ============
+# 与 todolist 相同的设计：单一 latest 文件，同步函数进入时 clear、抓取后 read；
+# 多账号通过 run_meilu_serial_async 串行隔离。
+
+def notification_response_path() -> str:
+    return os.path.join(ssl_mitm_data_dir(), "notification_latest_response.json")
+
+
+def clear_notification_response_file() -> None:
+    p = notification_response_path()
+    with _lock:
+        try:
+            if os.path.isfile(p):
+                os.remove(p)
+        except OSError:
+            pass
+
+
+def atomic_write_notification_response(payload: Dict[str, Any]) -> None:
+    d = ssl_mitm_data_dir()
+    os.makedirs(d, exist_ok=True)
+    path = notification_response_path()
+    tmp = path + ".tmp"
+    with _lock:
+        with open(tmp, "w", encoding="utf-8") as f:
+            json.dump(payload, f, ensure_ascii=False, indent=2)
+        os.replace(tmp, path)
+
+
+def read_notification_response() -> Optional[Dict[str, Any]]:
+    path = notification_response_path()
     if not os.path.isfile(path):
         return None
     with _lock:
