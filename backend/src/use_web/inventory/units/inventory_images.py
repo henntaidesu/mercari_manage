@@ -1,0 +1,224 @@
+# -*- coding: utf-8 -*-
+"""库存图片相关辅助函数与图片相关端点。"""
+import io
+import os
+import json
+import base64
+from typing import Optional, List
+from fastapi import HTTPException, UploadFile, File
+from PIL import Image
+
+from ....db_manage.database import DatabaseManager
+from ....image_storage import (
+    is_base64_image,
+    save_base64_image,
+    delete_image_file,
+    get_image_root,
+    save_upload_image,
+)
+
+from .inventory_helpers import (
+    MAX_INVENTORY_IMAGES,
+    _legacy_paths_from_db_columns,
+    _query_inventory_with_joins,
+)
+from .inventory_models import InventoryCreate, CombinedInventoryCreate
+
+db = DatabaseManager()
+
+
+def _normalize_images_input_list(items: Optional[List], field_label: str = "images") -> Optional[List[str]]:
+    """None 表示调用方未传 images；空数组表示清空全部图片。"""
+    if items is None:
+        return None
+    if not isinstance(items, list):
+        raise HTTPException(status_code=400, detail=f"{field_label} 须为数组")
+    if len(items) > MAX_INVENTORY_IMAGES:
+        raise HTTPException(
+            status_code=400,
+            detail=f"最多上传 {MAX_INVENTORY_IMAGES} 张图片",
+        )
+    out: List[str] = []
+    for it in items:
+        if it is None:
+            continue
+        s = str(it).strip() if isinstance(it, str) else str(it).strip()
+        if not s:
+            continue
+        out.append(s)
+    if len(out) > MAX_INVENTORY_IMAGES:
+        raise HTTPException(
+            status_code=400,
+            detail=f"最多上传 {MAX_INVENTORY_IMAGES} 张图片",
+        )
+    return out
+
+
+def _convert_image_payload(image_value: Optional[str], prefix: str) -> Optional[str]:
+    if image_value is None:
+        return None
+    val = image_value.strip() if isinstance(image_value, str) else image_value
+    if not val:
+        return None
+    if is_base64_image(val):
+        try:
+            return save_base64_image(val, prefix=prefix)
+        except Exception:
+            raise HTTPException(status_code=400, detail="图片格式无效或保存失败")
+    return val
+
+
+def _convert_image_list_to_paths(raw_items: List[str]) -> List[str]:
+    paths: List[str] = []
+    for raw in raw_items:
+        p = _convert_image_payload(raw, "inventory_img")
+        if p:
+            paths.append(p)
+        if len(paths) > MAX_INVENTORY_IMAGES:
+            raise HTTPException(
+                status_code=400,
+                detail=f"最多上传 {MAX_INVENTORY_IMAGES} 张图片",
+            )
+    return paths
+
+
+def _sync_image_columns_from_paths(paths: List[str]) -> dict:
+    j = json.dumps(paths, ensure_ascii=False, separators=(",", ":")) if paths else None
+    front = paths[0] if paths else None
+    back = paths[1] if len(paths) > 1 else None
+    return {
+        "image": front,
+        "image_front": front,
+        "image_back": back,
+        "images_json": j,
+    }
+
+
+def _delete_paths_removed(old_paths: List[str], new_paths: List[str]) -> None:
+    new_set = set(new_paths)
+    for p in old_paths:
+        if p and p not in new_set:
+            delete_image_file(p)
+
+
+def _resolve_paths_for_create(data: InventoryCreate) -> List[str]:
+    if data.images is not None:
+        normalized = _normalize_images_input_list(data.images, "images")
+        return _convert_image_list_to_paths(normalized)
+    fp = _convert_image_payload(data.image_front, "inventory_front")
+    bp = _convert_image_payload(data.image_back, "inventory_back")
+    paths = [p for p in [fp, bp] if p]
+    if len(paths) > MAX_INVENTORY_IMAGES:
+        raise HTTPException(
+            status_code=400,
+            detail=f"最多上传 {MAX_INVENTORY_IMAGES} 张图片",
+        )
+    return paths
+
+
+def _resolve_paths_for_combined_create(data: CombinedInventoryCreate) -> List[str]:
+    if data.images is not None:
+        normalized = _normalize_images_input_list(data.images, "images")
+        return _convert_image_list_to_paths(normalized)
+    fp = _convert_image_payload(data.image_front, "inventory_front")
+    bp = _convert_image_payload(data.image_back, "inventory_back")
+    paths = [p for p in [fp, bp] if p]
+    if len(paths) > MAX_INVENTORY_IMAGES:
+        raise HTTPException(
+            status_code=400,
+            detail=f"最多上传 {MAX_INVENTORY_IMAGES} 张图片",
+        )
+    return paths
+
+
+def _to_dhash(image: Image.Image) -> int:
+    """计算 64bit dHash，用于快速近似匹配"""
+    gray = image.convert("L").resize((9, 8), Image.Resampling.LANCZOS)
+    pixels = list(gray.getdata())
+    value = 0
+    bit = 0
+    for y in range(8):
+        row_offset = y * 9
+        for x in range(8):
+            left = pixels[row_offset + x]
+            right = pixels[row_offset + x + 1]
+            if left > right:
+                value |= (1 << bit)
+            bit += 1
+    return value
+
+
+def _hamming_distance(a: int, b: int) -> int:
+    return (a ^ b).bit_count()
+
+
+def _load_image_for_match(image_value: Optional[str]) -> Optional[Image.Image]:
+    if not image_value or not isinstance(image_value, str):
+        return None
+    val = image_value.strip()
+    if not val:
+        return None
+    try:
+        if val.startswith("data:image/"):
+            b64 = val.split(",", 1)[1] if "," in val else val
+            return Image.open(io.BytesIO(base64.b64decode(b64))).convert("RGB")
+        if val.startswith("/imges/"):
+            abs_path = os.path.join(get_image_root(), val.split("/imges/", 1)[1].strip("/"))
+            if os.path.exists(abs_path):
+                return Image.open(abs_path).convert("RGB")
+    except Exception:
+        return None
+    return None
+
+
+async def find_by_image(file: UploadFile = File(...)):
+    """根据上传的正面照片匹配最相近库存商品"""
+    if not (file.content_type or "").startswith("image/"):
+        raise HTTPException(status_code=400, detail="请上传图片文件")
+    content = await file.read()
+    if not content:
+        raise HTTPException(status_code=400, detail="图片内容为空")
+    try:
+        query_img = Image.open(io.BytesIO(content)).convert("RGB")
+    except Exception:
+        raise HTTPException(status_code=400, detail="图片解析失败，请重试")
+
+    query_hash = _to_dhash(query_img)
+    rows = db.execute_query(
+        "SELECT id, image_front, image, image_back, images_json FROM [inventory]"
+    )
+    best_id = None
+    best_distance = 999
+
+    for pid, image_front, image, image_back, images_json in rows:
+        candidates = _legacy_paths_from_db_columns(image_front, image, image_back, images_json)
+        row_best = 999
+        for path in candidates:
+            candidate_img = _load_image_for_match(path)
+            if candidate_img is None:
+                continue
+            distance = _hamming_distance(query_hash, _to_dhash(candidate_img))
+            if distance < row_best:
+                row_best = distance
+        if row_best < 999:
+            if row_best < best_distance:
+                best_distance = row_best
+                best_id = pid
+
+    if best_id is None:
+        return {"found": False, "inventory": None, "distance": None}
+
+    # 经验阈值：dHash 64bit，距离越小越像；>18 误匹配概率明显增高
+    if best_distance > 18:
+        return {"found": False, "inventory": None, "distance": best_distance}
+
+    matched = _query_inventory_with_joins(" AND p.id = ? LIMIT 1", (best_id,))
+    if not matched:
+        return {"found": False, "inventory": None, "distance": best_distance}
+    return {"found": True, "inventory": matched[0], "distance": best_distance}
+
+
+async def upload_inventory_image(file: UploadFile = File(...)):
+    """无码入库等场景：先 multipart 上传落盘，再提交表单时只传 /imges/ 路径（避免保存时再传大体积 base64）。"""
+    path = await save_upload_image(file, prefix="inv_nb")
+    return {"path": path}

@@ -7,20 +7,16 @@
 """
 from fastapi import APIRouter
 
-from .units.orders_handler import (
+from .units.orders_crud import create_order, delete_order, update_order
+from .units.orders_outbound import (
     bind_outbound_line_inventory,
     create_manual_outbound_line,
     create_manual_outbound_lines,
-    create_order,
-    delete_order,
-    list_order_outbound_lines,
-    list_orders,
-    order_stats,
     refresh_order_info,
     stock_out_order_outbound_line,
-    update_order,
     waive_order_packaging,
 )
+from .units.orders_query import list_order_outbound_lines, list_orders, order_stats
 
 router = APIRouter()
 

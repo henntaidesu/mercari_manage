@@ -8,7 +8,7 @@
 
 from fastapi import APIRouter
 
-from .units.cost_expenses_handler import (
+from .units.cost_expenses_crud import (
     create_cost_expense,
     delete_cost_expense,
     list_cost_expenses,

@@ -9,20 +9,11 @@
 """
 from fastapi import APIRouter
 
-from .units.inventory_handler import (
-    create_combined_inventory,
-    create_inventory,
-    delete_inventory,
-    find_by_barcode,
-    find_by_image,
-    get_inventory,
-    list_inventory,
-    list_inventory_pending_outbound_lines,
-    stock_in_inventory,
-    stock_out_inventory,
-    update_inventory,
-    upload_inventory_image,
-)
+from .units.inventory_query import list_inventory, find_by_barcode, get_inventory, list_inventory_pending_outbound_lines
+from .units.inventory_crud import create_inventory, update_inventory, delete_inventory
+from .units.inventory_stock import stock_in_inventory, stock_out_inventory
+from .units.inventory_combined import create_combined_inventory
+from .units.inventory_images import find_by_image, upload_inventory_image
 from .units.inventory_public_handler import get_image_thumb
 from .units.ocr_handler import ocr_region
 from .units.scan_handler import scan_barcode

@@ -7,12 +7,14 @@
 """
 from fastapi import APIRouter
 
-from .units.on_sale_items_handler import (
-    fetch_on_sale_item_detail,
-    fetch_on_sale_item_details_batch,
+from .units.on_sale_items_query import (
     list_on_sale_by_item_id,
     list_on_sale_by_item_ids,
     list_on_sale_items,
+)
+from .units.on_sale_items_sync import (
+    fetch_on_sale_item_detail,
+    fetch_on_sale_item_details_batch,
     sync_on_sale,
 )
 

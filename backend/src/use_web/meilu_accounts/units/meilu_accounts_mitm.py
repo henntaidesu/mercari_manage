@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-"""煤炉账号管理业务处理器：包含 Pydantic 模型、辅助函数与各端点业务逻辑。"""
+"""煤炉账号 MITM 抓取端点：seller_id / 4 个 DPoP 字段。"""
 import asyncio
 import json
 import logging
@@ -7,7 +7,6 @@ import time
 from typing import Any, Dict, List, Optional
 
 from fastapi import Body, HTTPException
-from pydantic import BaseModel as PydanticModel, Field
 
 from ....db_manage.models.meilu_account import MeiluAccountModel
 from ....ssl_mitm_proxy.capture_config import (
@@ -21,174 +20,20 @@ from ....ssl_mitm_proxy.runner import (
     start_mitm_proxy,
 )
 from ....web_drive import get_web_drive_manager
-
-log = logging.getLogger(__name__)
-
-ALLOWED_STATUS = {"active", "disabled"}
-# 前端主选项 15/30/1H/3H/6H；保留旧值以便已存数据校验通过
-ALLOWED_FETCH_INTERVALS = frozenset({"15", "30", "60", "3h", "6h", "10", "12h", "24h"})
-MERCARI_IN_PROGRESS_URL = "https://jp.mercari.com/mypage/listings/in_progress"
-MERCARI_LISTINGS_URL = "https://jp.mercari.com/mypage/listings"
-IN_PROGRESS_FIRST_LINK_XPATH = '//*[@id="my-page-main-content"]/div/div/div/div/ul/li[1]/a/div[1]/div'
-LISTINGS_FIRST_ITEM_XPATH = '//*[@id="my-page-main-content"]/div/div/div/div/ul/li[1]/a/div[1]/div/span[1]'
-IN_PROGRESS_CLICK_XPATH_CANDIDATES = (
-    IN_PROGRESS_FIRST_LINK_XPATH,
-    '//*[@id="my-page-main-content"]/div/div/div/div/ul/li[1]/a/div[1]/div/span[1]',
-    '//*[@id="my-page-main-content"]//ul/li[1]//a',
+from .meilu_accounts_helpers import (
+    _item_api_dict,
+    _norm_headers_dict,
+    _norm_seller_id,
+)
+from .meilu_accounts_models import (
+    FetchAuthViaMitmBody,
+    FetchSellerIdViaMitmBody,
+    IN_PROGRESS_CLICK_XPATH_CANDIDATES,
+    MERCARI_IN_PROGRESS_URL,
+    MERCARI_LISTINGS_URL,
 )
 
-# 与 jp.mercari.com Web 抓包一致；可选：在售列表 / 单件详情专用 DPoP
-_HEADER_FIELD_LABELS = [
-    ("x_platform", "X-Platform"),
-    ("authorization", "Authorization"),
-    ("sec_ch_ua_platform", "Sec-CH-UA-Platform"),
-    ("accept_language", "Accept-Language"),
-    ("sec_ch_ua", "Sec-CH-UA"),
-    ("sec_ch_ua_mobile", "Sec-CH-UA-Mobile"),
-    ("dpop_list", "DPoP_List"),
-    ("dpop_info", "DPoP_Info"),
-    ("dpop_on_sale_list", "DPoP_OnSale-List"),
-    ("dpop_item_get_info", "DPoP_ItemGet-Info"),
-    ("user_agent", "User-Agent"),
-    ("accept", "Accept"),
-    ("origin", "Origin"),
-    ("sec_fetch_site", "Sec-Fetch-Site"),
-    ("sec_fetch_mode", "Sec-Fetch-Mode"),
-    ("sec_fetch_dest", "Sec-Fetch-Dest"),
-    ("referer", "Referer"),
-    ("accept_encoding", "Accept-Encoding"),
-    ("priority", "Priority"),
-]
-
-
-class MeiluAccountCreate(PydanticModel):
-    account_name: str
-    """省略或全空时存 {}，后续可通过 MITM 等写入完整请求头。"""
-    value: Optional[Dict[str, Any]] = None
-    login_id: Optional[str] = None
-    seller_id: Optional[str] = None
-    status: str = "disabled"
-    remark: Optional[str] = None
-    is_open: int = 0
-    fetch_interval: Optional[str] = None
-    auto_fetch_order_status: int = 0
-    auto_fetch_order_list: int = 0
-    auto_fetch_on_sale: int = 0
-
-
-class MeiluAccountUpdate(PydanticModel):
-    account_name: Optional[str] = None
-    login_id: Optional[str] = None
-    seller_id: Optional[str] = None
-    value: Optional[Dict[str, Any]] = None
-    status: Optional[str] = None
-    remark: Optional[str] = None
-    is_open: Optional[int] = None
-    fetch_interval: Optional[str] = None
-    auto_fetch_order_status: Optional[int] = None
-    auto_fetch_order_list: Optional[int] = None
-    auto_fetch_on_sale: Optional[int] = None
-
-
-class FetchAuthViaMitmBody(PydanticModel):
-    """通过 MITM 按顺序抓取 4 个 DPoP 字段并写回账号。"""
-
-    wait_seconds: int = Field(15, ge=5, le=300)
-    open_browser: bool = True
-    in_progress_xpath: str = IN_PROGRESS_FIRST_LINK_XPATH
-    first_item_xpath: str = LISTINGS_FIRST_ITEM_XPATH
-
-
-class FetchSellerIdViaMitmBody(PydanticModel):
-    """打开出品一覧页，经 MITM 截获 items/get_items（on_sale,stop）并从 URL 解析 seller_id。"""
-
-    account_key: str = Field(
-        default="meilu_prepare",
-        min_length=1,
-        max_length=64,
-        pattern=r"^[a-zA-Z0-9_-]+$",
-    )
-    wait_seconds: int = Field(90, ge=10, le=300)
-    headless: bool = False
-    close_browser_after: bool = False
-
-
-def _validate_status(status: str):
-    if status not in ALLOWED_STATUS:
-        raise HTTPException(status_code=400, detail="账号状态错误")
-
-
-def _norm_required_text(value: str, field_name: str) -> str:
-    text = (value or "").strip()
-    if not text:
-        raise HTTPException(status_code=400, detail=f"{field_name}不能为空")
-    return text
-
-
-def _norm_seller_id(value: Optional[str]) -> Optional[str]:
-    text = (value or "").strip()
-    if not text:
-        return None
-    if not text.isdigit():
-        raise HTTPException(status_code=400, detail="卖家ID必须为数字")
-    return text
-
-
-def _normalize_is_open(v: Any) -> int:
-    if v is True:
-        return 1
-    if v is False or v is None:
-        return 0
-    try:
-        return 1 if int(v) else 0
-    except (TypeError, ValueError):
-        return 0
-
-
-def _norm_auto_fetch(
-    is_open: int,
-    fetch_interval: Optional[str],
-    order_status: int,
-    order_list: int,
-    on_sale: int,
-) -> tuple:
-    """
-    规范化自动同步：总开关关闭时清空间隔与子任务；
-    开启时须合法间隔且至少一项子任务为 1。
-    """
-    io = 1 if is_open else 0
-    if io == 0:
-        return 0, None, 0, 0, 0
-    iv = (fetch_interval or "").strip()
-    if iv not in ALLOWED_FETCH_INTERVALS:
-        raise HTTPException(status_code=400, detail="开启自动数据获取时，请选择有效的时间间隔")
-    st = 1 if order_status else 0
-    li = 1 if order_list else 0
-    os_ = 1 if on_sale else 0
-    if not (st or li or os_):
-        raise HTTPException(status_code=400, detail="开启自动数据获取时，请至少选择一项同步任务")
-    return 1, iv, st, li, os_
-
-
-def _norm_headers_dict(d: Optional[dict]) -> dict:
-    if not d or not isinstance(d, dict):
-        raise HTTPException(status_code=400, detail="请求头 value 必须为 JSON 对象")
-    # 旧版仅存 dpop：视为 dpop_list；仅有一条 DPoP 时 dpop_info 可暂与 list 相同
-    d = dict(d)
-    if not (str(d.get("dpop_list") or "").strip()) and (str(d.get("dpop") or "").strip()):
-        d["dpop_list"] = str(d["dpop"]).strip()
-    out = {}
-    for key, label in _HEADER_FIELD_LABELS:
-        raw = d.get(key)
-        text = ("" if raw is None else str(raw)).strip()
-        # 订单详情 / 在售列表 / 单件详情 等专用 DPoP：可选；不填则调用对应接口时再报错提示补全
-        if key in ("dpop_info", "dpop_on_sale_list", "dpop_item_get_info"):
-            out[key] = text
-            continue
-        if not text:
-            raise HTTPException(status_code=400, detail=f"{label}不能为空")
-        out[key] = text
-    return out
+log = logging.getLogger(__name__)
 
 
 def _mitm_patch_console_lines(patch: Dict[str, Any]) -> List[str]:
@@ -216,18 +61,6 @@ def _apply_mitm_patch_to_account(item: MeiluAccountModel, patch: Dict[str, Any])
         cur["dpop_info"] = cur["dpop_list"]
     normalized = _norm_headers_dict(cur)
     item.value = json.dumps(normalized, ensure_ascii=False)
-
-
-def _item_api_dict(item: MeiluAccountModel) -> dict:
-    d = item.to_dict()
-    d.pop('login_password', None)
-    raw = d.pop('value', None)
-    d['value'] = MeiluAccountModel._parse_value_json(raw if isinstance(raw, str) else None)
-    d['is_open'] = 1 if d.get('is_open') else 0
-    d['auto_fetch_order_status'] = 1 if d.get('auto_fetch_order_status') else 0
-    d['auto_fetch_order_list'] = 1 if d.get('auto_fetch_order_list') else 0
-    d['auto_fetch_on_sale'] = 1 if d.get('auto_fetch_on_sale') else 0
-    return d
 
 
 async def _wait_capture(
@@ -319,111 +152,6 @@ async def _click_first_match_xpath(mgr: Any, account_key: str, xpaths: List[str]
             last_exc = exc
             continue
     raise RuntimeError(f"所有候选 XPath 点击失败: {last_exc}")
-
-
-def list_meilu_accounts(
-    keyword: Optional[str] = None,
-    status: Optional[str] = None,
-    page: int = 1,
-    page_size: int = 20,
-):
-    if status:
-        _validate_status(status)
-    return MeiluAccountModel.find_detail_list(
-        keyword=keyword,
-        status=status,
-        page=page,
-        page_size=page_size,
-    )
-
-
-def _value_json_for_create(data: MeiluAccountCreate) -> str:
-    raw = data.value
-    if not raw or not isinstance(raw, dict):
-        return json.dumps({}, ensure_ascii=False)
-    if not any(str(v or "").strip() for v in raw.values()):
-        return json.dumps({}, ensure_ascii=False)
-    headers = _norm_headers_dict(raw)
-    return json.dumps(headers, ensure_ascii=False)
-
-
-def create_meilu_account(data: MeiluAccountCreate):
-    _validate_status(data.status)
-    value_json = _value_json_for_create(data)
-    name = _norm_required_text(data.account_name, "账号名称")
-    lid = (data.login_id or "").strip() or name
-    io, fi, st, li, os_ = _norm_auto_fetch(
-        _normalize_is_open(data.is_open),
-        data.fetch_interval,
-        _normalize_is_open(data.auto_fetch_order_status),
-        _normalize_is_open(data.auto_fetch_order_list),
-        _normalize_is_open(data.auto_fetch_on_sale),
-    )
-    item = MeiluAccountModel(
-        account_name=name,
-        login_id=lid,
-        seller_id=_norm_seller_id(data.seller_id),
-        login_password=None,
-        value=value_json,
-        status=data.status,
-        remark=data.remark,
-        is_open=io,
-        fetch_interval=fi,
-        auto_fetch_order_status=st,
-        auto_fetch_order_list=li,
-        auto_fetch_on_sale=os_,
-    )
-    if not item.save():
-        raise HTTPException(status_code=500, detail="保存失败")
-    return _item_api_dict(item)
-
-
-def update_meilu_account(aid: int, data: MeiluAccountUpdate):
-    item = MeiluAccountModel.find_by_id(id=aid)
-    if not item:
-        raise HTTPException(status_code=404, detail="账号不存在")
-
-    if data.account_name is not None:
-        item.account_name = _norm_required_text(data.account_name, "账号名称")
-    if data.login_id is not None:
-        item.login_id = (data.login_id or "").strip() or item.account_name
-    if data.seller_id is not None:
-        item.seller_id = _norm_seller_id(data.seller_id)
-    if data.status is not None:
-        _validate_status(data.status)
-        item.status = data.status
-    if data.remark is not None:
-        item.remark = data.remark
-    if data.value is not None:
-        headers = _norm_headers_dict(data.value)
-        item.value = json.dumps(headers, ensure_ascii=False)
-    if data.is_open is not None or data.fetch_interval is not None or data.auto_fetch_order_status is not None or data.auto_fetch_order_list is not None or data.auto_fetch_on_sale is not None:
-        prev_open = _normalize_is_open(item.is_open)
-        io = _normalize_is_open(data.is_open) if data.is_open is not None else prev_open
-        fi = data.fetch_interval if data.fetch_interval is not None else item.fetch_interval
-        st = _normalize_is_open(getattr(item, "auto_fetch_order_status", 0))
-        if data.auto_fetch_order_status is not None:
-            st = _normalize_is_open(data.auto_fetch_order_status)
-        li = _normalize_is_open(getattr(item, "auto_fetch_order_list", 0))
-        if data.auto_fetch_order_list is not None:
-            li = _normalize_is_open(data.auto_fetch_order_list)
-        os_ = _normalize_is_open(getattr(item, "auto_fetch_on_sale", 0))
-        if data.auto_fetch_on_sale is not None:
-            os_ = _normalize_is_open(data.auto_fetch_on_sale)
-        io, fi, st, li, os_ = _norm_auto_fetch(io, fi, st, li, os_)
-        item.is_open = io
-        item.fetch_interval = fi
-        item.auto_fetch_order_status = st
-        item.auto_fetch_order_list = li
-        item.auto_fetch_on_sale = os_
-        if io == 0:
-            item.auto_fetch_last_at = None
-        elif prev_open == 0 and io == 1:
-            item.auto_fetch_last_at = None
-
-    if not item.save():
-        raise HTTPException(status_code=500, detail="更新失败")
-    return _item_api_dict(item)
 
 
 async def fetch_seller_id_via_mitm(
@@ -709,12 +437,3 @@ async def fetch_auth_via_mitm(
         }
     finally:
         clear_session_marker(aid)
-
-
-def delete_meilu_account(aid: int):
-    item = MeiluAccountModel.find_by_id(id=aid)
-    if not item:
-        raise HTTPException(status_code=404, detail="账号不存在")
-    if not item.delete():
-        raise HTTPException(status_code=500, detail="删除失败")
-    return {"message": "删除成功"}
