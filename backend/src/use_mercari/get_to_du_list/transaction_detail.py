@@ -8,8 +8,9 @@
 - GET ``api.mercari.jp/transaction_messages/get_messages?item_id=...``
   → 买家·卖家消息流（含用户名、时间）
 
-浏览器在抓取后 **保持打开**，方便用户在原生页面上手动操作；下一次「处理」
-按钮调用会先关掉旧的 ``__auto`` 会话再开新的（``ensure_session_for_mitm`` 自带）。
+直接使用账号主 profile ``meilu_{id}`` 打开浏览器（与 /meilu-accounts 「打开浏览器」
+一致，登录态由 Edge 持久化 cookie 自动维护，不再用 ``__auto`` 副本 + seed cookie）。
+浏览器在抓取后 **保持打开**，方便用户在原生页面上手动操作。
 """
 
 from __future__ import annotations
@@ -29,10 +30,7 @@ from ...ssl_mitm_proxy.capture_config import (
 )
 from ...ssl_mitm_proxy.runner import default_mitm_proxy_url, start_mitm_proxy
 from ...web_drive.core.manager import EdgeWebDriveManager, get_web_drive_manager
-from ...web_drive.core.paths import (
-    meilu_automation_key,
-    seed_automation_profile_from_account,
-)
+from ...web_drive.core.paths import meilu_account_key
 from ..get_order.get_in_progress_order.get_order_info import apply_item_info_to_order
 
 log = logging.getLogger(__name__)
@@ -237,43 +235,36 @@ async def fetch_transaction_detail(todo_id: int) -> Dict[str, Any]:
     if r.get("error"):
         raise RuntimeError(f"MITM 代理不可用: {r['error']}")
 
-    try:
-        seed_automation_profile_from_account(aid)
-    except Exception as exc:
-        log.warning("[txdetail] seed __auto profile 失败（继续，使用磁盘旧 Cookie）：%s", exc)
-
     mgr = get_web_drive_manager()
-    auto_key = meilu_automation_key(aid)
+    main_key = meilu_account_key(aid)
     proxy = default_mitm_proxy_url()
 
-    # ── Step 1: 先开 mercari 首页等 5s 刷新 cookie / refresh token ──
-    home_url = "https://jp.mercari.com/"
-    log.info("[txdetail] 先打开首页 %s 刷新 cookie", home_url)
-    await mgr.ensure_session_for_mitm(
-        auto_key,
-        start_url=home_url,
-        proxy_server=proxy,
-        headless=False,
-        start_minimized=False,
-        block_images=False,
-    )
-    await asyncio.sleep(5.0)
-
-    # ── Step 2: 清空 latest 文件 + 取 since_ms（首页阶段的无关请求不会污染） ──
+    # ── Step 1: 清空 latest 响应文件 + 取 since_ms ──
     clear_shipping_info_response_file()
     clear_transaction_messages_response_file()
     since_ms = int(time.time() * 1000)
 
-    # ── Step 3: 跳转到交易页 ──
-    log.info("[txdetail] 跳转到交易页 %s", url)
-    try:
-        await mgr.reload_active_tab(auto_key, url)
-    except Exception as exc:
-        log.warning("[txdetail] reload_active_tab 失败（忽略）：%s", exc)
+    # ── Step 2: 用主 profile 打开交易页（持久化 cookie 自动维持登录态）。
+    #            若已开但未走 MITM 代理，则强制关闭后重启。 ──
+    if mgr.is_interactive_session_running(main_key):
+        log.info("[txdetail] account_id=%s 主浏览器已运行（无 MITM 代理），强制关闭后重启", aid)
+        try:
+            await mgr.close_session(main_key, force=True)
+        except Exception as exc:
+            log.warning("[txdetail] 关闭主浏览器失败（继续尝试）: %s", exc)
+
+    await mgr.open_session(
+        main_key,
+        headless=False,
+        start_url=url,
+        proxy_server=proxy,
+        interactive=True,
+        restore_tabs=False,
+    )
 
     shipping, messages = await _wait_for_both_captures(
         mgr=mgr,
-        auto_key=auto_key,
+        auto_key=main_key,
         start_url=url,
         since_ms=since_ms,
     )
@@ -335,7 +326,7 @@ async def send_transaction_message(todo_id: int, text: str) -> Dict[str, Any]:
 
     aid = int(todo.account_id)
     mgr = get_web_drive_manager()
-    auto_key = meilu_automation_key(aid)
+    auto_key = meilu_account_key(aid)
 
     try:
         page = await mgr.active_tab_page(auto_key)
@@ -392,8 +383,8 @@ async def send_transaction_message(todo_id: int, text: str) -> Dict[str, Any]:
         except Exception as exc:
             log.warning("[reply] 软删 todo 失败: %s", exc)
         try:
-            await mgr.close_session_if_automation(auto_key)
-            log.info("[reply] IncomingMessage 已关闭 __auto 浏览器 account_id=%s", aid)
+            await mgr.close_session(auto_key, force=True)
+            log.info("[reply] IncomingMessage 已关闭主浏览器 account_id=%s", aid)
         except Exception as exc:
             log.warning("[reply] 关浏览器失败: %s", exc)
         completed = True
@@ -429,7 +420,7 @@ async def start_select_shipping_class(todo_id: int) -> Dict[str, Any]:
     aid = int(todo.account_id)
 
     mgr = get_web_drive_manager()
-    auto_key = meilu_automation_key(aid)
+    auto_key = meilu_account_key(aid)
     try:
         page = await mgr.active_tab_page(auto_key)
     except Exception as exc:
@@ -491,7 +482,7 @@ async def confirm_shipping_selection(
         raise ValueError(f"facility 取值非法：{facility}")
 
     mgr = get_web_drive_manager()
-    auto_key = meilu_automation_key(aid)
+    auto_key = meilu_account_key(aid)
     try:
         page = await mgr.active_tab_page(auto_key)
     except Exception as exc:
@@ -580,7 +571,7 @@ async def submit_transaction_review(todo_id: int, text: str) -> Dict[str, Any]:
     aid = int(todo.account_id)
     item_id = (todo.item_id or "").strip()
     mgr = get_web_drive_manager()
-    auto_key = meilu_automation_key(aid)
+    auto_key = meilu_account_key(aid)
     try:
         page = await mgr.active_tab_page(auto_key)
     except Exception as exc:
@@ -665,8 +656,8 @@ async def submit_transaction_review(todo_id: int, text: str) -> Dict[str, Any]:
 
         # 关浏览器
         try:
-            await mgr.close_session_if_automation(auto_key)
-            log.info("[review] 已关闭 __auto 浏览器 account_id=%s", aid)
+            await mgr.close_session(auto_key, force=True)
+            log.info("[review] 已关闭主浏览器 account_id=%s", aid)
         except Exception as exc:
             log.warning("[review] 关浏览器失败: %s", exc)
 
@@ -704,7 +695,7 @@ async def click_change_shipping_method(todo_id: int) -> Dict[str, Any]:
     aid = int(todo.account_id)
 
     mgr = get_web_drive_manager()
-    auto_key = meilu_automation_key(aid)
+    auto_key = meilu_account_key(aid)
     try:
         page = await mgr.active_tab_page(auto_key)
     except Exception as exc:

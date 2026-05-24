@@ -23,7 +23,7 @@ from ....web_drive.core.account_serial_queue import (
     run_meilu_serial_async,
 )
 from ....web_drive.core.manager import get_web_drive_manager
-from ....web_drive.core.paths import meilu_automation_key
+from ....web_drive.core.paths import meilu_account_key
 from .todos_models import (
     ConfirmShippingSelectionRequest,
     SendTransactionMessageRequest,
@@ -169,11 +169,11 @@ async def change_shipping_method_endpoint(todo_id: int) -> Dict[str, Any]:
 
 
 async def close_detail_browser(account_id: int) -> Dict[str, Any]:
-    """关闭某账号的 __auto 浏览器（关闭交易详情 dialog 时调用）。"""
+    """关闭某账号的主 profile 浏览器（关闭交易详情 dialog 时调用）。"""
     aid = int(account_id)
     if aid <= 0:
         raise HTTPException(status_code=400, detail="account_id 无效")
     mgr = get_web_drive_manager()
-    auto_key = meilu_automation_key(aid)
-    result = await mgr.close_session_if_automation(auto_key)
+    main_key = meilu_account_key(aid)
+    result = await mgr.close_session(main_key, force=True)
     return {"account_id": aid, **(result if isinstance(result, dict) else {})}

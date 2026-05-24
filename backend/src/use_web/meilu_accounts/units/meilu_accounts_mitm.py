@@ -253,11 +253,12 @@ async def fetch_auth_via_mitm(
         mgr = None
         if cfg.open_browser:
             mgr = get_web_drive_manager()
-            from ....web_drive.core.paths import meilu_automation_key, seed_automation_profile_from_account
+            from ....web_drive.core.paths import meilu_account_key
 
-            auto_key = meilu_automation_key(aid)
+            # 直接使用账号主 profile（与 /meilu-accounts 「打开浏览器」一致），
+            # 登录态由 Edge 持久化 cookie 自动维护，无需 cookie seed。
+            auto_key = meilu_account_key(aid)
             await mgr.close_session(auto_key, force=True)
-            seed_automation_profile_from_account(aid)
             await mgr.open_session(
                 auto_key,
                 headless=False,

@@ -310,7 +310,7 @@ class EdgeWebDriveManager:
         restore_tabs: Optional[bool] = None,
     ) -> Dict[str, Any]:
         """
-        :param interactive: 用户手动打开的可见会话（不会被 MITM 自动化 ``close_session_if_automation`` 关闭）。
+        :param interactive: 是否为「用户手动可见」会话（影响窗口前台 / 标签恢复行为）。
             默认：``headless=False`` 时为 True，``headless=True`` 时为 False。
         :param restore_tabs: 有头交互会话是否从 ``interactive_tabs.snapshot.json`` 恢复标签；
             默认 interactive 时为 True。
@@ -339,7 +339,7 @@ class EdgeWebDriveManager:
 
     async def copy_cookies_between_sessions(self, src_key: str, dst_key: str) -> int:
         """
-        从源会话（通常为有头 ``meilu_{id}``）复制 Cookie 到目标会话（``meilu_{id}__auto``）。
+        从源会话（通常为有头 ``meilu_{id}``）复制 Cookie 到目标会话（``meilu_{id}__listing``）。
         主 profile 的 Cookies 文件被有头 Edge 占用时无法落盘复制，但运行中会话可读 Cookie。
         """
         src = validate_account_key(src_key)
@@ -400,39 +400,6 @@ class EdgeWebDriveManager:
                 raise RuntimeError(f"会话不可用或无活动页: {key}")
             return ctx.pages[-1] if ctx.pages else await ctx.new_page()
 
-    async def ensure_session_for_mitm(
-        self,
-        account_key: str,
-        *,
-        start_url: Optional[str],
-        proxy_server: Optional[str],
-        headless: bool,
-        start_minimized: bool = False,
-        block_images: bool = True,
-    ) -> Dict[str, Any]:
-        """
-        MITM 用：在 ``meilu_{id}__auto`` 独立 profile 上启动新的无头（或指定 headless）会话。
-        不触碰 ``meilu_{id}`` 上有头用户窗口。
-
-        ``start_minimized`` 仅在 ``headless=False`` 时生效：浏览器窗口启动后立即最小化，
-        避免抢占前台焦点。
-
-        ``block_images`` 默认 ``True``：MITM 自动化只需 JSON 响应，不渲染图片可显著减少带宽与
-        加载时间。用户可见的有头窗口（``open_session``）默认不开启此项。
-        """
-        key = validate_account_key(account_key)
-        async with self._serialize_profile(key):
-            await self._close_session_unlocked(key, force=True)
-            return await self._open_session_impl(
-                key,
-                headless=headless,
-                start_url=start_url,
-                proxy_server=proxy_server,
-                interactive=False,
-                start_minimized=start_minimized,
-                block_images=block_images,
-            )
-
     async def ensure_session_for_listing(
         self,
         listing_account_key: str,
@@ -466,10 +433,6 @@ class EdgeWebDriveManager:
                     pass
             opened["cookies_copied_from_main"] = n_cookies
             return opened
-
-    async def close_session_if_automation(self, account_key: str) -> Dict[str, Any]:
-        """关闭 ``__auto`` 自动化会话；主 profile 有头会话请用 ``close_session``。"""
-        return await self.close_session(account_key, force=True)
 
     async def snapshot_all_interactive_sessions(self) -> int:
         """将当前线程内所有有头交互会话的标签 URL 写入 profile 快照。返回成功写入的账号数。"""

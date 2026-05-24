@@ -230,7 +230,12 @@ def _resolve_account_id(account_id: Optional[int]) -> int:
 async def sync_notifications_from_mercari(
     account_id: Optional[int] = None,
 ) -> Dict[str, Any]:
-    """从煤炉拉取通知并同步本地 ``notifications`` 表。"""
+    """从煤炉拉取通知并同步本地 ``notifications`` 表。
+
+    通过 ``mitm_automation_browser`` 租借账号主 profile ``meilu_{id}`` 的有头浏览器
+    （登录态由 Edge 持久化 cookie 自动维护，无需 cookie seed / 首页 prewarm）。
+    抓取完毕后浏览器保持打开，由用户决定何时关闭。
+    """
     aid = _resolve_account_id(account_id)
     log.info("[notification] 开始同步 account_id=%s", aid)
 
@@ -239,9 +244,9 @@ async def sync_notifications_from_mercari(
 
     async with mitm_automation_browser(
         int(aid), start_url=NOTIFICATIONS_PAGE_URL
-    ) as (mgr, auto_key):
+    ) as (mgr, main_key):
         items = await capture_notifications_via_mitm_session(
-            mgr, auto_key, since_ms=since_ms
+            mgr, main_key, since_ms=since_ms
         )
 
     stats = apply_notifications_sync(int(aid), items)

@@ -23,11 +23,9 @@ from .core.account_serial_queue import (
 from .core.manager import EdgeWebDriveManager, get_web_drive_manager
 from .core.paths import (
     meilu_account_key,
-    meilu_automation_key,
     meilu_listing_key,
     profile_dir_for,
     profiles_root,
-    seed_automation_profile_from_account,
     seed_listing_profile_from_account,
     validate_account_key,
 )
@@ -37,10 +35,8 @@ __all__ = [
     "GLOBAL_QUEUE_KEY",
     "get_web_drive_manager",
     "meilu_account_key",
-    "meilu_automation_key",
     "meilu_listing_key",
     "profile_dir_for",
-    "seed_automation_profile_from_account",
     "seed_listing_profile_from_account",
     "profiles_root",
     "queue_key_for_meilu_account",

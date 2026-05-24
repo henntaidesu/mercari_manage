@@ -114,7 +114,7 @@ async def delete_mercari_item(
     """
     from ...core.manager import EdgeWebDriveManager
     from ...core.mitm_session import mitm_automation_browser
-    from ...core.paths import meilu_automation_key, meilu_id_from_account_key
+    from ...core.paths import meilu_account_key, meilu_id_from_account_key
     from ....use_mercari.get_order.get_on_sale.on_sale_list import (
         LISTINGS_PAGE_URL,
         sync_on_sale_from_listings_browser_page,
@@ -135,7 +135,7 @@ async def delete_mercari_item(
 
     _aid, seller_id = _resolve_account_and_seller(account_id)
     seller_key = str(int(seller_id))
-    auto_key = meilu_automation_key(account_id)
+    auto_key = meilu_account_key(account_id)
     edit_url = build_sell_edit_url(item_id)
 
     clear_on_sale_list_response_file(seller_key)
