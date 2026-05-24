@@ -17,6 +17,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import os
 import time
 from contextlib import asynccontextmanager
 from typing import Any, AsyncIterator, Callable, Dict, Optional, Tuple
@@ -28,6 +29,16 @@ from .paths import meilu_account_key
 log = logging.getLogger(__name__)
 
 _MITM_PAGE_RELOAD_INTERVAL_SEC = 20.0
+
+
+def _default_minimized() -> bool:
+    """MITM 自动化浏览器是否默认在后台(最小化)运行。
+
+    通过 ``WEB_DRIVE_MITM_MINIMIZED`` 环境变量覆盖,接受 0/false/no/off 关闭;
+    其余值(含未设置)视为开启,即默认窗口最小化、不抢占前台。
+    """
+    raw = (os.environ.get("WEB_DRIVE_MITM_MINIMIZED") or "1").strip().lower()
+    return raw not in ("0", "false", "no", "off")
 
 
 async def _is_context_alive(mgr: EdgeWebDriveManager, key: str) -> bool:
@@ -44,10 +55,12 @@ async def _launch_with_mitm(
     account_id: int,
     main_key: str,
     target_url: str,
+    minimized: bool = True,
 ) -> None:
     """启动账号主 profile 有头 Edge,直接进入目标页(经 MITM 代理)。
 
     若同 profile 已有进程(无 MITM 代理),强制关闭后重启。
+    ``minimized=True`` 时浏览器窗口最小化到任务栏(后台运行,不抢前台)。
     """
     r = start_mitm_proxy()
     if r.get("error"):
@@ -73,6 +86,7 @@ async def _launch_with_mitm(
         proxy_server=proxy,
         interactive=True,
         restore_tabs=False,
+        start_minimized=bool(minimized),
     )
 
     if not await _is_context_alive(mgr, main_key):
@@ -91,6 +105,7 @@ async def mitm_automation_browser(
     account_id: int,
     *,
     start_url: str,
+    minimized: Optional[bool] = None,
 ) -> AsyncIterator[Tuple[EdgeWebDriveManager, str]]:
     """
     上下文管理器:进入时确保账号主 profile 浏览器已开(走 MITM 代理),并导航到目标页。
@@ -98,11 +113,16 @@ async def mitm_automation_browser(
     yield ``(mgr, main_key)``;退出时**不关闭**浏览器——关闭由队列层
     (``account_serial_queue._delayed_close_browser``)按 ``WEB_DRIVE_QUEUE_IDLE_CLOSE_SEC``
     延迟自动处理。
+
+    ``minimized``: 启动时是否最小化(后台运行)。``None`` = 读环境变量
+    ``WEB_DRIVE_MITM_MINIMIZED``(默认 ``"1"`` = 最小化)。已有浏览器复用时仅
+    刷新标签页,不会重新决定窗口状态。
     """
     aid = int(account_id)
     main_key = meilu_account_key(aid)
     mgr = get_web_drive_manager()
     target_url = (start_url or "").strip()
+    use_minimized = _default_minimized() if minimized is None else bool(minimized)
 
     if await _is_context_alive(mgr, main_key):
         # 复用:仅刷新当前标签页到目标 URL
@@ -125,6 +145,7 @@ async def mitm_automation_browser(
                     account_id=aid,
                     main_key=main_key,
                     target_url=target_url,
+                    minimized=use_minimized,
                 )
     else:
         await _launch_with_mitm(
@@ -132,6 +153,7 @@ async def mitm_automation_browser(
             account_id=aid,
             main_key=main_key,
             target_url=target_url,
+            minimized=use_minimized,
         )
 
     yield mgr, main_key

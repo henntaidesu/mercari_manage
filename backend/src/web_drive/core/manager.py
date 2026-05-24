@@ -448,7 +448,13 @@ class EdgeWebDriveManager:
                 "--disable-infobars",
             ]
             if interactive and not headless:
-                launch_args.extend(self._interactive_launch_args())
+                # start_minimized 与 interactive 同时为真:跳过 --start-maximized,
+                # 启动后窗口在任务栏最小化(后台运行)。
+                if start_minimized:
+                    launch_args.append("--start-minimized")
+                    launch_args.append("--disable-features=RestoreSession")
+                else:
+                    launch_args.extend(self._interactive_launch_args())
             elif start_minimized and not headless:
                 launch_args.append("--start-minimized")
             if block_images:
