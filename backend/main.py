@@ -69,11 +69,11 @@ async def startup():
 @app.on_event("shutdown")
 async def shutdown_web_drive():
     from src.web_drive import get_web_drive_manager, shutdown_serial_executors
-    from src.web_drive.core.mitm_session import shutdown_mitm_leases
+    from src.web_drive.core.account_serial_queue import shutdown_queue
     from src.ssl_mitm_proxy.runner import stop_mitm_proxy
 
+    await shutdown_queue()
     shutdown_serial_executors(wait=False)
-    await shutdown_mitm_leases()
     await get_web_drive_manager().shutdown()
     stop_mitm_proxy()
 

@@ -20,6 +20,10 @@ from ....ssl_mitm_proxy.runner import (
     start_mitm_proxy,
 )
 from ....web_drive import get_web_drive_manager
+from ....web_drive.core.account_serial_queue import (
+    queue_key_for_meilu_account,
+    run_meilu_serial_async,
+)
 from .meilu_accounts_helpers import (
     _item_api_dict,
     _norm_headers_dict,
@@ -161,16 +165,19 @@ async def fetch_seller_id_via_mitm(
     启动 MITM，用指定 WebDrive 会话（如 meilu_prepare / meilu_{id}）经代理打开
     jp.mercari.com/mypage/listings，截获
     GET api.mercari.jp/items/get_items?status=on_sale,stop&... 并从查询参数读取 seller_id。
-    """
-    r = start_mitm_proxy()
-    if r.get("error"):
-        raise HTTPException(status_code=500, detail=r["error"])
 
+    全流程通过 ``run_meilu_serial_async`` 进入账号队列；队列空闲后由队列层
+    自动关闭浏览器（``WEB_DRIVE_QUEUE_IDLE_CLOSE_SEC`` 秒延迟）。
+    """
     account_key = (body.account_key or "meilu_prepare").strip()
-    t0 = int(time.time() * 1000)
-    mgr = get_web_drive_manager()
-    opened_here = False
-    try:
+
+    async def _do_fetch():
+        r = start_mitm_proxy()
+        if r.get("error"):
+            raise HTTPException(status_code=500, detail=r["error"])
+
+        t0 = int(time.time() * 1000)
+        mgr = get_web_drive_manager()
         await mgr.open_session(
             account_key,
             headless=body.headless,
@@ -178,7 +185,6 @@ async def fetch_seller_id_via_mitm(
             proxy_server=default_mitm_proxy_url(),
             interactive=not body.headless,
         )
-        opened_here = True
 
         cap = await _wait_capture_with_progress(
             since_ms=t0,
@@ -216,12 +222,8 @@ async def fetch_seller_id_via_mitm(
             },
             "mitm": mitm_status(),
         }
-    finally:
-        if body.close_browser_after and opened_here:
-            try:
-                await mgr.close_session(account_key, force=True)
-            except Exception as exc:
-                log.warning("[MITM] 获取 seller_id 后关闭浏览器失败 key=%s: %s", account_key, exc)
+
+    return await run_meilu_serial_async(account_key, _do_fetch)
 
 
 async def fetch_auth_via_mitm(
@@ -234,11 +236,11 @@ async def fetch_auth_via_mitm(
     2) DPoP_Info: GET /transaction_evidences/get
     3) DPoP_OnSale-List: GET /items/get_items?status=on_sale|stop
     4) DPoP_ItemGet-Info: GET /items/get
+
+    全流程通过 ``run_meilu_serial_async`` 进入账号队列；队列空闲后由队列层
+    自动关闭浏览器（``WEB_DRIVE_QUEUE_IDLE_CLOSE_SEC`` 秒延迟）。
     """
     cfg = body or FetchAuthViaMitmBody()
-    r = start_mitm_proxy()
-    if r.get("error"):
-        raise HTTPException(status_code=500, detail=r["error"])
 
     item = MeiluAccountModel.find_by_id(id=aid)
     if not item:
@@ -247,194 +249,196 @@ async def fetch_auth_via_mitm(
     if not sid_cfg:
         raise HTTPException(status_code=400, detail="请先填写卖家 ID（须与请求中 seller_id 一致）")
 
-    t0 = int(time.time() * 1000)
-    write_session_marker_ms(aid, t0)
-    try:
-        mgr = None
-        if cfg.open_browser:
-            mgr = get_web_drive_manager()
-            from ....web_drive.core.paths import meilu_account_key
+    async def _do_fetch():
+        r = start_mitm_proxy()
+        if r.get("error"):
+            raise HTTPException(status_code=500, detail=r["error"])
 
-            # 直接使用账号主 profile（与 /meilu-accounts 「打开浏览器」一致），
-            # 登录态由 Edge 持久化 cookie 自动维护，无需 cookie seed。
-            auto_key = meilu_account_key(aid)
-            await mgr.close_session(auto_key, force=True)
-            await mgr.open_session(
-                auto_key,
-                headless=False,
-                start_url=MERCARI_IN_PROGRESS_URL,
-                proxy_server=default_mitm_proxy_url(),
-                interactive=False,
-            )
+        t0 = int(time.time() * 1000)
+        write_session_marker_ms(aid, t0)
+        try:
+            mgr = None
+            if cfg.open_browser:
+                mgr = get_web_drive_manager()
+                from ....web_drive.core.paths import meilu_account_key
 
-        patch: Dict[str, Any] = {}
-        capture_meta: Dict[str, Any] = {"seller_id": sid_cfg}
-        acquired_fields: List[str] = []
-
-        # Step 1: DPoP_List
-        cap_list = await _wait_capture_with_progress(
-            since_ms=t0,
-            capture_type="items_get_items",
-            wait_seconds=cfg.wait_seconds,
-            seller_id=sid_cfg,
-            dpop_field="dpop_list",
-            acquired_fields=acquired_fields,
-            step_name="Step 1/4 DPoP_List",
-        )
-        if not cap_list:
-            raise HTTPException(status_code=408, detail="步骤1失败：未截获 DPoP_List（GET /items/get_items?status=trading）")
-        print(f"[MITM] 截获 URL(1/4 dpop_list): {cap_list.get('url') or ''}", flush=True)
-        patch.update(cap_list.get("value_patch") or {})
-        if not str(patch.get("dpop_list") or "").strip():
-            raise HTTPException(status_code=500, detail="步骤1失败：截获到请求但缺少 dpop_list")
-        acquired_fields.append("dpop_list")
-        capture_meta["dpop_list_url"] = cap_list.get("url")
-        capture_meta["dpop_list_ts"] = cap_list.get("ts")
-        log.info("[MITM] Step 1 完成，等待 3s 后进入 Step 2")
-        print("[MITM] Step 1 完成，等待 3s 后进入 Step 2", flush=True)
-        await asyncio.sleep(3)
-
-        # Step 2: DPoP_Info
-        if cfg.open_browser and mgr is not None:
-            try:
-                # 先确保处于「取引中」页，再点击首条交易触发 transaction_evidences/get
-                await mgr.open_new_tab(auto_key, MERCARI_IN_PROGRESS_URL)
-                clicked = await _click_first_match_xpath(
-                    mgr,
-                    auto_key,
-                    [cfg.in_progress_xpath, *list(IN_PROGRESS_CLICK_XPATH_CANDIDATES)],
-                    timeout_ms=25000,
-                )
-                log.info("[MITM] Step 2 点击成功 XPath: %s", clicked)
-                print(f"[MITM] Step 2 点击成功 XPath: {clicked}", flush=True)
-            except Exception as exc:
-                raise HTTPException(
-                    status_code=500,
-                    detail=f"步骤2前置失败：自动点击「取引中」首条失败（可能无取引中数据或页面结构变化）: {exc}",
-                ) from exc
-        cap_info = await _wait_capture_with_progress(
-            since_ms=int(cap_list.get("ts") or t0),
-            capture_type="transaction_evidences_get",
-            wait_seconds=cfg.wait_seconds,
-            dpop_field="dpop_info",
-            acquired_fields=acquired_fields,
-            step_name="Step 2/4 DPoP_Info",
-            url_contains="/transaction_evidences/get?",
-        )
-        if not cap_info:
-            raise HTTPException(status_code=408, detail="步骤2失败：未截获 DPoP_Info（GET /transaction_evidences/get）")
-        print(f"[MITM] 截获 URL(2/4 dpop_info): {cap_info.get('url') or ''}", flush=True)
-        patch.update(cap_info.get("value_patch") or {})
-        if not str(patch.get("dpop_info") or "").strip():
-            raise HTTPException(status_code=500, detail="步骤2失败：截获到请求但缺少 dpop_info")
-        acquired_fields.append("dpop_info")
-        capture_meta["dpop_info_url"] = cap_info.get("url")
-        capture_meta["dpop_info_ts"] = cap_info.get("ts")
-        log.info("[MITM] Step 2 完成，等待 3s 后进入 Step 3")
-        print("[MITM] Step 2 完成，等待 3s 后进入 Step 3", flush=True)
-        await asyncio.sleep(3)
-
-        # Step 3: DPoP_OnSale-List
-        if cfg.open_browser and mgr is not None:
-            await mgr.open_new_tab(auto_key, MERCARI_LISTINGS_URL)
-        cap_on_sale = await _wait_capture_with_progress(
-            since_ms=int(cap_info.get("ts") or t0),
-            capture_type="items_get_items",
-            wait_seconds=cfg.wait_seconds,
-            seller_id=sid_cfg,
-            dpop_field="dpop_on_sale_list",
-            acquired_fields=acquired_fields,
-            step_name="Step 3/4 DPoP_OnSale-List",
-        )
-        if not cap_on_sale:
-            raise HTTPException(status_code=408, detail="步骤3失败：未截获 DPoP_OnSale-List（GET /items/get_items?status=on_sale|stop）")
-        print(f"[MITM] 截获 URL(3/4 dpop_on_sale_list): {cap_on_sale.get('url') or ''}", flush=True)
-        patch.update(cap_on_sale.get("value_patch") or {})
-        if not str(patch.get("dpop_on_sale_list") or "").strip():
-            raise HTTPException(status_code=500, detail="步骤3失败：截获到请求但缺少 dpop_on_sale_list")
-        acquired_fields.append("dpop_on_sale_list")
-        capture_meta["dpop_on_sale_list_url"] = cap_on_sale.get("url")
-        capture_meta["dpop_on_sale_list_ts"] = cap_on_sale.get("ts")
-        log.info("[MITM] Step 3 完成，等待 3s 后进入 Step 4")
-        print("[MITM] Step 3 完成，等待 3s 后进入 Step 4", flush=True)
-        await asyncio.sleep(3)
-
-        # Step 4: DPoP_ItemGet-Info
-        if cfg.open_browser and mgr is not None:
-            try:
-                await mgr.click_xpath(auto_key, cfg.first_item_xpath, timeout_ms=25000)
-            except Exception as exc:
-                raise HTTPException(status_code=500, detail=f"步骤4前置失败：自动点击「出品中」首条失败: {exc}") from exc
-        cap_item_get = await _wait_capture_with_progress(
-            since_ms=int(cap_on_sale.get("ts") or t0),
-            capture_type="items_get",
-            wait_seconds=cfg.wait_seconds,
-            dpop_field="dpop_item_get_info",
-            acquired_fields=acquired_fields,
-            step_name="Step 4/4 DPoP_ItemGet-Info",
-        )
-        if not cap_item_get:
-            raise HTTPException(status_code=408, detail="步骤4失败：未截获 DPoP_ItemGet-Info（GET /items/get）")
-        print(f"[MITM] 截获 URL(4/4 dpop_item_get_info): {cap_item_get.get('url') or ''}", flush=True)
-        patch.update(cap_item_get.get("value_patch") or {})
-        if not str(patch.get("dpop_item_get_info") or "").strip():
-            raise HTTPException(status_code=500, detail="步骤4失败：截获到请求但缺少 dpop_item_get_info")
-        acquired_fields.append("dpop_item_get_info")
-        capture_meta["dpop_item_get_info_url"] = cap_item_get.get("url")
-        capture_meta["dpop_item_get_info_ts"] = cap_item_get.get("ts")
-
-        sid_cap = _norm_seller_id(str(cap_on_sale.get("seller_id") or sid_cfg).strip())
-        if not sid_cap:
-            raise HTTPException(status_code=500, detail="捕获中缺少有效 seller_id")
-        item.seller_id = sid_cap
-
-        _apply_mitm_patch_to_account(item, patch)
-        if not item.save():
-            raise HTTPException(status_code=500, detail="保存失败")
-
-        keys_sorted = sorted(patch.keys())
-        log.info(
-            "[MITM] 捕获已写入账号 id=%s seller_id=%s ts=%s",
-            aid,
-            sid_cap,
-            cap_item_get.get("ts"),
-        )
-        log.info("[MITM] 截获 URL(1/4 dpop_list): %s", cap_list.get("url") or "")
-        log.info("[MITM] 截获 URL(2/4 dpop_info): %s", cap_info.get("url") or "")
-        log.info("[MITM] 截获 URL(3/4 dpop_on_sale_list): %s", cap_on_sale.get("url") or "")
-        log.info("[MITM] 截获 URL(4/4 dpop_item_get_info): %s", cap_item_get.get("url") or "")
-        log.info(
-            "[MITM] 本次合并 value 字段 (%d 项): %s",
-            len(keys_sorted),
-            ", ".join(keys_sorted),
-        )
-        for line in _mitm_patch_console_lines(patch):
-            log.info("[MITM]%s", line)
-        # print 不依赖 logging 配置，保证启动脚本控制台一定能看到
-        print("\n========== [MITM] 捕获已写入账号 ==========", flush=True)
-        print(f"  截获 URL(1/4 dpop_list): {cap_list.get('url') or ''}", flush=True)
-        print(f"  截获 URL(2/4 dpop_info): {cap_info.get('url') or ''}", flush=True)
-        print(f"  截获 URL(3/4 dpop_on_sale_list): {cap_on_sale.get('url') or ''}", flush=True)
-        print(f"  截获 URL(4/4 dpop_item_get_info): {cap_item_get.get('url') or ''}", flush=True)
-        print(f"  account_id={aid} seller_id={sid_cap} ts={cap_item_get.get('ts')}", flush=True)
-        print(f"  字段({len(keys_sorted)}): {', '.join(keys_sorted)}", flush=True)
-        for line in _mitm_patch_console_lines(patch):
-            print(f"[MITM]{line}", flush=True)
-        print("==========================================\n", flush=True)
-
-        # 认证抓取流程已完成：自动关闭该账号浏览器会话，避免残留窗口。
-        if cfg.open_browser and mgr is not None:
-            try:
+                # 直接使用账号主 profile（与 /meilu-accounts 「打开浏览器」一致），
+                # 登录态由 Edge 持久化 cookie 自动维护，无需 cookie seed。
+                auto_key = meilu_account_key(aid)
                 await mgr.close_session(auto_key, force=True)
-            except Exception as exc:
-                log.warning("[MITM] 认证完成后自动关闭浏览器失败 id=%s: %s", aid, exc)
+                await mgr.open_session(
+                    auto_key,
+                    headless=False,
+                    start_url=MERCARI_IN_PROGRESS_URL,
+                    proxy_server=default_mitm_proxy_url(),
+                    interactive=False,
+                )
 
-        return {
-            "success": True,
-            "data": _item_api_dict(item),
-            "captured_field_keys": keys_sorted,
-            "capture_meta": {**capture_meta, "seller_id": sid_cap},
-            "mitm": mitm_status(),
-        }
-    finally:
-        clear_session_marker(aid)
+            patch: Dict[str, Any] = {}
+            capture_meta: Dict[str, Any] = {"seller_id": sid_cfg}
+            acquired_fields: List[str] = []
+
+            # Step 1: DPoP_List
+            cap_list = await _wait_capture_with_progress(
+                since_ms=t0,
+                capture_type="items_get_items",
+                wait_seconds=cfg.wait_seconds,
+                seller_id=sid_cfg,
+                dpop_field="dpop_list",
+                acquired_fields=acquired_fields,
+                step_name="Step 1/4 DPoP_List",
+            )
+            if not cap_list:
+                raise HTTPException(status_code=408, detail="步骤1失败：未截获 DPoP_List（GET /items/get_items?status=trading）")
+            print(f"[MITM] 截获 URL(1/4 dpop_list): {cap_list.get('url') or ''}", flush=True)
+            patch.update(cap_list.get("value_patch") or {})
+            if not str(patch.get("dpop_list") or "").strip():
+                raise HTTPException(status_code=500, detail="步骤1失败：截获到请求但缺少 dpop_list")
+            acquired_fields.append("dpop_list")
+            capture_meta["dpop_list_url"] = cap_list.get("url")
+            capture_meta["dpop_list_ts"] = cap_list.get("ts")
+            log.info("[MITM] Step 1 完成，等待 3s 后进入 Step 2")
+            print("[MITM] Step 1 完成，等待 3s 后进入 Step 2", flush=True)
+            await asyncio.sleep(3)
+
+            # Step 2: DPoP_Info
+            if cfg.open_browser and mgr is not None:
+                try:
+                    # 先确保处于「取引中」页，再点击首条交易触发 transaction_evidences/get
+                    await mgr.open_new_tab(auto_key, MERCARI_IN_PROGRESS_URL)
+                    clicked = await _click_first_match_xpath(
+                        mgr,
+                        auto_key,
+                        [cfg.in_progress_xpath, *list(IN_PROGRESS_CLICK_XPATH_CANDIDATES)],
+                        timeout_ms=25000,
+                    )
+                    log.info("[MITM] Step 2 点击成功 XPath: %s", clicked)
+                    print(f"[MITM] Step 2 点击成功 XPath: {clicked}", flush=True)
+                except Exception as exc:
+                    raise HTTPException(
+                        status_code=500,
+                        detail=f"步骤2前置失败：自动点击「取引中」首条失败（可能无取引中数据或页面结构变化）: {exc}",
+                    ) from exc
+            cap_info = await _wait_capture_with_progress(
+                since_ms=int(cap_list.get("ts") or t0),
+                capture_type="transaction_evidences_get",
+                wait_seconds=cfg.wait_seconds,
+                dpop_field="dpop_info",
+                acquired_fields=acquired_fields,
+                step_name="Step 2/4 DPoP_Info",
+                url_contains="/transaction_evidences/get?",
+            )
+            if not cap_info:
+                raise HTTPException(status_code=408, detail="步骤2失败：未截获 DPoP_Info（GET /transaction_evidences/get）")
+            print(f"[MITM] 截获 URL(2/4 dpop_info): {cap_info.get('url') or ''}", flush=True)
+            patch.update(cap_info.get("value_patch") or {})
+            if not str(patch.get("dpop_info") or "").strip():
+                raise HTTPException(status_code=500, detail="步骤2失败：截获到请求但缺少 dpop_info")
+            acquired_fields.append("dpop_info")
+            capture_meta["dpop_info_url"] = cap_info.get("url")
+            capture_meta["dpop_info_ts"] = cap_info.get("ts")
+            log.info("[MITM] Step 2 完成，等待 3s 后进入 Step 3")
+            print("[MITM] Step 2 完成，等待 3s 后进入 Step 3", flush=True)
+            await asyncio.sleep(3)
+
+            # Step 3: DPoP_OnSale-List
+            if cfg.open_browser and mgr is not None:
+                await mgr.open_new_tab(auto_key, MERCARI_LISTINGS_URL)
+            cap_on_sale = await _wait_capture_with_progress(
+                since_ms=int(cap_info.get("ts") or t0),
+                capture_type="items_get_items",
+                wait_seconds=cfg.wait_seconds,
+                seller_id=sid_cfg,
+                dpop_field="dpop_on_sale_list",
+                acquired_fields=acquired_fields,
+                step_name="Step 3/4 DPoP_OnSale-List",
+            )
+            if not cap_on_sale:
+                raise HTTPException(status_code=408, detail="步骤3失败：未截获 DPoP_OnSale-List（GET /items/get_items?status=on_sale|stop）")
+            print(f"[MITM] 截获 URL(3/4 dpop_on_sale_list): {cap_on_sale.get('url') or ''}", flush=True)
+            patch.update(cap_on_sale.get("value_patch") or {})
+            if not str(patch.get("dpop_on_sale_list") or "").strip():
+                raise HTTPException(status_code=500, detail="步骤3失败：截获到请求但缺少 dpop_on_sale_list")
+            acquired_fields.append("dpop_on_sale_list")
+            capture_meta["dpop_on_sale_list_url"] = cap_on_sale.get("url")
+            capture_meta["dpop_on_sale_list_ts"] = cap_on_sale.get("ts")
+            log.info("[MITM] Step 3 完成，等待 3s 后进入 Step 4")
+            print("[MITM] Step 3 完成，等待 3s 后进入 Step 4", flush=True)
+            await asyncio.sleep(3)
+
+            # Step 4: DPoP_ItemGet-Info
+            if cfg.open_browser and mgr is not None:
+                try:
+                    await mgr.click_xpath(auto_key, cfg.first_item_xpath, timeout_ms=25000)
+                except Exception as exc:
+                    raise HTTPException(status_code=500, detail=f"步骤4前置失败：自动点击「出品中」首条失败: {exc}") from exc
+            cap_item_get = await _wait_capture_with_progress(
+                since_ms=int(cap_on_sale.get("ts") or t0),
+                capture_type="items_get",
+                wait_seconds=cfg.wait_seconds,
+                dpop_field="dpop_item_get_info",
+                acquired_fields=acquired_fields,
+                step_name="Step 4/4 DPoP_ItemGet-Info",
+            )
+            if not cap_item_get:
+                raise HTTPException(status_code=408, detail="步骤4失败：未截获 DPoP_ItemGet-Info（GET /items/get）")
+            print(f"[MITM] 截获 URL(4/4 dpop_item_get_info): {cap_item_get.get('url') or ''}", flush=True)
+            patch.update(cap_item_get.get("value_patch") or {})
+            if not str(patch.get("dpop_item_get_info") or "").strip():
+                raise HTTPException(status_code=500, detail="步骤4失败：截获到请求但缺少 dpop_item_get_info")
+            acquired_fields.append("dpop_item_get_info")
+            capture_meta["dpop_item_get_info_url"] = cap_item_get.get("url")
+            capture_meta["dpop_item_get_info_ts"] = cap_item_get.get("ts")
+
+            sid_cap = _norm_seller_id(str(cap_on_sale.get("seller_id") or sid_cfg).strip())
+            if not sid_cap:
+                raise HTTPException(status_code=500, detail="捕获中缺少有效 seller_id")
+            item.seller_id = sid_cap
+
+            _apply_mitm_patch_to_account(item, patch)
+            if not item.save():
+                raise HTTPException(status_code=500, detail="保存失败")
+
+            keys_sorted = sorted(patch.keys())
+            log.info(
+                "[MITM] 捕获已写入账号 id=%s seller_id=%s ts=%s",
+                aid,
+                sid_cap,
+                cap_item_get.get("ts"),
+            )
+            log.info("[MITM] 截获 URL(1/4 dpop_list): %s", cap_list.get("url") or "")
+            log.info("[MITM] 截获 URL(2/4 dpop_info): %s", cap_info.get("url") or "")
+            log.info("[MITM] 截获 URL(3/4 dpop_on_sale_list): %s", cap_on_sale.get("url") or "")
+            log.info("[MITM] 截获 URL(4/4 dpop_item_get_info): %s", cap_item_get.get("url") or "")
+            log.info(
+                "[MITM] 本次合并 value 字段 (%d 项): %s",
+                len(keys_sorted),
+                ", ".join(keys_sorted),
+            )
+            for line in _mitm_patch_console_lines(patch):
+                log.info("[MITM]%s", line)
+            # print 不依赖 logging 配置，保证启动脚本控制台一定能看到
+            print("\n========== [MITM] 捕获已写入账号 ==========", flush=True)
+            print(f"  截获 URL(1/4 dpop_list): {cap_list.get('url') or ''}", flush=True)
+            print(f"  截获 URL(2/4 dpop_info): {cap_info.get('url') or ''}", flush=True)
+            print(f"  截获 URL(3/4 dpop_on_sale_list): {cap_on_sale.get('url') or ''}", flush=True)
+            print(f"  截获 URL(4/4 dpop_item_get_info): {cap_item_get.get('url') or ''}", flush=True)
+            print(f"  account_id={aid} seller_id={sid_cap} ts={cap_item_get.get('ts')}", flush=True)
+            print(f"  字段({len(keys_sorted)}): {', '.join(keys_sorted)}", flush=True)
+            for line in _mitm_patch_console_lines(patch):
+                print(f"[MITM]{line}", flush=True)
+            print("==========================================\n", flush=True)
+
+            # 认证抓取流程已完成：浏览器关闭由队列层负责（队列空闲后自动关）。
+
+            return {
+                "success": True,
+                "data": _item_api_dict(item),
+                "captured_field_keys": keys_sorted,
+                "capture_meta": {**capture_meta, "seller_id": sid_cap},
+                "mitm": mitm_status(),
+            }
+        finally:
+            clear_session_marker(aid)
+
+    return await run_meilu_serial_async(queue_key_for_meilu_account(aid), _do_fetch)

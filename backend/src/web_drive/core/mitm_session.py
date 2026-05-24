@@ -1,20 +1,16 @@
 # -*- coding: utf-8 -*-
 """
-MITM 自动化:按账号租借一个**主 profile** ``meilu_{id}`` 的有头 Edge 浏览器,
-同账号多个 MITM 请求复用同一进程;不再使用 ``meilu_{id}__auto`` 副本与 cookie seed。
+MITM 自动化：按账号打开主 profile ``meilu_{id}`` 的有头 Edge 浏览器,
+经 MITM 代理捕获煤炉 API 响应。
 
-设计要点:
-  - 直接打开账号主 profile（与 /meilu-accounts 「打开浏览器」一致）,登录态由 Edge
-    持久化 cookie 自动维护,无需先开首页 + sleep prewarm。
-  - 同账号并发请求通过 ``state.refs`` 计数避免互相覆盖目标 URL。
-  - 浏览器**保持打开**,由用户在前端手动关闭(或进程退出时统一清理),
-    不再有空闲自动关闭逻辑——主窗口对用户可见,自动关闭会打断用户操作。
-  - 若同账号已存在「非 MITM 代理」的主浏览器(例如用户从 /meilu-accounts 打开的),
-    首次租借会强制关闭并以 MITM 代理重新启动,以确保 API 请求经过代理被截获。
-
-注意:
-  - 全栈(/todos / /on-sale-items / /orders / /notifications / /meilu-accounts auth)
-    均已统一到主 profile + MITM 代理方案,不再有 ``__auto`` 副本与 cookie seed 逻辑。
+设计要点：
+  - 直接使用主 profile,登录态由 Edge 持久化 cookie 自动维护,无需 cookie seed
+    与首页 prewarm。
+  - 同账号通过 ``run_meilu_serial_async`` 串行执行,无并发问题;
+    浏览器自动关闭由队列(``account_serial_queue.py``)负责:队列归 0 后
+    经 ``WEB_DRIVE_QUEUE_IDLE_CLOSE_SEC`` 秒延迟自动关闭。
+  - 若同账号已存在「非 MITM 代理」的主浏览器(用户从 /meilu-accounts 打开的),
+    首次进入会强制关闭并以 MITM 代理重新启动。
 """
 
 from __future__ import annotations
@@ -23,7 +19,6 @@ import asyncio
 import logging
 import time
 from contextlib import asynccontextmanager
-from dataclasses import dataclass
 from typing import Any, AsyncIterator, Callable, Dict, Optional, Tuple
 
 from ...ssl_mitm_proxy.runner import default_mitm_proxy_url, start_mitm_proxy
@@ -33,38 +28,6 @@ from .paths import meilu_account_key
 log = logging.getLogger(__name__)
 
 _MITM_PAGE_RELOAD_INTERVAL_SEC = 20.0
-
-
-@dataclass
-class _MitmLeaseState:
-    """每个煤炉账号一份的租借状态(仅用于并发 refs 计数,不再做自动关闭)。"""
-
-    refs: int = 0
-    started: bool = False
-    lock: Optional[asyncio.Lock] = None
-
-
-_leases: Dict[int, _MitmLeaseState] = {}
-_leases_guard: Optional[asyncio.Lock] = None
-
-
-def _ensure_leases_guard() -> asyncio.Lock:
-    global _leases_guard
-    if _leases_guard is None:
-        _leases_guard = asyncio.Lock()
-    return _leases_guard
-
-
-async def _get_lease(account_id: int) -> _MitmLeaseState:
-    aid = int(account_id)
-    async with _ensure_leases_guard():
-        st = _leases.get(aid)
-        if st is None:
-            st = _MitmLeaseState(lock=asyncio.Lock())
-            _leases[aid] = st
-        elif st.lock is None:
-            st.lock = asyncio.Lock()
-        return st
 
 
 async def _is_context_alive(mgr: EdgeWebDriveManager, key: str) -> bool:
@@ -82,7 +45,7 @@ async def _launch_with_mitm(
     main_key: str,
     target_url: str,
 ) -> None:
-    """启动账号主 profile ``meilu_{id}`` 的有头 Edge,直接进入目标页(经 MITM 代理)。
+    """启动账号主 profile 有头 Edge,直接进入目标页(经 MITM 代理)。
 
     若同 profile 已有进程(无 MITM 代理),强制关闭后重启。
     """
@@ -90,17 +53,15 @@ async def _launch_with_mitm(
     if r.get("error"):
         raise RuntimeError(f"MITM 代理不可用: {r['error']}")
 
-    # 如果同账号主浏览器已经在运行(很可能是用户从 /meilu-accounts 打开的,未走 MITM),
-    # 强制关闭后用 MITM 代理重新启动,否则 API 请求不会经过代理。
     if mgr.is_interactive_session_running(main_key):
         log.info(
-            "[mitm-lease] account_id=%d 主浏览器已在运行(无 MITM 代理),强制关闭后以 MITM 重新打开",
+            "[mitm] account_id=%d 主浏览器已在运行(无 MITM 代理),强制关闭后以 MITM 重新打开",
             account_id,
         )
         try:
             await mgr.close_session(main_key, force=True)
         except Exception as exc:
-            log.warning("[mitm-lease] 关闭主浏览器失败(继续尝试启动): %s", exc)
+            log.warning("[mitm] 关闭主浏览器失败(继续尝试启动): %s", exc)
 
     proxy = default_mitm_proxy_url()
     target = (target_url or "").strip() or "https://jp.mercari.com/"
@@ -121,28 +82,8 @@ async def _launch_with_mitm(
 
 
 async def shutdown_mitm_leases() -> None:
-    """进程退出前调用:关闭仍驻留的主 profile 浏览器,清空租借状态。"""
-    async with _ensure_leases_guard():
-        items = list(_leases.items())
-
-    mgr = get_web_drive_manager()
-    for aid, state in items:
-        if state.lock is None:
-            continue
-        async with state.lock:
-            if state.started:
-                main_key = meilu_account_key(int(aid))
-                try:
-                    await mgr.close_session(main_key, force=True)
-                except Exception as exc:
-                    log.debug(
-                        "[mitm-lease] shutdown 关闭浏览器失败 account_id=%s: %s", aid, exc
-                    )
-                state.started = False
-            state.refs = 0
-
-    async with _ensure_leases_guard():
-        _leases.clear()
+    """旧版兼容入口:新版无内部租借状态需要清理(由队列负责),保留为 no-op。"""
+    return None
 
 
 @asynccontextmanager
@@ -152,82 +93,48 @@ async def mitm_automation_browser(
     start_url: str,
 ) -> AsyncIterator[Tuple[EdgeWebDriveManager, str]]:
     """
-    上下文管理器:为单次 MITM 操作租借账号主 profile 浏览器(同账号自动复用)。
+    上下文管理器:进入时确保账号主 profile 浏览器已开(走 MITM 代理),并导航到目标页。
 
-    yield ``(mgr, main_key)``;退出时仅 refs--,不再自动关闭浏览器
-    (与 /meilu-accounts 一致,由用户决定何时关闭)。
+    yield ``(mgr, main_key)``;退出时**不关闭**浏览器——关闭由队列层
+    (``account_serial_queue._delayed_close_browser``)按 ``WEB_DRIVE_QUEUE_IDLE_CLOSE_SEC``
+    延迟自动处理。
     """
     aid = int(account_id)
     main_key = meilu_account_key(aid)
     mgr = get_web_drive_manager()
-    state = await _get_lease(aid)
-
     target_url = (start_url or "").strip()
 
-    async with state.lock:  # type: ignore[union-attr]
-        state.refs += 1
-
-        try:
-            need_launch = not state.started
-            if not need_launch:
-                # 浏览器可能已被用户手动关掉 / 进程异常退出
-                alive = await _is_context_alive(mgr, main_key)
-                if not alive:
-                    log.info(
-                        "[mitm-lease] account_id=%d 主浏览器已不存活,重新启动",
-                        aid,
-                    )
-                    state.started = False
-                    need_launch = True
-
-            if need_launch:
+    if await _is_context_alive(mgr, main_key):
+        # 复用:仅刷新当前标签页到目标 URL
+        if target_url:
+            try:
+                await mgr.reload_active_tab(main_key, target_url)
+                log.debug("[mitm] 复用主浏览器 account_id=%d → %s", aid, target_url)
+            except Exception as exc:
+                log.warning(
+                    "[mitm] 复用 reload 失败,强制重启浏览器 account_id=%d: %s",
+                    aid,
+                    exc,
+                )
+                try:
+                    await mgr.close_session(main_key, force=True)
+                except Exception:
+                    pass
                 await _launch_with_mitm(
                     mgr=mgr,
                     account_id=aid,
                     main_key=main_key,
                     target_url=target_url,
                 )
-                state.started = True
-            else:
-                # 复用:reload 到本次目标页(start_url 为空时则停留在原页面)
-                if target_url:
-                    try:
-                        await mgr.reload_active_tab(main_key, target_url)
-                        log.debug(
-                            "[mitm-lease] 复用主浏览器 account_id=%d → %s",
-                            aid,
-                            target_url,
-                        )
-                    except Exception as exc:
-                        log.warning(
-                            "[mitm-lease] 复用 reload 失败,强制重启浏览器 account_id=%d: %s",
-                            aid,
-                            exc,
-                        )
-                        try:
-                            await mgr.close_session(main_key, force=True)
-                        except Exception:
-                            pass
-                        state.started = False
-                        await _launch_with_mitm(
-                            mgr=mgr,
-                            account_id=aid,
-                            main_key=main_key,
-                            target_url=target_url,
-                        )
-                        state.started = True
-        except BaseException:
-            state.refs -= 1
-            raise
+    else:
+        await _launch_with_mitm(
+            mgr=mgr,
+            account_id=aid,
+            main_key=main_key,
+            target_url=target_url,
+        )
 
-    try:
-        yield mgr, main_key
-    finally:
-        async with state.lock:  # type: ignore[union-attr]
-            state.refs -= 1
-            if state.refs < 0:
-                state.refs = 0
-            # 不再自动延迟关闭:浏览器由用户手动关闭或进程退出时清理
+    yield mgr, main_key
 
 
 async def wait_mitm_capture(
@@ -244,7 +151,7 @@ async def wait_mitm_capture(
     """
     轮询 MITM 落盘文件;超时前按间隔刷新当前标签页以再次触发目标 API。
 
-    形参名 ``auto_key`` 系历史命名,实际可传任意会话 key
+    形参名 ``auto_key`` 系历史命名,实际传任意会话 key
     (新版传入 ``meilu_account_key(aid)`` 主 profile key)。
     """
     deadline = time.monotonic() + wait_seconds

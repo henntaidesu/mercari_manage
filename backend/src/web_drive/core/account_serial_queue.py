@@ -3,8 +3,12 @@
 煤炉浏览器任务串行队列：同一账号（meilu_{id}）或全局批量任务在同一时刻只执行一个，
 避免并发点击导致同一 Edge profile / MITM 流程互相打断。
 
-实现：每个队列键对应一个 ``asyncio.Lock``，在 uvicorn 主事件循环上 ``await`` 串行执行，
-不再使用 ``ThreadPoolExecutor`` + ``asyncio.run()``，避免阻塞线程与 Windows 管道泄漏。
+队列同时承担**浏览器自动关闭**职责：
+    - 每次 ``run_meilu_serial_async`` 调用都会让队列的 ``pending`` 计数 +1
+    - 任务结束时 -1；当某账号队列 ``pending`` 归 0,会在
+      ``WEB_DRIVE_QUEUE_IDLE_CLOSE_SEC``(默认 10s) 后自动关闭该账号主 profile 浏览器
+    - 延迟期内有新任务排队则取消关闭,继续复用浏览器
+    - ``GLOBAL_QUEUE_KEY`` / 非 ``meilu_<id>`` 键不参与自动关闭
 """
 
 from __future__ import annotations
@@ -12,21 +16,44 @@ from __future__ import annotations
 import asyncio
 import logging
 import os
+from dataclasses import dataclass, field
 from typing import Awaitable, Callable, Dict, Optional, TypeVar
 
 log = logging.getLogger(__name__)
 
 T = TypeVar("T")
 
-_async_locks: Dict[str, asyncio.Lock] = {}
-_async_locks_guard: Optional[asyncio.Lock] = None
-
 # 未指定 account_id 的订单批量刷新等「跨账号」任务共用此键，全局串行
 GLOBAL_QUEUE_KEY = "meilu_serial_global"
 
 
+@dataclass
+class _AccountQueueState:
+    """每个 queue_key 一份的串行 + auto-close 状态。"""
+
+    lock: asyncio.Lock
+    pending: int = 0
+    close_task: Optional[asyncio.Task] = None
+    # 第一次首次进入时才创建锁,避免无事件循环时构造失败
+    state_lock: asyncio.Lock = field(default_factory=asyncio.Lock)
+
+
+_states: Dict[str, _AccountQueueState] = {}
+_states_guard: Optional[asyncio.Lock] = None
+
+
 def queue_key_for_meilu_account(account_id: int) -> str:
     return f"meilu_{int(account_id)}"
+
+
+def _idle_close_sec() -> float:
+    """空闲多少秒后自动关闭浏览器,可由 ``WEB_DRIVE_QUEUE_IDLE_CLOSE_SEC`` 覆盖(默认 10s)。"""
+    raw = (os.environ.get("WEB_DRIVE_QUEUE_IDLE_CLOSE_SEC") or "10.0").strip()
+    try:
+        v = float(raw)
+    except ValueError:
+        return 10.0
+    return v if v >= 0 else 0.0
 
 
 def default_task_timeout_sec() -> Optional[float]:
@@ -39,20 +66,71 @@ def default_task_timeout_sec() -> Optional[float]:
         return None
 
 
-def _locks_guard() -> asyncio.Lock:
-    global _async_locks_guard
-    if _async_locks_guard is None:
-        _async_locks_guard = asyncio.Lock()
-    return _async_locks_guard
+def _states_guard_lock() -> asyncio.Lock:
+    global _states_guard
+    if _states_guard is None:
+        _states_guard = asyncio.Lock()
+    return _states_guard
 
 
-async def _async_lock_for(queue_key: str) -> asyncio.Lock:
-    async with _locks_guard():
-        lock = _async_locks.get(queue_key)
-        if lock is None:
-            lock = asyncio.Lock()
-            _async_locks[queue_key] = lock
-        return lock
+async def _get_state(queue_key: str) -> _AccountQueueState:
+    async with _states_guard_lock():
+        st = _states.get(queue_key)
+        if st is None:
+            st = _AccountQueueState(lock=asyncio.Lock())
+            _states[queue_key] = st
+        return st
+
+
+def _account_id_from_queue_key(queue_key: str) -> Optional[int]:
+    """``meilu_<id>`` → id;其它(如 ``meilu_prepare`` / GLOBAL_QUEUE_KEY) → None。"""
+    if not queue_key.startswith("meilu_"):
+        return None
+    tail = queue_key[len("meilu_"):]
+    try:
+        return int(tail)
+    except ValueError:
+        return None
+
+
+async def _delayed_close_browser(queue_key: str, state: _AccountQueueState) -> None:
+    """空闲 ``WEB_DRIVE_QUEUE_IDLE_CLOSE_SEC`` 秒后关闭该账号主 profile 浏览器。
+
+    若被新任务取消,直接返回(不关闭)。
+    """
+    delay = _idle_close_sec()
+    try:
+        await asyncio.sleep(delay)
+    except asyncio.CancelledError:
+        return
+
+    async with state.state_lock:
+        if state.pending > 0:
+            # 新任务在 sleep 期间挤进来了:别关
+            state.close_task = None
+            return
+        aid = _account_id_from_queue_key(queue_key)
+        if aid is None:
+            # 仅 meilu_<id> 队列触发浏览器关闭;GLOBAL_QUEUE_KEY 等不触发
+            state.close_task = None
+            return
+        try:
+            from .manager import get_web_drive_manager
+            from .paths import meilu_account_key
+
+            mgr = get_web_drive_manager()
+            main_key = meilu_account_key(aid)
+            await mgr.close_session(main_key, force=True)
+            log.info(
+                "[queue] account_id=%d 队列空闲 %.1fs,已关闭浏览器",
+                aid,
+                delay,
+            )
+        except Exception as exc:
+            log.warning(
+                "[queue] account_id=%d 自动关闭浏览器失败: %s", aid, exc
+            )
+        state.close_task = None
 
 
 async def run_meilu_serial_async(
@@ -62,18 +140,37 @@ async def run_meilu_serial_async(
     timeout_sec: Optional[float] = None,
 ) -> T:
     """
-    在指定队列键下串行执行异步任务 ``fn()``（先进先出）。
+    在指定队列键下串行执行异步任务 ``fn()``(先进先出),并在队列归 0 后调度浏览器自动关闭。
 
     :param queue_key: 通常 ``queue_key_for_meilu_account(account_id)`` 或 ``GLOBAL_QUEUE_KEY``
-    :param timeout_sec: 等待超时秒数；默认读 ``MEILU_BROWSER_TASK_TIMEOUT_SEC``，未设置则无超时
+    :param timeout_sec: 等待超时秒数;默认读 ``MEILU_BROWSER_TASK_TIMEOUT_SEC``,未设置则无超时
     """
-    lock = await _async_lock_for(queue_key)
-    async with lock:
-        coro = fn()
-        to = timeout_sec if timeout_sec is not None else default_task_timeout_sec()
-        if to is not None:
-            return await asyncio.wait_for(coro, timeout=to)
-        return await coro
+    state = await _get_state(queue_key)
+
+    # ── 进入队列:取消挂起的延迟关闭(若有);pending +1 ──
+    async with state.state_lock:
+        if state.close_task is not None and not state.close_task.done():
+            state.close_task.cancel()
+        state.close_task = None
+        state.pending += 1
+
+    try:
+        async with state.lock:
+            coro = fn()
+            to = timeout_sec if timeout_sec is not None else default_task_timeout_sec()
+            if to is not None:
+                return await asyncio.wait_for(coro, timeout=to)
+            return await coro
+    finally:
+        # ── 退出队列:pending -1;归 0 时调度延迟关闭浏览器 ──
+        async with state.state_lock:
+            state.pending -= 1
+            if state.pending <= 0:
+                state.pending = 0
+                if state.close_task is None or state.close_task.done():
+                    state.close_task = asyncio.create_task(
+                        _delayed_close_browser(queue_key, state)
+                    )
 
 
 def resolve_meilu_account_id(account_id: Optional[int]) -> int:
@@ -84,7 +181,28 @@ def resolve_meilu_account_id(account_id: Optional[int]) -> int:
     return int(aid)
 
 
+async def shutdown_queue() -> None:
+    """进程退出前调用:取消所有挂起的延迟关闭 task,清空队列状态。"""
+    async with _states_guard_lock():
+        items = list(_states.items())
+    for _key, state in items:
+        async with state.state_lock:
+            if state.close_task is not None and not state.close_task.done():
+                state.close_task.cancel()
+                try:
+                    await state.close_task
+                except (asyncio.CancelledError, Exception):
+                    pass
+            state.close_task = None
+            state.pending = 0
+    async with _states_guard_lock():
+        _states.clear()
+
+
 def shutdown_serial_executors(*, wait: bool = False) -> None:
-    """进程退出时清空队列锁（兼容旧调用名）。"""
-    _async_locks.clear()
-    log.debug("async serial queue locks cleared (wait=%s)", wait)
+    """进程退出时清空队列状态（兼容旧调用名）。
+
+    取消挂起的 close_task 由 ``shutdown_queue`` 异步完成；此同步入口仅做注册表清空。
+    """
+    _states.clear()
+    log.debug("async serial queue states cleared (wait=%s)", wait)
