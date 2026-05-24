@@ -337,38 +337,6 @@ class EdgeWebDriveManager:
         self._prune_dead_sessions(s)
         return self._is_interactive_session(s, key)
 
-    async def copy_cookies_between_sessions(self, src_key: str, dst_key: str) -> int:
-        """
-        从源会话（通常为有头 ``meilu_{id}``）复制 Cookie 到目标会话（``meilu_{id}__listing``）。
-        主 profile 的 Cookies 文件被有头 Edge 占用时无法落盘复制，但运行中会话可读 Cookie。
-        """
-        src = validate_account_key(src_key)
-        dst = validate_account_key(dst_key)
-        s = self._prepare_async()
-        async with s.lock:  # type: ignore[union-attr]
-            src_ctx = s.contexts.get(src)
-            dst_ctx = s.contexts.get(dst)
-            if (
-                src_ctx is None
-                or dst_ctx is None
-                or not self._is_context_alive(src_ctx)
-                or not self._is_context_alive(dst_ctx)
-            ):
-                return 0
-            try:
-                cookies = await src_ctx.cookies()
-            except Exception:
-                return 0
-            if not cookies:
-                return 0
-            if not dst_ctx.pages:
-                await dst_ctx.new_page()
-            try:
-                await dst_ctx.add_cookies(cookies)
-                return len(cookies)
-            except Exception:
-                return 0
-
     async def reload_active_tab(
         self,
         account_key: str,
@@ -399,40 +367,6 @@ class EdgeWebDriveManager:
             if ctx is None or not self._is_context_alive(ctx):
                 raise RuntimeError(f"会话不可用或无活动页: {key}")
             return ctx.pages[-1] if ctx.pages else await ctx.new_page()
-
-    async def ensure_session_for_listing(
-        self,
-        listing_account_key: str,
-        *,
-        main_account_key: str,
-        start_url: Optional[str],
-        proxy_server: Optional[str],
-    ) -> Dict[str, Any]:
-        """
-        库存出品：在 ``meilu_{id}__listing`` 独立 profile 上启动有头会话并打开出品页。
-        不触碰系统预启动的 ``meilu_{id}`` 主窗口；尽量从主会话同步 Cookie。
-        """
-        listing_key = validate_account_key(listing_account_key)
-        main_key = validate_account_key(main_account_key)
-        async with self._serialize_profile(listing_key):
-            await self._close_session_unlocked(listing_key, force=True)
-            opened = await self._open_session_impl(
-                listing_key,
-                headless=False,
-                start_url=start_url,
-                proxy_server=proxy_server,
-                interactive=True,
-                restore_tabs=False,
-            )
-            n_cookies = await self.copy_cookies_between_sessions(main_key, listing_key)
-            u = (start_url or "").strip()
-            if n_cookies > 0 and u:
-                try:
-                    await self.reload_active_tab(listing_key, u)
-                except Exception:
-                    pass
-            opened["cookies_copied_from_main"] = n_cookies
-            return opened
 
     async def snapshot_all_interactive_sessions(self) -> int:
         """将当前线程内所有有头交互会话的标签 URL 写入 profile 快照。返回成功写入的账号数。"""

@@ -26,7 +26,7 @@ _FETCH_DETAILS_BATCH_MAX = 200
 
 async def sync_on_sale(data: SyncOnSaleRequest):
     """
-    从煤炉拉取在售列表并同步本地：使用对应账号 Edge（meilu_{id}__auto）经 MITM 打开
+    从煤炉拉取在售列表并同步本地：用账号主 profile ``meilu_{id}`` 经 MITM 打开
     jp.mercari.com/mypage/listings，截获 api.mercari.jp/items/get_items 响应。
     在同一浏览器会话内，对本次**新增**的商品依次打开商品页截获 items/get，执行与「获取详情」相同的库存回写（可用 WEB_DRIVE_ON_SALE_SYNC_AUTO_DETAIL=0 关闭）。
     新列表中不存在的本地记录不物理删除，而是标记 is_delete=1（软删除）。

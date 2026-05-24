@@ -28,8 +28,8 @@ from ...ssl_mitm_proxy.capture_config import (
     read_shipping_info_response,
     read_transaction_messages_response,
 )
-from ...ssl_mitm_proxy.runner import default_mitm_proxy_url, start_mitm_proxy
 from ...web_drive.core.manager import EdgeWebDriveManager, get_web_drive_manager
+from ...web_drive.core.mitm_session import mitm_automation_browser
 from ...web_drive.core.paths import meilu_account_key
 from ..get_order.get_in_progress_order.get_order_info import apply_item_info_to_order
 
@@ -231,43 +231,21 @@ async def fetch_transaction_detail(todo_id: int) -> Dict[str, Any]:
     url = f"https://jp.mercari.com/transaction/{item_id}"
     log.info("[txdetail] 打开交易页 account_id=%s url=%s", aid, url)
 
-    r = start_mitm_proxy()
-    if r.get("error"):
-        raise RuntimeError(f"MITM 代理不可用: {r['error']}")
-
-    mgr = get_web_drive_manager()
-    main_key = meilu_account_key(aid)
-    proxy = default_mitm_proxy_url()
-
     # ── Step 1: 清空 latest 响应文件 + 取 since_ms ──
     clear_shipping_info_response_file()
     clear_transaction_messages_response_file()
     since_ms = int(time.time() * 1000)
 
-    # ── Step 2: 用主 profile 打开交易页（持久化 cookie 自动维持登录态）。
-    #            若已开但未走 MITM 代理，则强制关闭后重启。 ──
-    if mgr.is_interactive_session_running(main_key):
-        log.info("[txdetail] account_id=%s 主浏览器已运行（无 MITM 代理），强制关闭后重启", aid)
-        try:
-            await mgr.close_session(main_key, force=True)
-        except Exception as exc:
-            log.warning("[txdetail] 关闭主浏览器失败（继续尝试）: %s", exc)
-
-    await mgr.open_session(
-        main_key,
-        headless=False,
-        start_url=url,
-        proxy_server=proxy,
-        interactive=True,
-        restore_tabs=False,
-    )
-
-    shipping, messages = await _wait_for_both_captures(
-        mgr=mgr,
-        auto_key=main_key,
-        start_url=url,
-        since_ms=since_ms,
-    )
+    # ── Step 2: 用账号主 profile 经 MITM 打开交易页（与 /orders 更新列表同模式，
+    #            cookie 由 Edge 持久化自动维护；浏览器留给后续 followup op 复用，
+    #            队列空闲自动关闭由路由层 suppress_idle_close=True 关闭）──
+    async with mitm_automation_browser(aid, start_url=url) as (mgr, main_key):
+        shipping, messages = await _wait_for_both_captures(
+            mgr=mgr,
+            auto_key=main_key,
+            start_url=url,
+            since_ms=since_ms,
+        )
 
     if shipping is None and messages is None:
         log.warning("[txdetail] 两个 API 均未截获 todo_id=%s", todo_id)
@@ -310,7 +288,7 @@ _REVIEW_COMPLETED_TEXT = "取引が完了しました"
 
 
 async def send_transaction_message(todo_id: int, text: str) -> Dict[str, Any]:
-    """在已开的 __auto 浏览器内填回复并点击「取引メッセージを送る」。
+    """在已开的主 profile 浏览器内填回复并点击「取引メッセージを送る」。
 
     要求 ``fetch_transaction_detail`` 已先打开过对应账号的交易页（否则会话不存在/不在目标 URL）。
     """

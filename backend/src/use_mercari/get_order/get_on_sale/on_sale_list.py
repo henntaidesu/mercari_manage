@@ -9,8 +9,9 @@ Mercari 在售商品列表：通过账号对应 WebDriver 打开
 直至 ``meta.total_item_count`` 已全部合并或 ``has_next`` 为 false 且按钮消失。
 「从煤炉同步」完成后可在**同一浏览器会话**内对本次新增商品自动执行与「获取详情」相同的逻辑（见 ``on_sale_item_detail_sync.auto_fetch_details_for_inserted_items``）。
 
-MITM 浏览器使用独立 profile：``meilu_{account_id}__auto``（与账号页有头 ``meilu_{account_id}`` 分离）。
-每次操作启动一个独立的有头最小化 Edge 进程，截获完成后会在 ``finally`` 中关闭该浏览器会话。
+MITM 浏览器使用账号主 profile ``meilu_{account_id}``（与 /orders 更新列表同模式，
+登录态由 Edge 持久化 cookie 自动维护）。上下文退出后浏览器由 ``account_serial_queue``
+在队列空闲超时（默认 10s）后自动关闭。
 """
 
 from __future__ import annotations

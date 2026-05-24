@@ -55,10 +55,13 @@ async def fetch_todo_transaction_detail(todo_id: int) -> Dict[str, Any]:
     if not aid:
         raise HTTPException(status_code=400, detail="待办事项缺少 account_id")
 
+    # 交易详情打开后浏览器需保持打开,等用户在前端继续操作（发送/选择/评价等）;
+    # 队列空闲自动关闭由 close_detail_browser 路由或终态 op 显式关闭代替
     try:
         data = await run_meilu_serial_async(
             queue_key_for_meilu_account(aid),
             lambda: fetch_transaction_detail(int(todo_id)),
+            suppress_idle_close=True,
         )
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc))
@@ -81,6 +84,7 @@ async def send_transaction_message_endpoint(
         return await run_meilu_serial_async(
             queue_key_for_meilu_account(aid),
             lambda: send_transaction_message(int(todo_id), req.text),
+            suppress_idle_close=True,
         )
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc))
@@ -100,6 +104,7 @@ async def start_shipping_class_endpoint(todo_id: int) -> Dict[str, Any]:
         return await run_meilu_serial_async(
             queue_key_for_meilu_account(aid),
             lambda: start_select_shipping_class(int(todo_id)),
+            suppress_idle_close=True,
         )
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc))
@@ -121,6 +126,7 @@ async def confirm_shipping_selection_endpoint(
         return await run_meilu_serial_async(
             queue_key_for_meilu_account(aid),
             lambda: confirm_shipping_selection(int(todo_id), req.class_text, req.facility),
+            suppress_idle_close=True,
         )
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc))
@@ -142,6 +148,7 @@ async def submit_transaction_review_endpoint(
         return await run_meilu_serial_async(
             queue_key_for_meilu_account(aid),
             lambda: submit_transaction_review(int(todo_id), req.text),
+            suppress_idle_close=True,
         )
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc))
@@ -161,6 +168,7 @@ async def change_shipping_method_endpoint(todo_id: int) -> Dict[str, Any]:
         return await run_meilu_serial_async(
             queue_key_for_meilu_account(aid),
             lambda: click_change_shipping_method(int(todo_id)),
+            suppress_idle_close=True,
         )
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc))

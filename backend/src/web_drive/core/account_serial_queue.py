@@ -138,12 +138,16 @@ async def run_meilu_serial_async(
     fn: Callable[[], Awaitable[T]],
     *,
     timeout_sec: Optional[float] = None,
+    suppress_idle_close: bool = False,
 ) -> T:
     """
     在指定队列键下串行执行异步任务 ``fn()``(先进先出),并在队列归 0 后调度浏览器自动关闭。
 
     :param queue_key: 通常 ``queue_key_for_meilu_account(account_id)`` 或 ``GLOBAL_QUEUE_KEY``
     :param timeout_sec: 等待超时秒数;默认读 ``MEILU_BROWSER_TASK_TIMEOUT_SEC``,未设置则无超时
+    :param suppress_idle_close: 任务完成后不调度自动关闭浏览器(浏览器保持打开,
+        由后续 op 或显式 close 路由处理);用于交易详情等需要跨多个 HTTP 请求
+        复用同一窗口的工作流。
     """
     state = await _get_state(queue_key)
 
@@ -162,12 +166,15 @@ async def run_meilu_serial_async(
                 return await asyncio.wait_for(coro, timeout=to)
             return await coro
     finally:
-        # ── 退出队列:pending -1;归 0 时调度延迟关闭浏览器 ──
+        # ── 退出队列:pending -1;归 0 时调度延迟关闭浏览器(除非 suppress_idle_close) ──
         async with state.state_lock:
             state.pending -= 1
             if state.pending <= 0:
                 state.pending = 0
-                if state.close_task is None or state.close_task.done():
+                if suppress_idle_close:
+                    # 调用方明示浏览器需保持打开,跳过自动关闭计时
+                    pass
+                elif state.close_task is None or state.close_task.done():
                     state.close_task = asyncio.create_task(
                         _delayed_close_browser(queue_key, state)
                     )

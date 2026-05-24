@@ -1,12 +1,12 @@
 # -*- coding: utf-8 -*-
 """
-Mercari 在售商品删除：MITM 有头最小化 Edge 打开编辑页并删除，完成后同步列表并关闭浏览器。
+Mercari 在售商品删除：用账号主 profile 经 MITM 打开编辑页并删除，完成后同步列表（浏览器由队列空闲超时关闭）。
 
-流程：
-  1. 在 ``meilu_{id}__auto`` profile 上启动有头最小化 Edge（Cookie 从 ``meilu_{id}`` 磁盘 seed）
+流程（与 /orders 更新列表同模式，cookie 由 Edge 持久化自动维护）：
+  1. ``mitm_automation_browser(account_id, start_url=edit_url)`` 进入账号主 profile ``meilu_{id}``
   2. 点击「この商品を削除する」→ 弹窗内点击「削除する」
   3. 等待跳转出品一覧，MITM 截获 items/get_items 并同步本地
-  4. 自动 close_session 关闭浏览器
+  4. 上下文退出后，浏览器由 ``account_serial_queue`` 在队列空闲超时（默认 10s）后自动关闭
 """
 from __future__ import annotations
 
@@ -110,7 +110,8 @@ async def delete_mercari_item(
     element_timeout_ms: int = DEFAULT_ELEMENT_TIMEOUT_MS,
 ) -> Dict[str, Any]:
     """
-    使用 MITM 浏览器（``meilu_{id}__auto`` 有头最小化）删除商品并同步在售列表；结束后自动关闭浏览器。
+    使用账号主 profile ``meilu_{id}`` 经 MITM 删除商品并同步在售列表；
+    上下文退出后浏览器由 ``account_serial_queue`` 在队列空闲超时后自动关闭。
     """
     from ...core.manager import EdgeWebDriveManager
     from ...core.mitm_session import mitm_automation_browser

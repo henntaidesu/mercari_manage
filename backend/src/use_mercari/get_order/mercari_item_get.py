@@ -82,7 +82,7 @@ async def fetch_mercari_item_get_in_browser_session(
     timeout: int = 90,
 ) -> Dict[str, Any]:
     """
-    在已打开的 MITM Edge 会话（与在售列表同步同款 ``meilu_{id}__auto``）内导航到商品页，
+    在已打开的 MITM Edge 会话（账号主 profile ``meilu_{id}``，与在售列表同步同模式）内导航到商品页，
     截获 ``items/get`` JSON（含 result / data），供 ``detail_sync_inventory_from_item_get_response`` 使用。
     """
     cid = canonical_mercari_item_id(item_id)

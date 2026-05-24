@@ -244,7 +244,8 @@ class DeleteMercariItemBody(PydanticModel):
 
 async def delete_on_sale_item(body: DeleteMercariItemBody):
     """
-    无头 MITM 浏览器（meilu_{id}__auto）打开编辑页删除商品，跳转出品一覧后同步本地列表，完成后自动关闭浏览器。
+    账号主 profile ``meilu_{id}`` 经 MITM 打开编辑页删除商品，跳转出品一覧后同步本地列表；
+    经 ``run_meilu_serial_async`` 串行，浏览器在队列空闲超时后由队列自动关闭。
     """
     from ....web_drive.core.account_serial_queue import (
         queue_key_for_meilu_account,
