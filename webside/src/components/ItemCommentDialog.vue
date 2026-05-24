@@ -202,6 +202,8 @@ async function runSync() {
   if (!props.itemId) return
   syncing.value = true
   loading.value = true
+  // sync 会启动浏览器并保持开启,直到弹窗关闭/页面离开
+  browserOpened.value = true
   try {
     const res = await notificationsApi.itemCommentSync({
       item_id: props.itemId,
@@ -241,8 +243,12 @@ async function onSubmit() {
   }
 }
 
+// 跟踪本对话框是否打开过浏览器:仅当打开过才调用 close
+const browserOpened = ref(false)
+
 async function closeBrowserSilently() {
-  // 用户关弹窗后即使 sync/post 还没启动也无害(close 对未运行的会话是 no-op)
+  if (!browserOpened.value) return
+  browserOpened.value = false
   try {
     await notificationsApi.itemCommentClose({
       account_id: props.accountId || null,
@@ -255,11 +261,17 @@ async function closeBrowserSilently() {
 function onVisibleChange(v) {
   emit('update:modelValue', v)
   if (!v) {
-    // 触发后端关闭主 profile 浏览器(fire-and-forget)
+    // 用户点 X / 「关闭」时触发后端关闭主 profile 浏览器(fire-and-forget)
     closeBrowserSilently()
     resetState()
   }
 }
+
+// 用户离开 /notifications 页面(切路由/关 Tab 时父组件卸载)→
+// 弹窗一起卸载,这里兜底关一次浏览器。
+onBeforeUnmount(() => {
+  closeBrowserSilently()
+})
 
 watch(
   () => [props.modelValue, props.itemId],
