@@ -72,8 +72,8 @@
             <el-image
               v-if="row.photo_url"
               class="todo-thumb"
-              :src="row.photo_url"
-              :preview-src-list="[row.photo_url]"
+              :src="mercariImageUrl(row.photo_url)"
+              :preview-src-list="[mercariImageUrl(row.photo_url)]"
               :preview-teleported="true"
               fit="cover"
               referrerpolicy="no-referrer"
@@ -195,8 +195,8 @@
             </div>
             <div v-if="detail.photo_url" class="detail-photo-wrap">
               <el-image
-                :src="detail.photo_url"
-                :preview-src-list="[detail.photo_url]"
+                :src="mercariImageUrl(detail.photo_url)"
+                :preview-src-list="[mercariImageUrl(detail.photo_url)]"
                 :preview-teleported="true"
                 fit="cover"
                 referrerpolicy="no-referrer"
@@ -392,6 +392,7 @@ import { ElMessage, ElMessageBox } from 'element-plus'
 import { Download } from '@element-plus/icons-vue'
 import { todosApi, meiluAccountApi } from '@/api'
 import { useMercariAccountStore } from '@/stores/mercariAccount.js'
+import { mercariImageUrl } from '@/utils/mercariImage.js'
 
 const mercariAccountStore = useMercariAccountStore()
 const globalAccountId = computed({

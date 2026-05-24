@@ -34,6 +34,7 @@ from .inventory.API import public_router as inventory_public_router
 from .meilu_accounts.API import router as meilu_accounts_router
 from .todos.API import router as todos_router
 from .notifications.API import router as notifications_router
+from .mercari_image.API import public_router as mercari_image_public_router
 
 router = APIRouter(prefix="/use_web")
 
@@ -42,6 +43,8 @@ router = APIRouter(prefix="/use_web")
 router.include_router(login_router, prefix="/login", tags=["login"])
 # 库存公开缩略图
 router.include_router(inventory_public_router, prefix="/inventory", tags=["inventory-public"])
+# 煤炉图片代理（跨页面共享，前端 <img> 直接通过 URL 访问，无需 token）
+router.include_router(mercari_image_public_router, tags=["mercari-image"])
 
 # ============ 需要认证的端点 ============
 _AUTH = [Depends(require_auth)]

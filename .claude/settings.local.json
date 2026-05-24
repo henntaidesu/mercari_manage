@@ -8,7 +8,8 @@
       "Bash(Get-Content \"d:\\\\Project\\\\mercari\\\\CLAUDE.md\" -TotalCount 45)",
       "Bash(ls -la \"D:\\\\Project\\\\CsWeaponManager\\\\backEnd\")",
       "Read(//d/Project/CsWeaponManager/backEnd/**)",
-      "Bash(git checkout *)"
+      "Bash(git checkout *)",
+      "Bash(python -c \"import sqlite3; con=sqlite3.connect\\('mercariDB.db'\\); cur=con.cursor\\(\\); cur.execute\\('SELECT photo_url FROM todo_items WHERE photo_url IS NOT NULL AND photo_url != \\\\\"\\\\\" LIMIT 2'\\); print\\(cur.fetchall\\(\\)\\)\")"
     ]
   }
 }

@@ -313,6 +313,7 @@ import { ElMessage, ElMessageBox } from 'element-plus'
 import { Download } from '@element-plus/icons-vue'
 import { onSaleItemApi, meiluAccountApi, webDriveApi } from '@/api/index.js'
 import { parseMgmtIdsFromDescription } from '@/utils/mgmtIdCipher.js'
+import { mercariImageUrlList } from '@/utils/mercariImage.js'
 import { useMercariAccountStore } from '@/stores/mercariAccount.js'
 
 const mercariAccountStore = useMercariAccountStore()
@@ -577,13 +578,13 @@ function thumbPreviewList(row) {
   const raw = row.thumbnails
   if (!raw) return []
   if (Array.isArray(raw)) {
-    return raw.map((u) => String(u).trim()).filter(Boolean)
+    return mercariImageUrlList(raw.map((u) => String(u).trim()).filter(Boolean))
   }
   if (typeof raw === 'string') {
     try {
       const arr = JSON.parse(raw)
       if (Array.isArray(arr)) {
-        return arr.map((u) => String(u).trim()).filter(Boolean)
+        return mercariImageUrlList(arr.map((u) => String(u).trim()).filter(Boolean))
       }
     } catch {
       /* ignore */

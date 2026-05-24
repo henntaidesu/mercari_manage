@@ -955,6 +955,7 @@ import {
   localTodayRangeTs,
 } from '@/utils/orderStatsTime.js'
 import { decodeMgmtIdCipher, parseMgmtIdsFromDescription } from '@/utils/mgmtIdCipher.js'
+import { mercariImageUrlList } from '@/utils/mercariImage.js'
 
 const orderTableRef = ref(null)
 /** 当前已展开的主表行（用于筛选变更时折叠，避免展开区与缓存不一致） */
@@ -1447,18 +1448,22 @@ function formatFeeShippingCell(row) {
   return `${left}/${right}`
 }
 
-/** thumbnails 为 JSON 字符串或数组时解析为 URL 列表（用于预览） */
+/** thumbnails 为 JSON 字符串或数组时解析为 URL 列表（用于预览）；煤炉 CDN URL 经后端代理返回 */
 function thumbnailPreviewList(row) {
   const raw = row.thumbnails
   if (raw == null || raw === '') return []
   if (Array.isArray(raw)) {
-    return raw.map((u) => (u != null && u !== '' ? String(u) : '')).filter(Boolean)
+    return mercariImageUrlList(
+      raw.map((u) => (u != null && u !== '' ? String(u) : '')).filter(Boolean)
+    )
   }
   if (typeof raw === 'string') {
     try {
       const arr = JSON.parse(raw)
       if (Array.isArray(arr)) {
-        return arr.map((u) => (u != null && u !== '' ? String(u) : '')).filter(Boolean)
+        return mercariImageUrlList(
+          arr.map((u) => (u != null && u !== '' ? String(u) : '')).filter(Boolean)
+        )
       }
     } catch {
       return []
