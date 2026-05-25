@@ -19,7 +19,7 @@ from __future__ import annotations
 import asyncio
 import logging
 import time
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Callable, Dict, List, Optional, Tuple
 from urllib.parse import urlencode
 
 from ....ssl_mitm_proxy.capture_config import (
@@ -191,6 +191,8 @@ async def _click_listings_load_more_if_present(
 async def _expand_on_sale_listings_until_end(
     page: Any,
     seller_key: str,
+    *,
+    progress_report: Optional[Callable[[str, str], None]] = None,
 ) -> Tuple[List[Dict[str, Any]], Dict[str, Any]]:
     """
     先滚至页面底部，循环点击「もっと見る」并等待 MITM 截获 ``items/get_items``
@@ -206,6 +208,19 @@ async def _expand_on_sale_listings_until_end(
     last_ts = int(wrapped.get("ts") or 0)
 
     await _scroll_listings_page_to_bottom(page)
+
+    total_for_progress = _meta_total_item_count(meta)
+    if progress_report:
+        if total_for_progress > 0:
+            progress_report(
+                "merge_listings",
+                f"已合并 {len(merged)}/{total_for_progress} 件商品…",
+            )
+        else:
+            progress_report(
+                "merge_listings",
+                f"已合并 {len(merged)} 件商品…",
+            )
 
     for round_idx in range(_LISTINGS_LOAD_MORE_MAX_ROUNDS):
         if not _needs_more_on_sale_list_pages(meta, len(merged)):
@@ -265,6 +280,19 @@ async def _expand_on_sale_listings_until_end(
             )
             break
 
+        if progress_report:
+            t = _meta_total_item_count(meta)
+            if t > 0:
+                progress_report(
+                    "merge_listings",
+                    f"翻页加载中…已合并 {len(merged)}/{t} 件商品",
+                )
+            else:
+                progress_report(
+                    "merge_listings",
+                    f"翻页加载中…已合并 {len(merged)} 件商品",
+                )
+
         await _scroll_listings_page_to_bottom(page)
 
     out_meta = dict(meta)
@@ -286,6 +314,7 @@ async def capture_on_sale_list_via_mitm_session(
     *,
     since_ms: int,
     timeout: int,
+    progress_report: Optional[Callable[[str, str], None]] = None,
 ) -> Tuple[List[Dict[str, Any]], Dict[str, Any]]:
     """
     在已建立的 MITM Edge 会话内等待首次 ``items/get_items`` 截获，
@@ -302,8 +331,14 @@ async def capture_on_sale_list_via_mitm_session(
             f"在售列表 items/get_items（on_sale,stop），seller_id={seller_key}"
         ),
     )
+    if progress_report:
+        progress_report("listings_captured", "已截获首页在售列表，正在合并分页…")
     page = await mgr.active_tab_page(auto_key)
-    return await _expand_on_sale_listings_until_end(page, seller_key)
+    return await _expand_on_sale_listings_until_end(
+        page,
+        seller_key,
+        progress_report=progress_report,
+    )
 
 
 async def _fetch_on_sale_via_browser_impl(

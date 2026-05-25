@@ -1,5 +1,6 @@
 # -*- coding: utf-8 -*-
 """在售商品列表处理器：从煤炉同步及详情拉取。"""
+import re
 from typing import Any, Dict, List, Set
 
 from fastapi import HTTPException
@@ -12,6 +13,10 @@ from ....web_drive.core.account_serial_queue import (
 )
 from ....use_mercari.on_sale_item_detail_sync import fetch_detail_and_sync_inventory
 from ....use_mercari.on_sale_items_sync import sync_on_sale_items_from_mercari
+from ....use_mercari.on_sale_sync_progress import (
+    clear_on_sale_sync_progress,
+    get_on_sale_sync_progress,
+)
 from ....use_mercari.sync_data import resolve_account_id_by_seller_id
 
 from .on_sale_items_models import (
@@ -22,6 +27,8 @@ from .on_sale_items_models import (
 
 
 _FETCH_DETAILS_BATCH_MAX = 200
+# 与 listing_post_progress 相同的安全字符集，避免路径注入
+_SYNC_JOB_ID_RE = re.compile(r"^[a-zA-Z0-9_.-]{1,128}$")
 
 
 async def sync_on_sale(data: SyncOnSaleRequest):
@@ -31,12 +38,21 @@ async def sync_on_sale(data: SyncOnSaleRequest):
     在同一浏览器会话内，对本次**新增**的商品依次打开商品页截获 items/get，执行与「获取详情」相同的库存回写（可用 WEB_DRIVE_ON_SALE_SYNC_AUTO_DETAIL=0 关闭）。
     新列表中不存在的本地记录不物理删除，而是标记 is_delete=1（软删除）。
     列表接口默认仅返回 is_delete=0 数据。须已启动 mitmdump（与出品/抓包共用）。
+
+    ``progress_job_id`` 与 GET /use_web/on-sale-items/sync-progress/{job_id} 配合，
+    供前端轮询当前步骤展示全屏等待框。
     """
+    jid = (data.progress_job_id or "").strip() or None
+    if jid and not _SYNC_JOB_ID_RE.fullmatch(jid):
+        raise HTTPException(status_code=400, detail="invalid progress_job_id")
     try:
         aid = resolve_meilu_account_id(data.account_id)
         result = await run_meilu_serial_async(
             queue_key_for_meilu_account(aid),
-            lambda: sync_on_sale_items_from_mercari(account_id=aid),
+            lambda: sync_on_sale_items_from_mercari(
+                account_id=aid,
+                progress_job_id=jid,
+            ),
         )
     except RuntimeError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
@@ -44,7 +60,21 @@ async def sync_on_sale(data: SyncOnSaleRequest):
         raise HTTPException(status_code=504, detail=str(exc)) from exc
     except Exception as exc:
         raise HTTPException(status_code=500, detail=f"同步失败: {exc}") from exc
+    finally:
+        if jid:
+            clear_on_sale_sync_progress(jid)
     return {"success": True, "data": result}
+
+
+def on_sale_sync_progress(job_id: str):
+    """在售同步执行过程中轮询当前步骤（与 POST body.progress_job_id 对应）。"""
+    jid = (job_id or "").strip()
+    if not _SYNC_JOB_ID_RE.fullmatch(jid):
+        raise HTTPException(status_code=400, detail="invalid job_id")
+    row = get_on_sale_sync_progress(jid)
+    if not row:
+        return {"success": True, "data": {"step": None, "label_zh": None, "ts": None}}
+    return {"success": True, "data": row}
 
 
 async def fetch_on_sale_item_detail(data: FetchOnSaleDetailRequest):

@@ -11,13 +11,14 @@ import json
 import math
 import time
 import re
-from typing import Any, Dict, List, Optional
+from typing import Any, Callable, Dict, List, Optional
 
 from .get_order.get_on_sale.on_sale_list import (
     LISTINGS_PAGE_URL,
     capture_on_sale_list_via_mitm_session,
 )
 from .on_sale_item_detail_sync import auto_fetch_details_for_inserted_items
+from .on_sale_sync_progress import make_on_sale_sync_reporter
 from .sync_data import _resolve_account_and_seller
 from ..db_manage.models.on_sale_item import OnSaleItemModel
 from ..db_manage.database import DatabaseManager
@@ -543,35 +544,66 @@ def apply_on_sale_list_sync(
     return stats
 
 
-async def sync_on_sale_items_from_mercari(account_id: Optional[int] = None) -> Dict[str, Any]:
+async def sync_on_sale_items_from_mercari(
+    account_id: Optional[int] = None,
+    progress_job_id: Optional[str] = None,
+) -> Dict[str, Any]:
     """
     从煤炉拉取在售列表（网页出品一覧触发的 items/get_items，on_sale,stop）并同步本地；
     在同一 MITM Edge 会话关闭前，对本次**新增**的商品依次打开详情页截获 ``items/get``，
     执行与「获取详情」相同的说明解析与库存回写（可用环境变量关闭或限流）。
 
     见 ``apply_on_sale_list_sync``、``on_sale_item_detail_sync.auto_fetch_details_for_inserted_items``。
+
+    ``progress_job_id`` 配合 ``on_sale_sync_progress``：每个阶段把中文步骤写入内存，
+    前端轮询 GET /use_web/on-sale-items/sync-progress/{job_id} 展示全屏等待框。
     """
+    report = make_on_sale_sync_reporter(progress_job_id)
+    report("resolve_account", "正在准备煤炉账号…")
     aid, sid = _resolve_account_and_seller(account_id)
     seller_key = str(int(sid))
     clear_on_sale_list_response_file(seller_key)
     since_ms = int(time.time() * 1000)
     list_timeout_sec = 90
 
+    report("open_browser", "正在启动浏览器与 MITM 代理…")
     async with mitm_automation_browser(
         int(aid),
         start_url=LISTINGS_PAGE_URL,
     ) as (mgr, auto_key):
+        report("capture_listings", "已打开出品一覧页，等待煤炉返回在售列表…")
         items, meta = await capture_on_sale_list_via_mitm_session(
             mgr,
             auto_key,
             seller_key,
             since_ms=since_ms,
             timeout=list_timeout_sec,
+            progress_report=report,
+        )
+        report(
+            "apply_sync",
+            f"已获取 {len(items)} 件在售商品，正在写入本地数据库…",
         )
         stats = apply_on_sale_list_sync(seller_key, items, meta)
+        inserted_ids = stats.get("inserted_item_ids") or []
+        if inserted_ids:
+            report(
+                "fetch_details",
+                f"开始拉取 {len(inserted_ids)} 件新增商品详情…",
+            )
+        else:
+            report("fetch_details", "本次无新增商品，跳过详情拉取…")
         stats["auto_detail_fetch"] = await auto_fetch_details_for_inserted_items(
             mgr,
             auto_key,
-            stats.get("inserted_item_ids") or [],
+            inserted_ids,
+            progress_report=report,
         )
+    report(
+        "done",
+        (
+            f"同步完成：新增 {stats.get('inserted', 0)}，"
+            f"更新 {stats.get('updated', 0)}，标记删除 {stats.get('marked_deleted', 0)}"
+        ),
+    )
     return stats

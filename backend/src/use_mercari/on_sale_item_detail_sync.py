@@ -11,7 +11,7 @@ from __future__ import annotations
 
 import os
 import re
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Callable, Dict, List, Optional, Tuple
 
 from ..db_manage.database import DatabaseManager
 from ..db_manage.models.on_sale_item import OnSaleItemModel
@@ -431,6 +431,8 @@ async def auto_fetch_details_for_inserted_items(
     mgr: EdgeWebDriveManager,
     auto_key: str,
     inserted_item_ids: List[str],
+    *,
+    progress_report: Optional[Callable[[str, str], None]] = None,
 ) -> Dict[str, Any]:
     """
     在售列表同步写入 DB 后，对 ``inserted_item_ids`` 在同一 MITM Edge 会话内依次打开商品页，
@@ -459,9 +461,15 @@ async def auto_fetch_details_for_inserted_items(
         if len(inserted_item_ids or []) > len(raw_ids):
             out["truncated_from"] = len(inserted_item_ids or [])
 
+    total = len(raw_ids)
     results: List[Dict[str, Any]] = []
     inventory_updated = 0
-    for iid in raw_ids:
+    for idx, iid in enumerate(raw_ids, start=1):
+        if progress_report:
+            progress_report(
+                "fetch_detail",
+                f"拉取新增商品详情 {idx}/{total}（{iid}）…",
+            )
         try:
             body = await fetch_mercari_item_get_in_browser_session(
                 mgr,

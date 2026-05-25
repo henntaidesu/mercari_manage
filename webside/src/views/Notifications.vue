@@ -375,7 +375,7 @@ async function runSync() {
   const name = mercariAccountStore.selectedAccountName || `#${aid}`
   try {
     await ElMessageBox.confirm(
-      `将使用账号「${name}」从煤炉同步お知らせ通知，是否继续？`,
+      `将使用账号「${name}」从煤炉同步通知，是否继续？`,
       '确认同步',
       { type: 'info', confirmButtonText: '开始', cancelButtonText: '取消' },
     )

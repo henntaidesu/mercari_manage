@@ -7,6 +7,7 @@ from pydantic import BaseModel as PydanticModel
 
 class SyncOnSaleRequest(PydanticModel):
     account_id: Optional[int] = None
+    progress_job_id: Optional[str] = None
 
 
 class FetchOnSaleDetailRequest(PydanticModel):

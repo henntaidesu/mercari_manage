@@ -15,6 +15,7 @@ from .units.on_sale_items_query import (
 from .units.on_sale_items_sync import (
     fetch_on_sale_item_detail,
     fetch_on_sale_item_details_batch,
+    on_sale_sync_progress,
     sync_on_sale,
 )
 
@@ -24,5 +25,6 @@ router.add_api_route("", list_on_sale_items, methods=["GET"])
 router.add_api_route("/by-item-id", list_on_sale_by_item_id, methods=["GET"])
 router.add_api_route("/by-item-ids", list_on_sale_by_item_ids, methods=["GET"])
 router.add_api_route("/sync", sync_on_sale, methods=["POST"])
+router.add_api_route("/sync-progress/{job_id}", on_sale_sync_progress, methods=["GET"])
 router.add_api_route("/fetch-detail", fetch_on_sale_item_detail, methods=["POST"])
 router.add_api_route("/fetch-details-batch", fetch_on_sale_item_details_batch, methods=["POST"])

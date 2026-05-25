@@ -9,6 +9,9 @@ export const onSaleItemApi = {
   listByItemIds: (params) => http.get('/use_web/on-sale-items/by-item-ids', { params }),
   sync: (data, axiosConfig = {}) =>
     http.post('/use_web/on-sale-items/sync', data, { timeout: 0, ...axiosConfig }),
+  /** 与 sync 的 progress_job_id 配合，轮询当前同步步骤 */
+  getSyncProgress: (jobId, axiosConfig = {}) =>
+    http.get(`/use_web/on-sale-items/sync-progress/${encodeURIComponent(jobId)}`, axiosConfig),
   /** items/get 详情并同步库存 mercari_item_id / on_sale_quantity；须配置 dpop_item_get_info */
   fetchDetail: (data, axiosConfig = {}) =>
     http.post('/use_web/on-sale-items/fetch-detail', data, { timeout: 120000, ...axiosConfig }),
