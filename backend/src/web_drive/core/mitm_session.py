@@ -41,6 +41,10 @@ _MERCARI_LOGIN_URL_RE = re.compile(
     re.IGNORECASE,
 )
 
+# 每个账号已检测到的「登录跳转」状态（实时监听+轮询共用）
+# value: { "url": str, "ts": float, "account_name": str }
+_login_redirect_state: Dict[int, Dict[str, Any]] = {}
+
 
 class MercariLoginRequiredError(RuntimeError):
     """打开账号浏览器后跳到 ``login.jp.mercari.com`` 登录页：账号 cookie 已失效。
@@ -70,6 +74,109 @@ def _is_mercari_login_url(url: Optional[str]) -> bool:
     if not url:
         return False
     return bool(_MERCARI_LOGIN_URL_RE.match(str(url).strip()))
+
+
+def login_redirect_state_for(account_id: int) -> Optional[Dict[str, Any]]:
+    """读取账号是否已检测到登录跳转（实时监听或一次性检查写入）。"""
+    return _login_redirect_state.get(int(account_id))
+
+
+def clear_login_redirect_state(account_id: int) -> None:
+    """重新登录成功 / 重新启用账号后调用，清掉本地『需重新登录』标记。"""
+    _login_redirect_state.pop(int(account_id), None)
+
+
+def _record_login_redirect(account_id: int, account_name: str, login_url: str) -> None:
+    _login_redirect_state[int(account_id)] = {
+        "url": (login_url or "").strip(),
+        "ts": time.time(),
+        "account_name": (account_name or "").strip(),
+    }
+
+
+def _disable_meilu_account_by_id(account_id: int) -> str:
+    """将 meilu_accounts.status 置为 'disabled' 并返回 account_name（best-effort）。"""
+    aid = int(account_id)
+    account_name = ""
+    try:
+        from ...db_manage.models.meilu_account import MeiluAccountModel
+
+        acc = MeiluAccountModel.find_by_id(id=aid)
+        if acc is None:
+            return ""
+        account_name = str(getattr(acc, "account_name", "") or "").strip()
+        if str(getattr(acc, "status", "") or "").strip() != "disabled":
+            acc.status = "disabled"
+            try:
+                acc.save()
+            except Exception as exc:
+                log.warning(
+                    "[mitm] 标记账号停用失败 account_id=%d: %s", aid, exc
+                )
+    except Exception as exc:
+        log.warning("[mitm] 读取账号失败 account_id=%d: %s", aid, exc)
+    return account_name
+
+
+def _install_login_redirect_listener(
+    mgr: EdgeWebDriveManager,
+    account_id: int,
+    main_key: str,
+    page: Any,
+) -> None:
+    """实时监听页面跳转：命中登录页时立即停用账号并强制关闭浏览器。
+
+    `page.on("framenavigated", ...)` 在每次主框架（或子框架）导航完成时触发；
+    我们只关心主框架。监听器是幂等的 —— 已记录的账号不会重复落库；浏览器关闭
+    通过 ``asyncio.create_task`` 异步执行以避免阻塞 Playwright 事件循环。
+    """
+    aid = int(account_id)
+
+    def _on_framenavigated(frame: Any) -> None:
+        try:
+            # 只关心主框架（顶层导航）
+            parent = getattr(frame, "parent_frame", None)
+            if parent is not None:
+                return
+            url = str(getattr(frame, "url", "") or "").strip()
+            if not _is_mercari_login_url(url):
+                return
+            if login_redirect_state_for(aid):
+                # 已记录过，避免重复 DB 写
+                return
+
+            log.warning(
+                "[mitm] 实时检测到跳转到登录页 account_id=%d url=%s", aid, url
+            )
+            account_name = _disable_meilu_account_by_id(aid)
+            _record_login_redirect(aid, account_name, url)
+
+            # 异步强制关闭浏览器（不在监听器里阻塞）
+            try:
+                loop = asyncio.get_event_loop()
+                loop.create_task(mgr.close_session(main_key, force=True))
+            except Exception:
+                # 没有运行中的 loop（一般不会走到这里）
+                pass
+        except Exception as exc:
+            # 监听器异常不能抛回 Playwright，会污染下一次事件
+            log.debug("[mitm] login redirect listener error: %s", exc)
+
+    try:
+        page.on("framenavigated", _on_framenavigated)
+    except Exception as exc:
+        log.debug("[mitm] 安装 framenavigated 监听失败 account_id=%d: %s", aid, exc)
+
+
+def _raise_login_required_for(account_id: int) -> None:
+    """从已记录的 `_login_redirect_state` 抛出 `MercariLoginRequiredError`。"""
+    aid = int(account_id)
+    st = login_redirect_state_for(aid) or {}
+    raise MercariLoginRequiredError(
+        account_id=aid,
+        account_name=str(st.get("account_name") or ""),
+        login_url=str(st.get("url") or ""),
+    )
 
 
 async def _detect_login_redirect_and_disable(
@@ -109,33 +216,13 @@ async def _detect_login_redirect_and_disable(
         return
 
     # ── 命中登录页：停账号 + 关浏览器 + 抛错 ───────────────────────── #
-    account_name = ""
-    try:
-        from ...db_manage.models.meilu_account import MeiluAccountModel
-
-        acc = MeiluAccountModel.find_by_id(id=int(account_id))
-        if acc is not None:
-            account_name = str(getattr(acc, "account_name", "") or "").strip()
-            if str(getattr(acc, "status", "") or "").strip() != "disabled":
-                acc.status = "disabled"
-                try:
-                    acc.save()
-                    log.warning(
-                        "[mitm] 浏览器被重定向到登录页，已停用账号 account_id=%d name=%s url=%s",
-                        account_id,
-                        account_name,
-                        detected_login_url,
-                    )
-                except Exception as exc:
-                    log.warning(
-                        "[mitm] 标记账号停用失败 account_id=%d: %s",
-                        account_id,
-                        exc,
-                    )
-    except Exception as exc:
-        log.warning(
-            "[mitm] 读取账号失败 account_id=%d: %s", account_id, exc
-        )
+    log.warning(
+        "[mitm] 浏览器被重定向到登录页，已停用账号 account_id=%d url=%s",
+        account_id,
+        detected_login_url,
+    )
+    account_name = _disable_meilu_account_by_id(account_id)
+    _record_login_redirect(account_id, account_name, detected_login_url)
 
     # 关闭被登录页占用的浏览器，避免后续操作再次进入相同失效会话
     try:
@@ -250,6 +337,11 @@ async def mitm_automation_browser(
     use_minimized = _default_minimized() if minimized is None else bool(minimized)
     use_headless = automation_headless_enabled()
 
+    # 每次进入都清掉上一轮残留的「需重新登录」标记；若本轮再次跳转登录页，
+    # 监听器 / 一次性检查会重新落标。这样支持用户在 /meilu-accounts 改回 active
+    # 后直接重试，无需重启进程。
+    clear_login_redirect_state(aid)
+
     if await _is_context_alive(mgr, main_key):
         # 复用:仅刷新当前标签页到目标 URL
         if target_url:
@@ -289,6 +381,16 @@ async def mitm_automation_browser(
     # 失败/正常加载则提前返回，不影响后续 MITM 截获。
     await _detect_login_redirect_and_disable(mgr, aid, main_key)
 
+    # ── 安装实时登录跳转监听器 ── #
+    # 后续任意一次页面跳转（按钮点击、reload、JS 重定向）只要命中 login.jp.mercari.com
+    # 都会立刻把账号置为「停用」并强制关闭浏览器；轮询/操作侧通过
+    # ``login_redirect_state_for(aid)`` 检测后抛 MercariLoginRequiredError。
+    try:
+        active_page = await mgr.active_tab_page(main_key)
+        _install_login_redirect_listener(mgr, aid, main_key, active_page)
+    except Exception as exc:
+        log.debug("[mitm] 安装登录跳转监听失败 account_id=%d: %s", aid, exc)
+
     yield mgr, main_key
 
 
@@ -308,10 +410,21 @@ async def wait_mitm_capture(
 
     形参名 ``auto_key`` 系历史命名,实际传任意会话 key
     (新版传入 ``meilu_account_key(aid)`` 主 profile key)。
+
+    每次轮询都会检查实时监听器是否已记录「跳转到登录页」；命中则提前抛
+    ``MercariLoginRequiredError``，不再等待 MITM 超时。
     """
+    # 从 auto_key 反解出 account_id 用于实时登录状态检查
+    from .paths import meilu_id_from_account_key
+
+    aid_for_login = meilu_id_from_account_key(auto_key)
+
     deadline = time.monotonic() + wait_seconds
     next_reload = time.monotonic() + reload_interval_sec
     while time.monotonic() < deadline:
+        # 实时登录跳转检查：监听器已经把账号置为 disabled，这里直接抛友好错
+        if aid_for_login is not None and login_redirect_state_for(aid_for_login):
+            _raise_login_required_for(aid_for_login)
         data = read_response()
         if data and int(data.get("ts") or 0) >= since_ms:
             return data
@@ -322,6 +435,9 @@ async def wait_mitm_capture(
             except Exception as exc:
                 log.debug("MITM 等待中刷新标签页失败: %s", exc)
         await asyncio.sleep(0.35)
+    # 超时前最后再确认一次登录状态（监听器可能在退出循环前一刻触发）
+    if aid_for_login is not None and login_redirect_state_for(aid_for_login):
+        _raise_login_required_for(aid_for_login)
     raise RuntimeError(
         f"{wait_seconds}s 内未截获目标 API 响应({error_detail})。"
         "请确认 MITM 已启动;并先在账号管理页对该账号完成 Mercari 登录(主 profile 会持久化登录态)。"

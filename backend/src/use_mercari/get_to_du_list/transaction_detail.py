@@ -29,8 +29,12 @@ from ...ssl_mitm_proxy.capture_config import (
     read_transaction_messages_response,
 )
 from ...web_drive.core.manager import EdgeWebDriveManager, get_web_drive_manager
-from ...web_drive.core.mitm_session import mitm_automation_browser
-from ...web_drive.core.paths import meilu_account_key
+from ...web_drive.core.mitm_session import (
+    _raise_login_required_for,
+    login_redirect_state_for,
+    mitm_automation_browser,
+)
+from ...web_drive.core.paths import meilu_account_key, meilu_id_from_account_key
 from ..get_order.get_in_progress_order.get_order_info import apply_item_info_to_order
 from ..sync_progress import make_sync_reporter
 
@@ -51,12 +55,19 @@ async def _wait_for_both_captures(
     since_ms: int,
     timeout: int = _WAIT_TIMEOUT_SEC,
 ) -> Tuple[Optional[Dict[str, Any]], Optional[Dict[str, Any]]]:
-    """同一轮询循环里等两个文件，避免互相干扰的 reload。"""
+    """同一轮询循环里等两个文件，避免互相干扰的 reload。
+
+    每次迭代都会检查实时登录跳转监听器是否触发；命中则提前抛
+    ``MercariLoginRequiredError``，不再等满 timeout。
+    """
+    aid_for_login = meilu_id_from_account_key(auto_key)
     deadline = time.monotonic() + timeout
     next_reload = time.monotonic() + _RELOAD_INTERVAL_SEC
     shipping: Optional[Dict[str, Any]] = None
     messages: Optional[Dict[str, Any]] = None
     while time.monotonic() < deadline:
+        if aid_for_login is not None and login_redirect_state_for(aid_for_login):
+            _raise_login_required_for(aid_for_login)
         if shipping is None:
             d = read_shipping_info_response()
             if d and int(d.get("ts") or 0) >= since_ms:
@@ -74,6 +85,8 @@ async def _wait_for_both_captures(
             except Exception as exc:
                 log.debug("[txdetail] reload 失败（忽略）：%s", exc)
         await asyncio.sleep(0.35)
+    if aid_for_login is not None and login_redirect_state_for(aid_for_login):
+        _raise_login_required_for(aid_for_login)
     return shipping, messages
 
 
