@@ -13,5 +13,8 @@ export const mercariApi = {
     http.post('/use_mercari/sync-new-data', data, { timeout: 0, ...axiosConfig }),
   /** 批量 items/get：库内未完成订单 + data_user，与列表「刷新」相同逻辑 */
   batchRefreshInfo: (data, axiosConfig = {}) =>
-    http.post('/use_mercari/batch-refresh-info', data, { timeout: 0, ...axiosConfig })
+    http.post('/use_mercari/batch-refresh-info', data, { timeout: 0, ...axiosConfig }),
+  /** 与 syncNewData / batchRefreshInfo 的 progress_job_id 配合，轮询当前同步步骤 */
+  getSyncProgress: (jobId, axiosConfig = {}) =>
+    http.get(`/use_mercari/sync-progress/${encodeURIComponent(jobId)}`, axiosConfig)
 }

@@ -68,7 +68,7 @@ from .units.notifications_query import (
     mark_all_read,
     mark_read,
 )
-from .units.notifications_sync import sync_notifications
+from .units.notifications_sync import notifications_sync_progress, sync_notifications
 
 router = APIRouter()
 
@@ -254,6 +254,9 @@ async def _item_comment_close_endpoint(req: ItemCommentCloseRequest) -> Dict[str
 router.add_api_route("", _list_notifications_endpoint, methods=["GET"])
 router.add_api_route("/kinds", _list_kinds_endpoint, methods=["GET"])
 router.add_api_route("/sync", _sync_endpoint, methods=["POST"])
+router.add_api_route(
+    "/sync-progress/{job_id}", notifications_sync_progress, methods=["GET"]
+)
 router.add_api_route("/mark-read", _mark_read_endpoint, methods=["POST"])
 router.add_api_route("/mark-all-read", _mark_all_read_endpoint, methods=["POST"])
 

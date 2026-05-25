@@ -6,6 +6,9 @@ export const notificationsApi = {
   kinds: () => http.get('/use_web/notifications/kinds'),
   sync: (data, axiosConfig = {}) =>
     http.post('/use_web/notifications/sync', data, { timeout: 0, ...axiosConfig }),
+  /** 与 sync 的 progress_job_id 配合，轮询当前同步步骤 */
+  getSyncProgress: (jobId, axiosConfig = {}) =>
+    http.get(`/use_web/notifications/sync-progress/${encodeURIComponent(jobId)}`, axiosConfig),
   markRead: (ids, is_read = true) =>
     http.post('/use_web/notifications/mark-read', { ids, is_read }),
   markAllRead: (account_id) =>

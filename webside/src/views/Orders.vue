@@ -922,13 +922,29 @@
         </el-button>
       </template>
     </el-dialog>
+
+    <teleport to="body">
+      <div
+        v-show="syncOverlayVisible"
+        class="orders-sync-overlay orders-sync-overlay--dark"
+        :class="{ 'orders-sync-overlay--failed': syncOverlayFailed }"
+        role="status"
+        aria-live="polite"
+      >
+        <div class="orders-sync-overlay__box">
+          <el-icon class="is-loading orders-sync-overlay__icon" :size="40"><Loading /></el-icon>
+          <div class="orders-sync-overlay__title">{{ syncOverlayTitle }}</div>
+          <div class="orders-sync-overlay__step">{{ syncProgressLabel || '请稍候…' }}</div>
+        </div>
+      </div>
+    </teleport>
   </div>
 </template>
 
 <script setup>
 import { ref, computed, onMounted, watch, onBeforeUnmount, nextTick } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { RefreshRight, Refresh, Plus, Minus } from '@element-plus/icons-vue'
+import { RefreshRight, Refresh, Plus, Minus, Loading } from '@element-plus/icons-vue'
 import {
   orderApi,
   mercariApi,
@@ -1238,6 +1254,13 @@ const syncLoading = ref(false)
 /** newData：增量入库出售中；statusRefresh：库内未完成订单批量刷新（与单行「刷新」相同接口） */
 const syncMode = ref('newData')
 
+/** 「更新列表 / 更新状态」全屏等待与步骤文案（与后端 progress_job_id 轮询同步） */
+const syncOverlayVisible = ref(false)
+const syncOverlayTitle = ref('正在同步')
+const syncOverlayFailed = ref(false)
+const syncProgressLabel = ref('')
+let syncProgressTimer = null
+
 async function runSync(mode = 'newData') {
   if (syncLoading.value) return
   const aid = mercariAccountStore.selectedId
@@ -1256,10 +1279,43 @@ async function runSync(mode = 'newData') {
   } catch {
     return
   }
+
+  const progressJobId =
+    typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function'
+      ? crypto.randomUUID()
+      : `job_${Date.now()}_${Math.random().toString(36).slice(2, 11)}`
+
+  let lastConsoleStep = ''
+  const consoleTag = mode === 'statusRefresh' ? '[更新状态]' : '[更新列表]'
+  async function pollSyncProgress() {
+    try {
+      const pr = await mercariApi.getSyncProgress(progressJobId)
+      const d = pr?.data
+      const zh = d?.label_zh
+      if (zh) {
+        syncProgressLabel.value = zh
+        if (zh !== lastConsoleStep) {
+          lastConsoleStep = zh
+          console.log(consoleTag, zh)
+        }
+      }
+    } catch {
+      /* 轮询失败忽略 */
+    }
+  }
+
   syncMode.value = mode
+  syncOverlayTitle.value = mode === 'statusRefresh' ? '正在更新状态' : '正在更新列表'
+  syncOverlayFailed.value = false
+  syncProgressLabel.value = '正在连接服务器…'
+  syncOverlayVisible.value = true
   syncLoading.value = true
+  await pollSyncProgress()
+  syncProgressTimer = setInterval(pollSyncProgress, 400)
+
+  let syncHadError = false
   try {
-    const payload = { account_id: aid }
+    const payload = { account_id: aid, progress_job_id: progressJobId }
     if (mode === 'statusRefresh') {
       const res = await mercariApi.batchRefreshInfo(payload)
       const d = res.data || {}
@@ -1276,7 +1332,24 @@ async function runSync(mode = 'newData') {
     }
     load()
     loadStats()
+  } catch (e) {
+    syncHadError = true
+    syncOverlayTitle.value = mode === 'statusRefresh' ? '更新状态失败' : '更新列表失败'
+    syncOverlayFailed.value = true
+    const msg = e?.response?.data?.detail || e?.message || '同步失败'
+    syncProgressLabel.value = String(msg)
   } finally {
+    if (syncProgressTimer != null) {
+      clearInterval(syncProgressTimer)
+      syncProgressTimer = null
+    }
+    if (syncHadError) {
+      await new Promise((r) => setTimeout(r, 1200))
+    }
+    syncOverlayVisible.value = false
+    syncOverlayTitle.value = '正在同步'
+    syncOverlayFailed.value = false
+    syncProgressLabel.value = ''
     syncLoading.value = false
   }
 }
@@ -2310,6 +2383,10 @@ onMounted(async () => {
 
 onBeforeUnmount(() => {
   window.removeEventListener('resize', updateViewportState)
+  if (syncProgressTimer != null) {
+    clearInterval(syncProgressTimer)
+    syncProgressTimer = null
+  }
 })
 </script>
 
@@ -2691,5 +2768,54 @@ onBeforeUnmount(() => {
 }
 :global(.manual-inventory-select-popper .el-select-dropdown__item.selected .manual-option-sub) {
   color: #dbe7ff !important;
+}
+</style>
+
+<!-- 「更新列表 / 更新状态」全屏等待（teleport 到 body，须无 scoped；黑色主题） -->
+<style>
+.orders-sync-overlay.orders-sync-overlay--dark {
+  position: fixed;
+  inset: 0;
+  z-index: 3000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(0, 0, 0, 0.75);
+  backdrop-filter: blur(6px);
+}
+.orders-sync-overlay--dark .orders-sync-overlay__box {
+  min-width: 280px;
+  max-width: min(440px, 92vw);
+  padding: 28px 32px;
+  background: linear-gradient(165deg, #1c1c1f 0%, #121214 100%);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 14px;
+  text-align: center;
+  box-shadow:
+    0 0 0 1px rgba(255, 255, 255, 0.04) inset,
+    0 20px 50px rgba(0, 0, 0, 0.65);
+}
+.orders-sync-overlay--dark .orders-sync-overlay__icon {
+  color: #94a3b8;
+}
+.orders-sync-overlay--dark .orders-sync-overlay__title {
+  margin-top: 14px;
+  font-size: 17px;
+  font-weight: 600;
+  color: #f1f5f9;
+  letter-spacing: 0.02em;
+}
+.orders-sync-overlay--dark.orders-sync-overlay--failed .orders-sync-overlay__title {
+  color: #f87171;
+}
+.orders-sync-overlay--dark.orders-sync-overlay--failed .orders-sync-overlay__step {
+  color: #cbd5e1;
+}
+.orders-sync-overlay--dark .orders-sync-overlay__step {
+  margin-top: 10px;
+  font-size: 14px;
+  color: #94a3b8;
+  line-height: 1.55;
+  word-break: break-word;
 }
 </style>

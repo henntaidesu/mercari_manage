@@ -383,13 +383,29 @@
         </el-button>
       </template>
     </el-dialog>
+
+    <teleport to="body">
+      <div
+        v-show="syncOverlayVisible"
+        class="todos-sync-overlay todos-sync-overlay--dark"
+        :class="{ 'todos-sync-overlay--failed': syncOverlayFailed }"
+        role="status"
+        aria-live="polite"
+      >
+        <div class="todos-sync-overlay__box">
+          <el-icon class="is-loading todos-sync-overlay__icon" :size="40"><Loading /></el-icon>
+          <div class="todos-sync-overlay__title">{{ syncOverlayTitle }}</div>
+          <div class="todos-sync-overlay__step">{{ syncProgressLabel || '请稍候…' }}</div>
+        </div>
+      </div>
+    </teleport>
   </div>
 </template>
 
 <script setup>
-import { computed, onMounted, reactive, ref } from 'vue'
+import { computed, onBeforeUnmount, onMounted, reactive, ref } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { Download } from '@element-plus/icons-vue'
+import { Download, Loading } from '@element-plus/icons-vue'
 import { todosApi, meiluAccountApi } from '@/api'
 import { useMercariAccountStore } from '@/stores/mercariAccount.js'
 import { mercariImageUrl } from '@/utils/mercariImage.js'
@@ -532,6 +548,13 @@ const kindOptions = ref([])
 
 const syncLoading = ref(false)
 
+/** 「从煤炉同步」全屏等待与步骤文案（与后端 progress_job_id 轮询同步） */
+const syncOverlayVisible = ref(false)
+const syncOverlayTitle = ref('正在从煤炉同步')
+const syncOverlayFailed = ref(false)
+const syncProgressLabel = ref('')
+let syncProgressTimer = null
+
 // ─── 交易详情面板 ───
 // 后端抓取接口未接入；先用本地 row 已有字段填充，其他字段留 null 显示占位
 const dash = '—'
@@ -671,9 +694,41 @@ async function runSync() {
   } catch {
     return
   }
+
+  const progressJobId =
+    typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function'
+      ? crypto.randomUUID()
+      : `job_${Date.now()}_${Math.random().toString(36).slice(2, 11)}`
+
+  let lastConsoleStep = ''
+  async function pollSyncProgress() {
+    try {
+      const pr = await todosApi.getSyncProgress(progressJobId)
+      const d = pr?.data
+      const zh = d?.label_zh
+      if (zh) {
+        syncProgressLabel.value = zh
+        if (zh !== lastConsoleStep) {
+          lastConsoleStep = zh
+          console.log('[待办同步]', zh)
+        }
+      }
+    } catch {
+      /* 轮询失败忽略 */
+    }
+  }
+
+  syncOverlayTitle.value = '正在从煤炉同步'
+  syncOverlayFailed.value = false
+  syncProgressLabel.value = '正在连接服务器…'
+  syncOverlayVisible.value = true
   syncLoading.value = true
+  await pollSyncProgress()
+  syncProgressTimer = setInterval(pollSyncProgress, 400)
+
+  let syncHadError = false
   try {
-    const d = (await todosApi.sync({ account_id: aid })) || {}
+    const d = (await todosApi.sync({ account_id: aid, progress_job_id: progressJobId })) || {}
     ElMessageBox.alert(
       `账号 #${d.account_id ?? '-'} 同步完成：` +
         `新增 ${d.inserted ?? 0} 条，更新 ${d.updated ?? 0} 条，` +
@@ -683,8 +738,24 @@ async function runSync() {
     )
     await Promise.all([load(), loadKindOptions()])
   } catch (e) {
-    ElMessage.error(e?.message || '同步失败')
+    syncHadError = true
+    syncOverlayTitle.value = '同步失败'
+    syncOverlayFailed.value = true
+    const msg = e?.response?.data?.detail || e?.message || '同步失败'
+    syncProgressLabel.value = String(msg)
+    ElMessage.error(msg)
   } finally {
+    if (syncProgressTimer != null) {
+      clearInterval(syncProgressTimer)
+      syncProgressTimer = null
+    }
+    if (syncHadError) {
+      await new Promise((r) => setTimeout(r, 1200))
+    }
+    syncOverlayVisible.value = false
+    syncOverlayTitle.value = '正在从煤炉同步'
+    syncOverlayFailed.value = false
+    syncProgressLabel.value = ''
     syncLoading.value = false
   }
 }
@@ -906,6 +977,13 @@ onMounted(() => {
   mercariAccountStore.ensureLoaded()
   Promise.all([loadAccountOptions(), loadKindOptions()])
   load()
+})
+
+onBeforeUnmount(() => {
+  if (syncProgressTimer != null) {
+    clearInterval(syncProgressTimer)
+    syncProgressTimer = null
+  }
 })
 </script>
 
@@ -1258,5 +1336,54 @@ onMounted(() => {
 .ship-facility-radio {
   display: flex;
   gap: 12px;
+}
+</style>
+
+<!-- 「从煤炉同步」全屏等待（teleport 到 body，须无 scoped；黑色主题） -->
+<style>
+.todos-sync-overlay.todos-sync-overlay--dark {
+  position: fixed;
+  inset: 0;
+  z-index: 3000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(0, 0, 0, 0.75);
+  backdrop-filter: blur(6px);
+}
+.todos-sync-overlay--dark .todos-sync-overlay__box {
+  min-width: 280px;
+  max-width: min(440px, 92vw);
+  padding: 28px 32px;
+  background: linear-gradient(165deg, #1c1c1f 0%, #121214 100%);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 14px;
+  text-align: center;
+  box-shadow:
+    0 0 0 1px rgba(255, 255, 255, 0.04) inset,
+    0 20px 50px rgba(0, 0, 0, 0.65);
+}
+.todos-sync-overlay--dark .todos-sync-overlay__icon {
+  color: #94a3b8;
+}
+.todos-sync-overlay--dark .todos-sync-overlay__title {
+  margin-top: 14px;
+  font-size: 17px;
+  font-weight: 600;
+  color: #f1f5f9;
+  letter-spacing: 0.02em;
+}
+.todos-sync-overlay--dark.todos-sync-overlay--failed .todos-sync-overlay__title {
+  color: #f87171;
+}
+.todos-sync-overlay--dark.todos-sync-overlay--failed .todos-sync-overlay__step {
+  color: #cbd5e1;
+}
+.todos-sync-overlay--dark .todos-sync-overlay__step {
+  margin-top: 10px;
+  font-size: 14px;
+  color: #94a3b8;
+  line-height: 1.55;
+  word-break: break-word;
 }
 </style>

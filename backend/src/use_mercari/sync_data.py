@@ -18,6 +18,7 @@ from .get_order.get_in_progress_order.get_order_list import (
     _upsert_order,
 )
 from .get_order.get_in_progress_order.get_order_info import apply_item_info_to_order
+from .sync_progress import make_sync_reporter
 from ..db_manage.models.meilu_account import MeiluAccountModel
 from ..db_manage.models.order import OrderModel
 
@@ -140,14 +141,21 @@ async def sync_open_orders(
     }
 
 
-async def sync_new_data(account_id: Optional[int] = None) -> Dict[str, Any]:
+async def sync_new_data(
+    account_id: Optional[int] = None,
+    progress_job_id: Optional[str] = None,
+) -> Dict[str, Any]:
     """
     增量同步出售中订单：WebDriver 打开取引中一覧 + MITM 截获 trading 列表；按本地水印只对尚未入库的 item 入库；
     入库顺序与列表顺序相反（倒序入库）。每条成功写入后 ``apply_item_info_to_order`` 打开取引页截获详情并回填扩展字段。
 
     - 仅处理当前页 trading 数据（与全量 sync_open_orders 中 open 段一致）。
     - 依赖订单表 data_user 与当前卖家 ID 一致；筛选水印时也按 data_user 限定。
+
+    ``progress_job_id`` 配合通用 ``sync_progress``：前端轮询展示当前步骤。
     """
+    report = make_sync_reporter(progress_job_id)
+    report("resolve_account", "正在准备煤炉账号…")
     aid, sid = _resolve_account_and_seller(account_id)
     seller_key = str(int(sid))
 
@@ -159,6 +167,7 @@ async def sync_new_data(account_id: Optional[int] = None) -> Dict[str, Any]:
     )
     watermark_order_no = latest_rows[0].order_no if latest_rows else None
 
+    report("fetch_open_orders", "正在启动浏览器与 MITM 代理，拉取出售中订单列表…")
     items, meta = await fetch_open_order_items(seller_id=sid, account_id=aid)
 
     raw_ids: List[str] = []
@@ -194,8 +203,24 @@ async def sync_new_data(account_id: Optional[int] = None) -> Dict[str, Any]:
         "total_item_count": meta.get("total_item_count", len(items)),
     }
 
-    for item in to_save:
+    pending_total = len(to_save)
+    if pending_total == 0:
+        report(
+            "no_pending",
+            f"已获取 {len(items)} 条订单，无待入库新订单。",
+        )
+    else:
+        report(
+            "process_pending",
+            f"已获取 {len(items)} 条订单，开始入库与回填 {pending_total} 条新订单…",
+        )
+
+    for idx, item in enumerate(to_save, start=1):
         iid = item.get("id")
+        report(
+            "process_pending",
+            f"正在入库与回填新订单 {idx}/{pending_total}（{iid or '-'}）…",
+        )
         try:
             order_data = _item_to_order_data(item, seller_id=sid)
             result = _upsert_order(order_data)
@@ -222,16 +247,30 @@ async def sync_new_data(account_id: Optional[int] = None) -> Dict[str, Any]:
         f"inserted={stats['inserted']} updated={stats['updated']} "
         f"info_ok={stats['info_enriched']}"
     )
+    report(
+        "done",
+        (
+            f"更新列表完成：接口 {len(items)} 条，新增 {stats['inserted']}，"
+            f"回填详情 {stats['info_enriched']}"
+        ),
+    )
     return stats
 
 
-async def batch_refresh_orders_info(account_id: Optional[int] = None) -> Dict[str, Any]:
+async def batch_refresh_orders_info(
+    account_id: Optional[int] = None,
+    progress_job_id: Optional[str] = None,
+) -> Dict[str, Any]:
     """
     从订单表选出未完成且 data_user 非空的行，逐条 WebDriver 打开取引页 + MITM 截获 transaction_evidences/get（与列表「刷新」相同）。
 
     :param account_id: 指定煤炉账号时，仅刷新该账号 seller_id 与 orders.data_user 一致的行；
                        不传则扫描库内所有符合条件的订单（逐条按 data_user 解析账号）。
+
+    ``progress_job_id`` 配合通用 ``sync_progress``：前端轮询展示当前步骤。
     """
+    report = make_sync_reporter(progress_job_id)
+    report("resolve_account", "正在准备煤炉账号…")
     seller_filter: Optional[str] = None
     if account_id is not None:
         acc = MeiluAccountModel.find_by_id(id=account_id)
@@ -241,6 +280,7 @@ async def batch_refresh_orders_info(account_id: Optional[int] = None) -> Dict[st
         if not seller_filter:
             raise RuntimeError(f"账号「{acc.account_name}」未配置 seller_id")
 
+    report("scan_pending", "正在扫描未完成订单…")
     pairs = OrderModel.find_for_batch_info_refresh(seller_id_filter=seller_filter)
     stats: Dict[str, Any] = {
         "total": len(pairs),
@@ -249,7 +289,18 @@ async def batch_refresh_orders_info(account_id: Optional[int] = None) -> Dict[st
         "failed": [],
     }
 
-    for order_no, data_user in pairs:
+    total = len(pairs)
+    if total == 0:
+        report("no_pending", "没有需要刷新的未完成订单。")
+        return stats
+
+    report("process_pending", f"找到 {total} 条待刷新订单，正在打开浏览器…")
+
+    for idx, (order_no, data_user) in enumerate(pairs, start=1):
+        report(
+            "process_pending",
+            f"正在刷新订单 {idx}/{total}（{order_no}）…",
+        )
         aid = resolve_account_id_by_seller_id(data_user)
         if aid is None:
             stats["skipped_no_account"] += 1
@@ -262,4 +313,11 @@ async def batch_refresh_orders_info(account_id: Optional[int] = None) -> Dict[st
         else:
             stats["ok"] += 1
 
+    report(
+        "done",
+        (
+            f"更新状态完成：成功 {stats['ok']}，"
+            f"无账号跳过 {stats['skipped_no_account']}，失败 {len(stats['failed'])}"
+        ),
+    )
     return stats

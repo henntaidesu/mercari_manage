@@ -23,6 +23,7 @@ from .units.todos_sync import (
     start_shipping_class_endpoint,
     submit_transaction_review_endpoint,
     sync_todos,
+    todos_sync_progress,
 )
 
 router = APIRouter()
@@ -53,6 +54,7 @@ def _list_kinds_endpoint():
 router.add_api_route("", _list_todos_endpoint, methods=["GET"])
 router.add_api_route("/kinds", _list_kinds_endpoint, methods=["GET"])
 router.add_api_route("/sync", sync_todos, methods=["POST"])
+router.add_api_route("/sync-progress/{job_id}", todos_sync_progress, methods=["GET"])
 router.add_api_route("/{todo_id}/transaction-detail", fetch_todo_transaction_detail, methods=["POST"])
 router.add_api_route("/{todo_id}/send-message", send_transaction_message_endpoint, methods=["POST"])
 router.add_api_route("/{todo_id}/submit-review", submit_transaction_review_endpoint, methods=["POST"])

@@ -21,6 +21,7 @@ from ...db_manage.database import DatabaseManager
 from ...db_manage.models.meilu_account import MeiluAccountModel
 from ...ssl_mitm_proxy.capture_config import clear_todolist_response_file
 from ...web_drive.core.mitm_session import mitm_automation_browser
+from ..sync_progress import make_sync_reporter
 from .todolist_capture import TODOS_PAGE_URL, capture_todolist_via_mitm_session
 
 log = logging.getLogger(__name__)
@@ -202,8 +203,17 @@ def _resolve_account_id(account_id: Optional[int]) -> int:
     return int(rows[0].id)
 
 
-async def sync_todos_from_mercari(account_id: Optional[int] = None) -> Dict[str, Any]:
-    """从煤炉拉取待办事项并同步本地 ``todo_items``。"""
+async def sync_todos_from_mercari(
+    account_id: Optional[int] = None,
+    progress_job_id: Optional[str] = None,
+) -> Dict[str, Any]:
+    """从煤炉拉取待办事项并同步本地 ``todo_items``。
+
+    ``progress_job_id`` 配合通用 ``sync_progress``：每个阶段把中文步骤写入内存，
+    前端轮询 GET /use_web/todos/sync-progress/{job_id} 展示全屏等待框。
+    """
+    report = make_sync_reporter(progress_job_id)
+    report("resolve_account", "正在准备煤炉账号…")
     aid = _resolve_account_id(account_id)
     log.info("[todolist] 开始同步 account_id=%s", aid)
 
@@ -212,9 +222,12 @@ async def sync_todos_from_mercari(account_id: Optional[int] = None) -> Dict[str,
     clear_todolist_response_file()
     since_ms = int(time.time() * 1000)
 
+    report("open_browser", "正在启动浏览器与 MITM 代理…")
     async with mitm_automation_browser(int(aid), start_url=TODOS_PAGE_URL) as (mgr, auto_key):
+        report("capture_todos", "已打开待办事项页，等待煤炉返回待办列表…")
         items = await capture_todolist_via_mitm_session(mgr, auto_key, since_ms=since_ms)
 
+    report("apply_sync", f"已获取 {len(items)} 条待办事项，正在写入本地数据库…")
     stats = apply_todolist_sync(int(aid), items)
     stats["account_id"] = int(aid)
     log.info(
@@ -224,5 +237,13 @@ async def sync_todos_from_mercari(account_id: Optional[int] = None) -> Dict[str,
         stats.get("inserted", 0),
         stats.get("updated", 0),
         stats.get("marked_deleted", 0),
+    )
+    report(
+        "done",
+        (
+            f"同步完成：新增 {stats.get('inserted', 0)}，"
+            f"更新 {stats.get('updated', 0)}，"
+            f"标记完成 {stats.get('marked_deleted', 0)}"
+        ),
     )
     return stats

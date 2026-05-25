@@ -6,6 +6,9 @@ export const todosApi = {
   kinds: () => http.get('/use_web/todos/kinds'),
   sync: (data, axiosConfig = {}) =>
     http.post('/use_web/todos/sync', data, { timeout: 0, ...axiosConfig }),
+  /** 与 sync 的 progress_job_id 配合，轮询当前同步步骤 */
+  getSyncProgress: (jobId, axiosConfig = {}) =>
+    http.get(`/use_web/todos/sync-progress/${encodeURIComponent(jobId)}`, axiosConfig),
   /** 处理按钮：打开浏览器到 transaction 页并抓取 DOM 字段 */
   fetchTransactionDetail: (todoId, axiosConfig = {}) =>
     http.post(`/use_web/todos/${encodeURIComponent(todoId)}/transaction-detail`, {}, { timeout: 0, ...axiosConfig }),
