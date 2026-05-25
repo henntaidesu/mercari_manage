@@ -253,7 +253,8 @@ def _resolve_inventory_id_by_bundle_title(title: str) -> Optional[int]:
         """
         SELECT
             o.[item_id],
-            TRIM(IFNULL(o.[name], ''))
+            TRIM(IFNULL(o.[name], '')),
+            IFNULL(o.[listing_description], '')
         FROM [on_sale_items] o
         WHERE COALESCE(o.[is_delete], 0) = 0
           AND TRIM(IFNULL(o.[item_id], '')) != ''
@@ -264,9 +265,9 @@ def _resolve_inventory_id_by_bundle_title(title: str) -> Optional[int]:
         return None
 
     target_norm = _normalize_match_text(query_title)
-    exact_item_ids: List[str] = []
-    fuzzy_item_ids: List[str] = []
-    for item_id_raw, name_raw in rows:
+    exact_matches: List[Tuple[str, str]] = []
+    fuzzy_matches: List[Tuple[str, str]] = []
+    for item_id_raw, name_raw, desc_raw in rows:
         item_id = str(item_id_raw or "").strip()
         if not item_id:
             continue
@@ -274,15 +275,26 @@ def _resolve_inventory_id_by_bundle_title(title: str) -> Optional[int]:
         name_norm = _normalize_match_text(name)
         if not name_norm:
             continue
+        desc = str(desc_raw or "")
         if name_norm == target_norm:
-            exact_item_ids.append(item_id)
+            exact_matches.append((item_id, desc))
         elif target_norm and (target_norm in name_norm or name_norm in target_norm):
-            fuzzy_item_ids.append(item_id)
+            fuzzy_matches.append((item_id, desc))
 
-    item_ids = exact_item_ids if exact_item_ids else fuzzy_item_ids
-    if not item_ids:
+    matches = exact_matches if exact_matches else fuzzy_matches
+    if not matches:
         return None
 
+    # 优先：用 on_sale_items.listing_description 末行 5 进制暗号直接定位 inventory.id。
+    # 暗号 → inventory.id 是出品时编码的强绑定，比 mercari_item_id 反查更可靠，
+    # 且不依赖库存行是否回写过 mercari_item_id。
+    for _item_id, desc in matches:
+        for mid, _qty in parse_trailing_cipher_mgmt_tokens(desc):
+            if _inventory_id_exists(mid):
+                return mid
+
+    # 回退：按 mercari_item_id 反查 inventory。
+    item_ids = [iid for iid, _desc in matches]
     inv_rows = db.execute_query(
         """
         SELECT [id], [mercari_item_id]
