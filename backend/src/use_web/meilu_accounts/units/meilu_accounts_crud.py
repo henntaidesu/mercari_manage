@@ -10,6 +10,7 @@ from .meilu_accounts_helpers import (
     _item_api_dict,
     _norm_auto_fetch,
     _norm_headers_dict,
+    _norm_pause_window,
     _norm_required_text,
     _norm_seller_id,
     _normalize_is_open,
@@ -57,6 +58,7 @@ def create_meilu_account(data: MeiluAccountCreate):
         _normalize_is_open(data.auto_fetch_todos),
         _normalize_is_open(data.auto_fetch_notifications),
     )
+    pause_s, pause_e = _norm_pause_window(data.pause_start_time, data.pause_end_time)
     item = MeiluAccountModel(
         account_name=name,
         login_id=lid,
@@ -71,6 +73,8 @@ def create_meilu_account(data: MeiluAccountCreate):
         auto_fetch_on_sale=os_,
         auto_fetch_todos=td,
         auto_fetch_notifications=nt,
+        pause_start_time=pause_s,
+        pause_end_time=pause_e,
     )
     if not item.save():
         raise HTTPException(status_code=500, detail="保存失败")
@@ -130,6 +134,21 @@ def update_meilu_account(aid: int, data: MeiluAccountUpdate):
             item.auto_fetch_last_at = None
         elif prev_open == 0 and io == 1:
             item.auto_fetch_last_at = None
+
+    if data.pause_start_time is not None or data.pause_end_time is not None:
+        new_start = (
+            data.pause_start_time
+            if data.pause_start_time is not None
+            else getattr(item, "pause_start_time", None)
+        )
+        new_end = (
+            data.pause_end_time
+            if data.pause_end_time is not None
+            else getattr(item, "pause_end_time", None)
+        )
+        pause_s, pause_e = _norm_pause_window(new_start, new_end)
+        item.pause_start_time = pause_s
+        item.pause_end_time = pause_e
 
     if not item.save():
         raise HTTPException(status_code=500, detail="更新失败")

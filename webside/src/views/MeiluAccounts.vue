@@ -25,6 +25,7 @@
               <template v-if="row.is_open === 1">
                 开启 · {{ fetchIntervalLabel(row.fetch_interval) }}
                 <template v-if="autoFetchTasksLabel(row)">（{{ autoFetchTasksLabel(row) }}）</template>
+                <template v-if="pauseWindowLabel(row)"> · 暂停 {{ pauseWindowLabel(row) }}</template>
               </template>
               <template v-else>关闭</template>
             </div>
@@ -154,6 +155,30 @@
               <el-option v-for="opt in fetchIntervalOptions" :key="opt.value" :label="opt.label" :value="opt.value" />
             </el-select>
           </el-form-item>
+          <el-form-item label="暂停时间段" prop="pause_window">
+            <div class="af-pause-row">
+              <el-time-picker
+                v-model="form.pause_start_time"
+                placeholder="开始（HH:MM）"
+                format="HH:mm"
+                value-format="HH:mm"
+                :clearable="true"
+                class="af-pause-picker"
+              />
+              <span class="af-pause-sep">至</span>
+              <el-time-picker
+                v-model="form.pause_end_time"
+                placeholder="结束（HH:MM）"
+                format="HH:mm"
+                value-format="HH:mm"
+                :clearable="true"
+                class="af-pause-picker"
+              />
+            </div>
+            <p class="af-pause-hint">
+              24 小时制，该时间段内暂停自动获取；两端均留空则全天执行；结束时间小于开始时间表示跨日（如 22:00 - 08:00）。
+            </p>
+          </el-form-item>
         </template>
       </el-form>
       <template #footer>
@@ -236,6 +261,14 @@ function fetchIntervalLabel(v) {
   return legacyFetchIntervalLabels[key] || key
 }
 
+function pauseWindowLabel(row) {
+  if (!row || row.is_open !== 1) return ''
+  const s = String(row.pause_start_time || '').trim()
+  const e = String(row.pause_end_time || '').trim()
+  if (!s || !e || s === e) return ''
+  return `${s} - ${e}`
+}
+
 function autoFetchTasksLabel(row) {
   if (!row || row.is_open !== 1) return ''
   const parts = []
@@ -253,8 +286,10 @@ function onAutoFetchToggle() {
     form.value.auto_fetch_on_sale = 0
     form.value.auto_fetch_todos = 0
     form.value.auto_fetch_notifications = 0
+    form.value.pause_start_time = null
+    form.value.pause_end_time = null
   }
-  nextTick(() => formRef.value?.clearValidate(['fetch_interval']))
+  nextTick(() => formRef.value?.clearValidate(['fetch_interval', 'pause_window']))
 }
 
 function onAutoFetchTaskChange() {
@@ -273,6 +308,8 @@ const createDefaultForm = () => ({
   auto_fetch_on_sale: 0,
   auto_fetch_todos: 0,
   auto_fetch_notifications: 0,
+  pause_start_time: null,
+  pause_end_time: null,
 })
 
 const form = ref(createDefaultForm())
@@ -311,6 +348,26 @@ const formRules = {
             cb(new Error('请至少选择一项同步任务'))
             return
           }
+        }
+        cb()
+      },
+      trigger: 'change',
+    },
+  ],
+  pause_window: [
+    {
+      validator(_rule, _val, cb) {
+        if (form.value.is_open !== 1) return cb()
+        const s = String(form.value.pause_start_time || '').trim()
+        const e = String(form.value.pause_end_time || '').trim()
+        if (!s && !e) return cb()
+        if (!s || !e) {
+          cb(new Error('暂停时间段须同时填写开始与结束时间'))
+          return
+        }
+        if (s === e) {
+          cb(new Error('暂停开始时间与结束时间不能相同'))
+          return
         }
         cb()
       },
@@ -394,6 +451,8 @@ function openEdit(row) {
     auto_fetch_on_sale: row.auto_fetch_on_sale === 1 ? 1 : 0,
     auto_fetch_todos: row.auto_fetch_todos === 1 ? 1 : 0,
     auto_fetch_notifications: row.auto_fetch_notifications === 1 ? 1 : 0,
+    pause_start_time: open === 1 ? (row.pause_start_time || null) : null,
+    pause_end_time: open === 1 ? (row.pause_end_time || null) : null,
   }
   dialogVisible.value = true
 }
@@ -413,6 +472,8 @@ function buildPayload() {
     auto_fetch_on_sale: open === 1 && form.value.auto_fetch_on_sale === 1 ? 1 : 0,
     auto_fetch_todos: open === 1 && form.value.auto_fetch_todos === 1 ? 1 : 0,
     auto_fetch_notifications: open === 1 && form.value.auto_fetch_notifications === 1 ? 1 : 0,
+    pause_start_time: open === 1 ? (String(form.value.pause_start_time || '').trim() || null) : null,
+    pause_end_time: open === 1 ? (String(form.value.pause_end_time || '').trim() || null) : null,
   }
   if (form.value.id) {
     return base
@@ -677,6 +738,26 @@ onMounted(() => {
   margin-right: 0;
   height: auto;
   white-space: normal;
+}
+.af-pause-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+}
+.af-pause-picker {
+  flex: 1;
+  min-width: 0;
+}
+.af-pause-sep {
+  color: #7d8da6;
+  font-size: 13px;
+}
+.af-pause-hint {
+  margin: 6px 0 0;
+  font-size: 12px;
+  line-height: 1.5;
+  color: #7d8da6;
 }
 .meilu-form {
   max-height: 70vh;

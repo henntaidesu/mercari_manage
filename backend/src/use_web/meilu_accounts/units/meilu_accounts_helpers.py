@@ -71,6 +71,41 @@ def _norm_auto_fetch(
     return 1, iv, li, os_, td, nt
 
 
+def _norm_pause_time(value: Optional[str], field_label: str) -> Optional[str]:
+    """规范化 24 小时制 ``HH:MM`` 字符串；空值或 None 返回 None。"""
+    if value is None:
+        return None
+    text = str(value).strip()
+    if not text:
+        return None
+    if len(text) >= 5 and text[2] == ':':
+        text = text[:5]
+    parts = text.split(':')
+    if len(parts) != 2:
+        raise HTTPException(status_code=400, detail=f"{field_label}格式必须为 HH:MM")
+    try:
+        hour = int(parts[0])
+        minute = int(parts[1])
+    except ValueError:
+        raise HTTPException(status_code=400, detail=f"{field_label}格式必须为 HH:MM")
+    if not (0 <= hour <= 23) or not (0 <= minute <= 59):
+        raise HTTPException(status_code=400, detail=f"{field_label}超出 24 小时制范围")
+    return f"{hour:02d}:{minute:02d}"
+
+
+def _norm_pause_window(
+    start: Optional[str], end: Optional[str]
+) -> tuple[Optional[str], Optional[str]]:
+    """两个字段须同时填写或同时留空；起止相同视为无效（不暂停）。"""
+    s = _norm_pause_time(start, "暂停开始时间")
+    e = _norm_pause_time(end, "暂停结束时间")
+    if (s is None) != (e is None):
+        raise HTTPException(status_code=400, detail="暂停时间段须同时填写开始与结束时间")
+    if s is not None and s == e:
+        raise HTTPException(status_code=400, detail="暂停开始时间与结束时间不能相同")
+    return s, e
+
+
 def _norm_headers_dict(d: Optional[dict]) -> dict:
     if not d or not isinstance(d, dict):
         raise HTTPException(status_code=400, detail="请求头 value 必须为 JSON 对象")
@@ -102,4 +137,6 @@ def _item_api_dict(item: MeiluAccountModel) -> dict:
     d['auto_fetch_on_sale'] = 1 if d.get('auto_fetch_on_sale') else 0
     d['auto_fetch_todos'] = 1 if d.get('auto_fetch_todos') else 0
     d['auto_fetch_notifications'] = 1 if d.get('auto_fetch_notifications') else 0
+    d['pause_start_time'] = (d.get('pause_start_time') or None)
+    d['pause_end_time'] = (d.get('pause_end_time') or None)
     return d

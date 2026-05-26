@@ -101,6 +101,18 @@ class MeiluAccountModel(BaseModel):
                 'not_null': True,
                 'default': 0,
             },
+            # 不进行获取时间段（本地时间 24 小时制 "HH:MM"）；两个字段均非空时启用，
+            # 当 start == end 表示无效（视为不暂停）；start > end 跨日（如 22:00 → 08:00）
+            'pause_start_time': {
+                'type': 'TEXT',
+                'not_null': False,
+                'default': None,
+            },
+            'pause_end_time': {
+                'type': 'TEXT',
+                'not_null': False,
+                'default': None,
+            },
         }
 
     @classmethod
@@ -195,12 +207,12 @@ class MeiluAccountModel(BaseModel):
 
         total = db.execute_query(f"SELECT COUNT(*) {base_sql}", tuple(params))[0][0]
         select_sql = f"""
-            SELECT m.id, m.account_name, m.login_id, m.seller_id, m.login_password, m.status, m.remark, m.[value], m.is_open, m.fetch_interval, m.auto_fetch_last_at, m.auto_fetch_order_list, m.auto_fetch_on_sale, m.auto_fetch_todos, m.auto_fetch_notifications
+            SELECT m.id, m.account_name, m.login_id, m.seller_id, m.login_password, m.status, m.remark, m.[value], m.is_open, m.fetch_interval, m.auto_fetch_last_at, m.auto_fetch_order_list, m.auto_fetch_on_sale, m.auto_fetch_todos, m.auto_fetch_notifications, m.pause_start_time, m.pause_end_time
             {base_sql}
             ORDER BY m.id DESC
             LIMIT ? OFFSET ?
         """
-        keys = ['id', 'account_name', 'login_id', 'seller_id', 'login_password', 'status', 'remark', 'value', 'is_open', 'fetch_interval', 'auto_fetch_last_at', 'auto_fetch_order_list', 'auto_fetch_on_sale', 'auto_fetch_todos', 'auto_fetch_notifications']
+        keys = ['id', 'account_name', 'login_id', 'seller_id', 'login_password', 'status', 'remark', 'value', 'is_open', 'fetch_interval', 'auto_fetch_last_at', 'auto_fetch_order_list', 'auto_fetch_on_sale', 'auto_fetch_todos', 'auto_fetch_notifications', 'pause_start_time', 'pause_end_time']
         rows = db.execute_query(select_sql, tuple(params + [page_size, (page - 1) * page_size]))
         items = []
         for row in rows:
@@ -213,6 +225,8 @@ class MeiluAccountModel(BaseModel):
             d['auto_fetch_on_sale'] = 1 if d.get('auto_fetch_on_sale') else 0
             d['auto_fetch_todos'] = 1 if d.get('auto_fetch_todos') else 0
             d['auto_fetch_notifications'] = 1 if d.get('auto_fetch_notifications') else 0
+            d['pause_start_time'] = d.get('pause_start_time') or None
+            d['pause_end_time'] = d.get('pause_end_time') or None
             items.append(d)
         return {
             'total': total,

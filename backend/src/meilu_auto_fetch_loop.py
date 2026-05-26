@@ -77,6 +77,39 @@ def _normalize_row_is_open(v) -> bool:
         return False
 
 
+def _parse_hhmm_to_minutes(raw: Optional[str]) -> Optional[int]:
+    s = (raw or "").strip()
+    if not s or ":" not in s:
+        return None
+    hh, _, mm = s.partition(":")
+    try:
+        h = int(hh)
+        m = int(mm[:2]) if mm else 0
+    except ValueError:
+        return None
+    if not (0 <= h <= 23) or not (0 <= m <= 59):
+        return None
+    return h * 60 + m
+
+
+def _account_in_pause_window(item: MeiluAccountModel, now_local: datetime) -> bool:
+    """根据账号 pause_start_time / pause_end_time（本地时间 HH:MM）判断当前是否处于暂停期。
+
+    - 两个字段任一为空：不暂停
+    - start == end：视为无效，不暂停
+    - start < end：当日窗口 [start, end)
+    - start > end：跨日窗口 [start, 24:00) ∪ [00:00, end)
+    """
+    start = _parse_hhmm_to_minutes(getattr(item, "pause_start_time", None))
+    end = _parse_hhmm_to_minutes(getattr(item, "pause_end_time", None))
+    if start is None or end is None or start == end:
+        return False
+    cur = now_local.hour * 60 + now_local.minute
+    if start < end:
+        return start <= cur < end
+    return cur >= start or cur < end
+
+
 def _any_auto_task_enabled(item: MeiluAccountModel) -> bool:
     return (
         _normalize_row_is_open(getattr(item, "auto_fetch_order_list", 0))
@@ -136,6 +169,7 @@ async def run_meilu_auto_fetch_tick() -> None:
         return
 
     now = datetime.now(timezone.utc)
+    now_local = datetime.now()
     rows = MeiluAccountModel.find_all(
         where="[is_open] = 1 AND [status] = ?",
         params=("active",),
@@ -146,6 +180,14 @@ async def run_meilu_auto_fetch_tick() -> None:
             continue
         try:
             if not _account_due(item, now):
+                continue
+            if _account_in_pause_window(item, now_local):
+                log.debug(
+                    "[meilu_auto_fetch] 账号 id=%s 当前处于暂停时间段（%s - %s），跳过",
+                    aid,
+                    getattr(item, "pause_start_time", None),
+                    getattr(item, "pause_end_time", None),
+                )
                 continue
             sid = str(item.seller_id or "").strip()
             if not sid:
