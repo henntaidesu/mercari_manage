@@ -4,12 +4,12 @@
     <el-card shadow="never" class="search-card">
       <el-row :gutter="0" align="middle" class="search-row">
         <el-col :xs="24" :md="16" class="search-left-group">
-          <el-select v-model="filters.type" placeholder="操作类型" clearable @change="load" style="width:100%">
-            <el-option label="入库" value="in" />
-            <el-option label="出库" value="out" />
-            <el-option label="调拨" value="transfer" />
+          <el-select v-model="filters.type" :placeholder="t('system.txTypeFilter')" clearable @change="load" style="width:100%">
+            <el-option :label="t('system.txIn')" value="in" />
+            <el-option :label="t('system.txOut')" value="out" />
+            <el-option :label="t('system.txTransfer')" value="transfer" />
           </el-select>
-          <el-select v-model="filters.warehouse_id" placeholder="选择仓库" clearable @change="load" style="width:100%">
+          <el-select v-model="filters.warehouse_id" :placeholder="t('system.txWarehousePick')" clearable @change="load" style="width:100%">
             <el-option v-for="w in warehouses" :key="w.id" :label="warehouseShelfLabel(w)" :value="w.id" />
           </el-select>
         </el-col>
@@ -20,32 +20,32 @@
 
     <el-card shadow="never" class="table-card">
       <el-table :data="list" v-loading="loading" stripe>
-        <el-table-column label="时间" width="160">
+        <el-table-column :label="t('system.txTime')" width="160">
           <template #default="{ row }">{{ formatUnixSecLocal(row.created_at) }}</template>
         </el-table-column>
-        <el-table-column label="类型" width="80" align="center">
+        <el-table-column :label="t('system.txType')" width="80" align="center">
           <template #default="{ row }">
             <el-tag :type="typeConfig[row.type]?.tag" size="small" effect="light">
               {{ typeConfig[row.type]?.label }}
             </el-tag>
           </template>
         </el-table-column>
-        <el-table-column label="库存" prop="inventory_name" min-width="120" />
-        <el-table-column label="来源仓库" prop="warehouse_name" width="120" />
-        <el-table-column label="目标仓库" prop="target_warehouse_name" width="120">
+        <el-table-column :label="t('system.txInventory')" prop="inventory_name" min-width="120" />
+        <el-table-column :label="t('system.txSourceWarehouse')" prop="warehouse_name" width="120" />
+        <el-table-column :label="t('system.txTargetWarehouse')" prop="target_warehouse_name" width="120">
           <template #default="{ row }">
             {{ row.target_warehouse_name || '-' }}
           </template>
         </el-table-column>
-        <el-table-column label="数量" width="90" align="center">
+        <el-table-column :label="t('system.txQuantity')" width="90" align="center">
           <template #default="{ row }">
             <span :class="row.type === 'in' ? 'text-green' : row.type === 'out' ? 'text-red' : 'text-orange'">
               {{ row.type === 'in' ? '+' : row.type === 'out' ? '-' : '⇄' }}{{ row.quantity }}
             </span>
           </template>
         </el-table-column>
-        <el-table-column label="操作人" prop="operator" width="90" />
-        <el-table-column label="备注" prop="remark" show-overflow-tooltip />
+        <el-table-column :label="t('system.txOperator')" prop="operator" width="90" />
+        <el-table-column :label="t('common.remark')" prop="remark" show-overflow-tooltip />
       </el-table>
 
       <!-- 分页 -->
@@ -66,10 +66,13 @@
 </template>
 
 <script setup>
-import { ref, onMounted } from 'vue'
+import { ref, onMounted, computed } from 'vue'
+import { useI18n } from 'vue-i18n'
 import { transactionApi, warehouseApi } from '@/api/index.js'
 import { warehouseShelfLabel } from '@/utils/warehouseLabel.js'
 import { formatUnixSecLocal } from '@/utils/timeDisplay.js'
+
+const { t } = useI18n()
 
 const list = ref([])
 const loading = ref(false)
@@ -79,11 +82,11 @@ const page = ref(1)
 const pageSize = ref(20)
 const filters = ref({ type: '', warehouse_id: null })
 
-const typeConfig = {
-  in: { label: '入库', tag: 'success' },
-  out: { label: '出库', tag: 'danger' },
-  transfer: { label: '调拨', tag: 'warning' }
-}
+const typeConfig = computed(() => ({
+  in: { label: t('system.txIn'), tag: 'success' },
+  out: { label: t('system.txOut'), tag: 'danger' },
+  transfer: { label: t('system.txTransfer'), tag: 'warning' }
+}))
 
 async function load() {
   loading.value = true

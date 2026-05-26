@@ -5,18 +5,18 @@
       <template #header>
         <div class="card-header">
           <el-icon color="#409EFF"><Goods /></el-icon>
-          <span>库存管理</span>
+          <span>{{ t('dashboard.inventoryMgmt') }}</span>
         </div>
       </template>
       <el-row :gutter="16" class="stat-row inventory-stat-row">
-        <el-col :xs="12" :sm="12" :md="8" :lg="4" v-for="card in statCards" :key="card.label">
+        <el-col :xs="12" :sm="12" :md="8" :lg="4" v-for="card in statCards" :key="card.key">
           <div class="stat-card" :style="{ borderTopColor: card.color }">
             <div class="stat-icon" :style="{ background: card.color + '20', color: card.color }">
               <el-icon size="22"><component :is="card.icon" /></el-icon>
             </div>
             <div class="stat-info">
               <div class="stat-value">{{ summary[card.key] ?? '-' }}</div>
-              <div class="stat-label">{{ card.label }}</div>
+              <div class="stat-label">{{ t(card.labelKey) }}</div>
             </div>
           </div>
         </el-col>
@@ -28,7 +28,7 @@
       <template #header>
         <div class="card-header">
           <el-icon color="#67C23A"><Tickets /></el-icon>
-          <span>订单统计（近30天）</span>
+          <span>{{ t('dashboard.orderStats') }}</span>
         </div>
       </template>
       <el-row :gutter="16" class="stat-row order-stat-row">
@@ -44,7 +44,7 @@
             <div class="stat-info">
               <div class="stat-value-row">
                 <span class="stat-value" :class="card.valueClass">{{ card.display }}</span>
-                <span class="stat-today">（今日新增 {{ card.todayDisplay }}）</span>
+                <span class="stat-today">({{ t('dashboard.todayNew', { count: card.todayDisplay }) }})</span>
               </div>
               <div class="stat-label">{{ card.label }}</div>
             </div>
@@ -58,24 +58,24 @@
       <template #header>
         <div class="card-header">
           <el-icon color="#409EFF"><List /></el-icon>
-          <span>最近出入库</span>
+          <span>{{ t('dashboard.recentTx') }}</span>
         </div>
       </template>
       <el-table :data="recentTx" size="small" stripe>
-        <el-table-column label="时间" width="160">
+        <el-table-column :label="t('dashboard.txTime')" width="160">
           <template #default="{ row }">{{ formatUnixSecLocal(row.created_at) }}</template>
         </el-table-column>
-        <el-table-column label="类型" width="80" align="center">
+        <el-table-column :label="t('dashboard.txType')" width="80" align="center">
           <template #default="{ row }">
             <el-tag :type="row.type === 'in' ? 'success' : row.type === 'out' ? 'danger' : 'warning'" size="small">
-              {{ { in: '入库', out: '出库', transfer: '调拨' }[row.type] }}
+              {{ txTypeLabel(row.type) }}
             </el-tag>
           </template>
         </el-table-column>
-        <el-table-column label="库存" prop="inventory_name" />
-        <el-table-column label="仓库" prop="warehouse_name" />
-        <el-table-column label="数量" prop="quantity" width="80" align="center" />
-        <el-table-column label="操作人" prop="operator" width="90" />
+        <el-table-column :label="t('dashboard.txInventory')" prop="inventory_name" />
+        <el-table-column :label="t('dashboard.txWarehouse')" prop="warehouse_name" />
+        <el-table-column :label="t('dashboard.txQuantity')" prop="quantity" width="80" align="center" />
+        <el-table-column :label="t('dashboard.txOperator')" prop="operator" width="90" />
       </el-table>
     </el-card>
   </div>
@@ -83,10 +83,12 @@
 
 <script setup>
 import { ref, computed, onMounted } from 'vue'
+import { useI18n } from 'vue-i18n'
 import { inventoryApi, transactionApi, orderApi } from '@/api/index.js'
 import { rollingLocalDayRangeTs, localTodayRangeTs } from '@/utils/orderStatsTime.js'
 import { formatUnixSecLocal } from '@/utils/timeDisplay.js'
 
+const { t } = useI18n()
 const summary = ref({})
 const recentTx = ref([])
 const orderStatsLoading = ref(false)
@@ -106,17 +108,26 @@ const orderStats = ref({
 })
 
 const statCards = [
-  { key: 'total_inventory', label: '库存条目', icon: 'Goods', color: '#409EFF' },
-  { key: 'total_quantity', label: '总库存量', icon: 'Box', color: '#E6A23C' },
-  { key: 'today_in', label: '今日入库', icon: 'Top', color: '#67C23A' },
-  { key: 'today_out', label: '今日出库', icon: 'Bottom', color: '#F56C6C' }
+  { key: 'total_inventory', labelKey: 'dashboard.totalInventory', icon: 'Goods', color: '#409EFF' },
+  { key: 'total_quantity', labelKey: 'dashboard.totalQuantity', icon: 'Box', color: '#E6A23C' },
+  { key: 'today_in', labelKey: 'dashboard.todayIn', icon: 'Top', color: '#67C23A' },
+  { key: 'today_out', labelKey: 'dashboard.todayOut', icon: 'Bottom', color: '#F56C6C' }
 ]
+
+function txTypeLabel(type) {
+  const map = {
+    in: t('dashboard.txIn'),
+    out: t('dashboard.txOut'),
+    transfer: t('dashboard.txTransfer'),
+  }
+  return map[type] || type
+}
 
 const orderStatCards = computed(() => {
   const o = orderStats.value
   return [
     {
-      label: '订单笔数',
+      label: t('dashboard.orderCount'),
       display: o.total_count ?? 0,
       todayDisplay: o.today_total_count ?? 0,
       icon: 'Document',
@@ -125,7 +136,7 @@ const orderStatCards = computed(() => {
       valueClass: '',
     },
     {
-      label: '金额合计',
+      label: t('dashboard.totalAmount'),
       display: Math.round(Number(o.sum_amount || 0)),
       todayDisplay: Math.round(Number(o.today_sum_amount || 0)),
       icon: 'Money',
@@ -134,7 +145,7 @@ const orderStatCards = computed(() => {
       valueClass: '',
     },
     {
-      label: '手续费合计',
+      label: t('dashboard.serviceFee'),
       display: Math.round(Number(o.sum_service_fee || 0)),
       todayDisplay: Math.round(Number(o.today_sum_service_fee || 0)),
       icon: 'Histogram',
@@ -143,7 +154,7 @@ const orderStatCards = computed(() => {
       valueClass: '',
     },
     {
-      label: '快递费合计',
+      label: t('dashboard.shippingFee'),
       display: Math.round(Number(o.sum_shipping_fee || 0)),
       todayDisplay: Math.round(Number(o.today_sum_shipping_fee || 0)),
       icon: 'Box',
@@ -152,7 +163,7 @@ const orderStatCards = computed(() => {
       valueClass: '',
     },
     {
-      label: '包材合计',
+      label: t('dashboard.packaging'),
       display: Math.round(Number(o.sum_packaging || 0)),
       todayDisplay: Math.round(Number(o.today_sum_packaging || 0)),
       icon: 'ShoppingCart',
@@ -161,7 +172,7 @@ const orderStatCards = computed(() => {
       valueClass: '',
     },
     {
-      label: '净收益合计',
+      label: t('dashboard.netIncome'),
       display: Math.round(Number(o.sum_net_income || 0)),
       todayDisplay: Math.round(Number(o.today_sum_net_income || 0)),
       icon: 'TrendCharts',

@@ -21,9 +21,9 @@
       <el-row :gutter="0" align="middle" class="search-row">
         <el-col :xs="24" :md="14" class="search-left-group">
           <div class="search-left-row1">
-            <el-input v-model="keyword" class="search-input-control" placeholder="搜索商品名称或管理番号" clearable @change="load" prefix-icon="Search" />
+            <el-input v-model="keyword" class="search-input-control" :placeholder="t('inventory.searchProductOrMgmtId')" clearable @change="load" prefix-icon="Search" />
             <div class="search-filters-row">
-              <el-select v-model="filterCat" class="search-select-control" placeholder="所有游戏分类" clearable @change="load">
+              <el-select v-model="filterCat" class="search-select-control" :placeholder="t('inventory.allCategories')" clearable @change="load">
                 <el-option v-for="c in categories" :key="c.id" :label="c.name" :value="c.id" />
               </el-select>
               <el-cascader
@@ -32,7 +32,7 @@
                 :props="warehouseCascaderProps"
                 :show-all-levels="false"
                 class="search-select-control"
-                placeholder="仓库 / 货架名称 / 货架号"
+                :placeholder="t('inventory.warehouseShelfNamePlaceholder')"
                 popper-class="product-type-cascader-popper"
                 clearable
                 filterable
@@ -44,18 +44,18 @@
                 :props="productTypeCascaderProps"
                 :show-all-levels="false"
                 class="search-select-control"
-                placeholder="商品类型"
+                :placeholder="t('inventory.productType')"
                 popper-class="product-type-cascader-popper"
                 clearable
                 filterable
                 @change="handleFilterProductTypeChange"
               />
-              <el-select v-model="filterOwnerUserId" class="search-select-control" placeholder="所有商品归属" clearable @change="load">
+              <el-select v-model="filterOwnerUserId" class="search-select-control" :placeholder="t('inventory.allOwners')" clearable @change="load">
                 <el-option v-for="u in ownerUsers" :key="u.id" :label="u.display_name || u.username" :value="u.id" />
               </el-select>
-              <el-checkbox v-model="hideNoWarehouseSlot" class="search-filter-checkbox">隐藏无在库</el-checkbox>
-              <el-checkbox v-model="viewNoImageOnly" class="search-filter-checkbox">查看无图商品</el-checkbox>
-              <el-checkbox v-model="viewCombinedOnly" class="search-filter-checkbox">查看组合商品</el-checkbox>
+              <el-checkbox v-model="hideNoWarehouseSlot" class="search-filter-checkbox">{{ t('inventory.hideNoStock') }}</el-checkbox>
+              <el-checkbox v-model="viewNoImageOnly" class="search-filter-checkbox">{{ t('inventory.viewNoImageOnly') }}</el-checkbox>
+              <el-checkbox v-model="viewCombinedOnly" class="search-filter-checkbox">{{ t('inventory.viewCombinedOnly') }}</el-checkbox>
             </div>
           </div>
         </el-col>
@@ -63,31 +63,31 @@
           <template v-if="isIOS">
             <template v-if="!listingPickMode">
               <div class="search-actions-ios-row">
-                <el-button type="success" @click="openContScan">条码入库</el-button>
+                <el-button type="success" @click="openContScan">{{ t('inventory.barcodeInbound') }}</el-button>
               </div>
               <div class="search-actions-ios-row">
-                <el-button type="warning" @click="openNoBarcodeEntry">无码入库</el-button>
-                <el-button @click="enterListingPickMode()">组合商品</el-button>
+                <el-button type="warning" @click="openNoBarcodeEntry">{{ t('inventory.noBarcodeInbound') }}</el-button>
+                <el-button @click="enterListingPickMode()">{{ t('inventory.combinedProduct') }}</el-button>
               </div>
             </template>
             <template v-else>
               <div class="search-actions-ios-row listing-pick-actions">
-                <span class="listing-pick-count">已选 {{ listingPickIds.size }} 条</span>
-                <el-button type="primary" :disabled="!listingPickIds.size" @click="confirmListingPick">下一步</el-button>
-                <el-button @click="exitListingPickMode">取消选择</el-button>
+                <span class="listing-pick-count">{{ t('inventory.selectedCount', { count: listingPickIds.size }) }}</span>
+                <el-button type="primary" :disabled="!listingPickIds.size" @click="confirmListingPick">{{ t('common.next') }}</el-button>
+                <el-button @click="exitListingPickMode">{{ t('inventory.cancelSelection') }}</el-button>
               </div>
             </template>
           </template>
           <template v-else>
             <template v-if="!listingPickMode">
-              <el-button type="success" @click="openContScan">条码入库</el-button>
-              <el-button type="warning" @click="openNoBarcodeEntry">无码入库</el-button>
-              <el-button @click="enterListingPickMode()">组合商品</el-button>
+              <el-button type="success" @click="openContScan">{{ t('inventory.barcodeInbound') }}</el-button>
+              <el-button type="warning" @click="openNoBarcodeEntry">{{ t('inventory.noBarcodeInbound') }}</el-button>
+              <el-button @click="enterListingPickMode()">{{ t('inventory.combinedProduct') }}</el-button>
             </template>
             <template v-else>
-              <span class="listing-pick-count">已选 {{ listingPickIds.size }} 条</span>
-              <el-button type="primary" :disabled="!listingPickIds.size" @click="confirmListingPick">下一步：创建组合商品</el-button>
-              <el-button @click="exitListingPickMode">取消选择</el-button>
+              <span class="listing-pick-count">{{ t('inventory.selectedCount', { count: listingPickIds.size }) }}</span>
+              <el-button type="primary" :disabled="!listingPickIds.size" @click="confirmListingPick">{{ t('inventory.nextCreateCombined') }}</el-button>
+              <el-button @click="exitListingPickMode">{{ t('inventory.cancelSelection') }}</el-button>
             </template>
           </template>
         </el-col>
@@ -116,57 +116,57 @@
               v-loading="isInventoryExpandLoading(row)"
             >
               <div v-if="getInventoryExpandRows(row).length" class="inventory-expand-section">
-                <div class="inventory-expand-section-title">在售商品</div>
+                <div class="inventory-expand-section-title">{{ t('inventory.onSaleProducts') }}</div>
                 <el-table
                   :data="getInventoryExpandRows(row)"
                   size="small"
                   border
                   class="inventory-expand-inner-table"
                 >
-                <el-table-column label="商品ID" prop="item_id" min-width="130" align="center" />
-                <el-table-column label="标题" prop="name" min-width="220" align="left" show-overflow-tooltip />
-                <el-table-column label="卖家" prop="seller_name" min-width="120" align="center" show-overflow-tooltip />
-                <el-table-column label="价格¥" width="90" align="center">
+                <el-table-column :label="t('inventory.itemId')" prop="item_id" min-width="130" align="center" />
+                <el-table-column :label="t('inventory.itemTitle')" prop="name" min-width="220" align="left" show-overflow-tooltip />
+                <el-table-column :label="t('inventory.seller')" prop="seller_name" min-width="120" align="center" show-overflow-tooltip />
+                <el-table-column :label="t('inventory.priceYen')" width="90" align="center">
                   <template #default="{ row: r }">{{ Number(r.price || 0) }}</template>
                 </el-table-column>
-                <el-table-column label="状态" width="110" align="center">
+                <el-table-column :label="t('common.status')" width="110" align="center">
                   <template #default="{ row: r }">
                     <el-tag :type="onSaleStatusTagType(r.status)" size="small" effect="light">
                       {{ displayOnSaleStatus(r.status) }}
                     </el-tag>
                   </template>
                 </el-table-column>
-                <el-table-column label="在售数量" width="90" align="center">
+                <el-table-column :label="t('inventory.onSaleQuantity')" width="90" align="center">
                   <template #default="{ row: r }">{{ Number(r.inventory_on_sale_quantity ?? 0) }}</template>
                 </el-table-column>
-                <el-table-column label="更新" width="150" align="center">
+                <el-table-column :label="t('inventory.updateColumn')" width="150" align="center">
                   <template #default="{ row: r }">{{ formatUnixTs(r.updated) }}</template>
                 </el-table-column>
                 </el-table>
               </div>
               <div v-if="getInventoryOutboundExpandRows(row).length" class="inventory-expand-section">
-                <div class="inventory-expand-section-title">待出库商品</div>
+                <div class="inventory-expand-section-title">{{ t('inventory.pendingOutboundProducts') }}</div>
                 <el-table
                   :data="getInventoryOutboundExpandRows(row)"
                   size="small"
                   border
                   class="inventory-expand-inner-table"
                 >
-                  <el-table-column label="订单号" prop="order_no" min-width="140" align="left" show-overflow-tooltip />
-                  <el-table-column label="订单状态" width="110" align="center">
+                  <el-table-column :label="t('inventory.orderNumber')" prop="order_no" min-width="140" align="left" show-overflow-tooltip />
+                  <el-table-column :label="t('inventory.orderStatus')" width="110" align="center">
                     <template #default="{ row: line }">
                       <el-tag :type="orderStatusTagType(line.order_status)" size="small" effect="light">
                         {{ displayOrderStatus(line.order_status) }}
                       </el-tag>
                     </template>
                   </el-table-column>
-                  <el-table-column label="类型" width="88" align="center">
+                  <el-table-column :label="t('common.type')" width="88" align="center">
                     <template #default="{ row: line }">{{ outboundLineKindLabel(line) }}</template>
                   </el-table-column>
-                  <el-table-column label="标识" prop="management_id" min-width="120" align="center" show-overflow-tooltip />
-                  <el-table-column label="件数" prop="quantity" width="72" align="center" />
-                  <el-table-column label="买家" prop="buyer_name" min-width="100" align="left" show-overflow-tooltip />
-                  <el-table-column label="订单金额¥" width="100" align="center">
+                  <el-table-column :label="t('inventory.identifier')" prop="management_id" min-width="120" align="center" show-overflow-tooltip />
+                  <el-table-column :label="t('inventory.pieces')" prop="quantity" width="72" align="center" />
+                  <el-table-column :label="t('inventory.buyer')" prop="buyer_name" min-width="100" align="left" show-overflow-tooltip />
+                  <el-table-column :label="t('inventory.orderAmountYen')" width="100" align="center">
                     <template #default="{ row: line }">{{ Number(line.order_amount || 0) }}</template>
                   </el-table-column>
                 </el-table>
@@ -174,8 +174,8 @@
             </div>
           </template>
         </el-table-column>
-        <el-table-column label="管理番号" prop="id" width="100" align="center" header-align="center" />
-        <el-table-column label="商品图" width="76" align="center" header-align="center">
+        <el-table-column :label="t('inventory.managementId')" prop="id" width="100" align="center" header-align="center" />
+        <el-table-column :label="t('inventory.productImage')" width="76" align="center" header-align="center">
           <template #default="{ row }">
             <el-image
               v-if="inventoryRowPrimaryImage(row)"
@@ -196,7 +196,7 @@
             <span v-else class="thumb-fallback">-</span>
           </template>
         </el-table-column>
-        <el-table-column label="商品名称" min-width="130" align="left" header-align="left">
+        <el-table-column :label="t('inventory.productNameCol')" min-width="130" align="left" header-align="left">
           <template #default="{ row }">
             <el-input
               v-if="isEditing(row, 'name')"
@@ -207,29 +207,29 @@
               @blur="saveInlineEdit(row, 'name')"
             />
             <div v-else class="editable-cell" @click="startInlineEdit(row, 'name')">
-              <el-tag v-if="Number(row.is_combined || 0) === 1" size="small" type="success" effect="light">组合</el-tag>
+              <el-tag v-if="Number(row.is_combined || 0) === 1" size="small" type="success" effect="light">{{ t('inventory.combinedTag') }}</el-tag>
               {{ row.name || '-' }}
             </div>
           </template>
         </el-table-column>
-        <el-table-column label="游戏分类" width="120" align="center" header-align="center">
+        <el-table-column :label="t('inventory.gameCategory')" width="120" align="center" header-align="center">
           <template #default="{ row }">
             <el-select
               v-if="editingCategoryRowId === row.id"
               :model-value="row.category_id"
               size="small"
               style="width: 100%"
-              placeholder="选择分类"
+              :placeholder="t('inventory.selectCategory')"
               @change="saveCategoryInline(row, $event)"
               @visible-change="(v) => { if (!v) editingCategoryRowId = null }"
             >
-              <el-option label="未分类" :value="null" />
+              <el-option :label="t('inventory.uncategorized')" :value="null" />
               <el-option v-for="c in categories" :key="c.id" :label="c.name" :value="c.id" />
             </el-select>
-            <div v-else class="editable-cell" @click="!listingPickMode && (editingCategoryRowId = row.id)">{{ row.category_name || '未分类' }}</div>
+            <div v-else class="editable-cell" @click="!listingPickMode && (editingCategoryRowId = row.id)">{{ row.category_name || t('inventory.uncategorized') }}</div>
           </template>
         </el-table-column>
-        <el-table-column label="商品类型" width="120" align="center" header-align="center">
+        <el-table-column :label="t('inventory.productType')" width="120" align="center" header-align="center">
           <template #default="{ row }">
             <el-cascader
               v-if="editingProductTypeRowId === row.id"
@@ -239,7 +239,7 @@
               :show-all-levels="false"
               size="small"
               class="inventory-inline-select"
-              placeholder="选择类型"
+              :placeholder="t('inventory.selectType')"
               popper-class="product-type-cascader-popper"
               filterable
               clearable
@@ -249,7 +249,7 @@
             <div v-else class="editable-cell" @click="openProductTypeInline(row)">{{ displayProductTypeName(row) }}</div>
           </template>
         </el-table-column>
-        <el-table-column label="商品归属" width="120" align="center" header-align="center">
+        <el-table-column :label="t('inventory.productOwner')" width="120" align="center" header-align="center">
           <template #default="{ row }">
             <el-select
               v-if="editingOwnerRowId === row.id"
@@ -257,7 +257,7 @@
               :ref="(el) => setInlineOwnerSelectRef(row.id, el)"
               size="small"
               class="inventory-inline-select"
-              placeholder="选择归属"
+              :placeholder="t('inventory.selectOwner')"
               popper-class="inventory-inline-select-popper"
               @change="saveOwnerInline(row, $event)"
               @visible-change="(v) => { if (!v) editingOwnerRowId = null }"
@@ -268,25 +268,25 @@
             <div v-else class="editable-cell" @click="openOwnerInline(row)">{{ displayOwnerName(row) }}</div>
           </template>
         </el-table-column>
-        <el-table-column label="仓库位置" min-width="160" align="left" header-align="left" show-overflow-tooltip>
+        <el-table-column :label="t('inventory.warehouseLocation')" min-width="160" align="left" header-align="left" show-overflow-tooltip>
           <template #default="{ row }">{{ displayWarehouseLocation(row) }}</template>
         </el-table-column>
-        <el-table-column label="单价" prop="price" width="120" align="center" header-align="center" sortable="custom">
+        <el-table-column :label="t('inventory.unitPrice')" prop="price" width="120" align="center" header-align="center" sortable="custom">
           <template #default="{ row }">
             {{ Math.round(Number(row.price || 0)) }}
           </template>
         </el-table-column>
-        <el-table-column label="库存" prop="quantity" width="80" align="center" header-align="center" sortable="custom">
+        <el-table-column :label="t('inventory.stockColumn')" prop="quantity" width="80" align="center" header-align="center" sortable="custom">
           <template #default="{ row }">
             <el-tag :type="quantityTagType(row.quantity)" size="small">
               {{ row.quantity || 0 }}
             </el-tag>
           </template>
         </el-table-column>
-        <el-table-column label="在售" prop="on_sale_quantity" width="80" align="center" header-align="center" sortable="custom">
+        <el-table-column :label="t('inventory.onSaleColumn')" prop="on_sale_quantity" width="80" align="center" header-align="center" sortable="custom">
           <template #default="{ row }">{{ Number(row.on_sale_quantity ?? 0) }}</template>
         </el-table-column>
-        <el-table-column label="待出" prop="pending_outbound_qty" width="80" align="center" header-align="center" sortable="custom">
+        <el-table-column :label="t('inventory.pendingOutboundColumn')" prop="pending_outbound_qty" width="80" align="center" header-align="center" sortable="custom">
           <template #default="{ row }">
             <el-tag v-if="Number(row.pending_outbound_qty || 0) > 0" type="warning" size="small">
               {{ Number(row.pending_outbound_qty || 0) }}
@@ -294,7 +294,7 @@
             <span v-else class="cell-muted">{{ Number(row.pending_outbound_qty || 0) }}</span>
           </template>
         </el-table-column>
-        <el-table-column v-if="!listingPickMode" label="操作" :width="isMobile ? 140 : 160" align="center" header-align="center" :fixed="isMobile ? false : 'right'">
+        <el-table-column v-if="!listingPickMode" :label="t('common.operate')" :width="isMobile ? 140 : 160" align="center" header-align="center" :fixed="isMobile ? false : 'right'">
           <template #default="{ row }">
             <div class="row-actions">
               <el-button
@@ -302,12 +302,12 @@
                 type="warning"
                 :disabled="Number(row.quantity ?? 0) <= 0"
                 @click.stop="openListingFormForRow(row)"
-              >出品</el-button>
-              <el-button size="small" @click.stop="openDialog(row)">编辑</el-button>
+              >{{ t('inventory.list') }}</el-button>
+              <el-button size="small" @click.stop="openDialog(row)">{{ t('common.edit') }}</el-button>
             </div>
           </template>
         </el-table-column>
-        <el-table-column v-else label="选择" width="64" align="center" header-align="center" :fixed="isMobile ? false : 'right'">
+        <el-table-column v-else :label="t('inventory.selectColumn')" width="64" align="center" header-align="center" :fixed="isMobile ? false : 'right'">
           <template #default="{ row }">
             <el-icon v-if="listingPickIds.has(row.id)" color="#67C23A" :size="20"><Check /></el-icon>
             <span v-else class="cell-muted">-</span>
@@ -328,7 +328,7 @@
 
     <el-dialog
       v-model="dialogVisible"
-      :title="form.id ? '编辑商品' : '新增商品'"
+      :title="form.id ? t('inventory.editItem') : t('inventory.addNewItem')"
       :width="productEditDialogWidth"
       class="product-dialog"
       destroy-on-close
@@ -340,10 +340,10 @@
         <div class="product-edit-dialog-layout__form">
       <el-form :model="form" :rules="rules" ref="formRef">
         <!-- 条形码行 -->
-        <el-form-item label="条形码" prop="barcode">
+        <el-form-item :label="t('inventory.barcode')" prop="barcode">
           <el-input
             v-model="form.barcode"
-            placeholder="条形码（必填）"
+            :placeholder="t('inventory.barcodeRequired')"
             class="listing-field-fullwidth"
             size="large"
             clearable
@@ -356,49 +356,49 @@
             </template>
           </el-input>
         </el-form-item>
-        <el-form-item v-if="form.id && editFormMgmtIdCipher" label="管理暗码">
+        <el-form-item v-if="form.id && editFormMgmtIdCipher" :label="t('inventory.mgmtCipher')">
           <el-input
             :model-value="editFormMgmtIdCipher"
             class="listing-field-fullwidth product-edit-mgmt-cipher-input"
             size="large"
             readonly
             disabled
-            title="末行暗号（-=~<> 五进制），写入煤炉说明最末行"
+            :title="t('inventory.mgmtCipherTitle')"
           />
         </el-form-item>
-        <el-form-item label="商品名称">
+        <el-form-item :label="t('inventory.productNameCol')">
           <el-input v-model="form.name" class="listing-field-fullwidth" type="text" clearable />
         </el-form-item>
-        <el-form-item label="游戏分类" prop="category_id">
+        <el-form-item :label="t('inventory.gameCategory')" prop="category_id">
           <div class="product-field-inline">
             <template v-if="!categoryCreateMode">
               <el-select
                 v-model="form.category_id"
                 clearable
                 :filterable="!isIOS"
-                placeholder="请选择分类"
+                :placeholder="t('inventory.pleaseSelectCategory')"
                 class="product-field-inline__main"
               >
                 <el-option v-for="c in categories" :key="c.id" :label="c.name" :value="c.id" />
               </el-select>
-              <el-button type="primary" plain @click="startCreateCategory">新建分类</el-button>
+              <el-button type="primary" plain @click="startCreateCategory">{{ t('inventory.newCategory') }}</el-button>
             </template>
             <template v-else>
               <el-input
                 v-model="newCategoryName"
-                placeholder="输入新分类名称"
+                :placeholder="t('inventory.inputNewCategoryName')"
                 clearable
                 class="product-field-inline__main"
                 @keyup.enter="confirmCreateCategory"
               />
-              <el-button type="primary" @click="confirmCreateCategory">确认</el-button>
-              <el-button @click="cancelCreateCategory">取消</el-button>
+              <el-button type="primary" @click="confirmCreateCategory">{{ t('common.confirm') }}</el-button>
+              <el-button @click="cancelCreateCategory">{{ t('common.cancel') }}</el-button>
             </template>
           </div>
         </el-form-item>
         <el-row :gutter="12">
           <el-col :xs="24" :sm="16">
-            <el-form-item label="商品类型" prop="product_type_id">
+            <el-form-item :label="t('inventory.productType')" prop="product_type_id">
               <el-cascader
                 v-model="productTypeCascaderPath"
                 :options="productTypeCascaderOptions"
@@ -406,7 +406,7 @@
                 :show-all-levels="false"
                 clearable
                 filterable
-                placeholder="请选择商品类型（按1/2/3级分类）"
+                :placeholder="t('inventory.pleaseSelectProductType')"
                 class="product-field-inline__main"
                 style="width: 100%"
                 popper-class="product-type-cascader-popper"
@@ -415,10 +415,10 @@
             </el-form-item>
           </el-col>
           <el-col :xs="24" :sm="8">
-            <el-form-item label="单价" prop="price">
+            <el-form-item :label="t('inventory.unitPrice')" prop="price">
               <el-input
                 v-model="priceEdit"
-                placeholder="整数"
+                :placeholder="t('inventory.integerPlaceholder')"
                 class="product-price-input"
                 inputmode="numeric"
                 @blur="applyPriceEditToForm"
@@ -426,12 +426,12 @@
             </el-form-item>
           </el-col>
         </el-row>
-        <el-form-item label="商品归属" prop="owner_user_id">
+        <el-form-item :label="t('inventory.productOwner')" prop="owner_user_id">
           <el-select
             v-model="form.owner_user_id"
             clearable
             :filterable="!isIOS"
-            placeholder="请选择归属用户"
+            :placeholder="t('inventory.pleaseSelectOwner')"
             class="product-field-inline__main"
           >
             <el-option v-for="u in ownerUsers" :key="u.id" :label="u.display_name || u.username" :value="u.id" />
@@ -439,7 +439,7 @@
         </el-form-item>
         <el-row :gutter="12">
           <el-col :xs="24" :sm="16">
-            <el-form-item label="所属货架" prop="warehouse_id">
+            <el-form-item :label="t('inventory.belongingShelf')" prop="warehouse_id">
               <div class="product-field-inline">
                 <el-cascader
                   v-model="warehouseCascaderPath"
@@ -448,7 +448,7 @@
                   :show-all-levels="false"
                   clearable
                   :filterable="!isIOS"
-                  placeholder="请选择：仓库 → 货架名称 → 货架号"
+                  :placeholder="t('inventory.warehouseShelfArrowPlaceholder')"
                   class="product-field-inline__main"
                   style="width: 100%"
                   popper-class="product-type-cascader-popper"
@@ -458,7 +458,7 @@
             </el-form-item>
           </el-col>
           <el-col :xs="24" :sm="8">
-            <el-form-item label="库存数量" prop="quantity">
+            <el-form-item :label="t('inventory.stockQuantity')" prop="quantity">
               <el-input
                 v-model="quantityEdit"
                 placeholder=""
@@ -470,7 +470,7 @@
           </el-col>
         </el-row>
         <!-- 商品图（最多 {{ MAX_INVENTORY_IMAGES }} 张） -->
-        <el-form-item label="商品图片" class="inventory-images-combined-header">
+        <el-form-item :label="t('inventory.productImages')" class="inventory-images-combined-header">
           <div class="inventory-images-combined-header__inner">
             <span class="img-label-count">{{ form.images.length }} / {{ MAX_INVENTORY_IMAGES }}</span>
             <div class="inventory-images-toolbar inventory-images-toolbar--inline">
@@ -482,7 +482,7 @@
                 :loading="combinedEditDetailLoading"
                 @click="openCombinedLinkImageDialog"
               >
-                关联图片
+                {{ t('inventory.linkImage') }}
               </el-button>
               <el-button
                 v-if="form.images.length < MAX_INVENTORY_IMAGES"
@@ -490,20 +490,20 @@
                 size="small"
                 @click="triggerInventoryImageFilePick(-1, 'pick')"
               >
-                上传
+                {{ t('common.upload') }}
               </el-button>
-              <span v-if="form.images.length >= MAX_INVENTORY_IMAGES" class="img-count-hint">已达上限</span>
+              <span v-if="form.images.length >= MAX_INVENTORY_IMAGES" class="img-count-hint">{{ t('inventory.reachedLimit') }}</span>
             </div>
           </div>
         </el-form-item>
         <el-form-item
           prop="image_front"
           style="display: block"
-          label="商品图片"
+          :label="t('inventory.productImages')"
           class="inventory-images-form-item inventory-images-form-item--combined inventory-images-form-item--combined-grid"
         >
           <div v-if="form.images.length > 1" class="inventory-images-reorder-hint">
-            拖动图片调整顺序（第一张为主图）
+            {{ t('inventory.dragReorderHint') }}
           </div>
           <div class="inventory-images-grid inventory-images-grid--combined">
             <div
@@ -519,7 +519,7 @@
                   inventoryImageDragFrom !== imgIdx
               }"
               :draggable="form.images.length > 1 && !!imgUrl"
-              title="拖动调整顺序"
+              :title="t('inventory.dragToReorder')"
               @dragstart="onInventoryImageDragStart(imgIdx, $event)"
               @dragend="onInventoryImageDragEnd"
               @dragover.prevent="onInventoryImageDragOver(imgIdx, $event)"
@@ -527,7 +527,7 @@
               @drop.prevent="onInventoryImageDrop(imgIdx)"
             >
               <div class="inventory-image-cell__frame inventory-image-cell__frame--badge">
-                <span class="inventory-image-cell__badge">{{ imgIdx === 0 ? '主图' : `图 ${imgIdx + 1}` }}</span>
+                <span class="inventory-image-cell__badge">{{ imgIdx === 0 ? t('inventory.primaryImage') : t('inventory.imageN', { n: imgIdx + 1 }) }}</span>
                 <div
                   class="image-upload-area inventory-form-image-area"
                   :class="{ 'inventory-form-image-area--empty': !imgUrl }"
@@ -557,7 +557,7 @@
                 <el-progress :percentage="noBarcodeImgUpload[imgIdx].percent" :stroke-width="10" />
               </div>
               <div class="img-actions img-actions--inline">
-                <el-button size="small" type="danger" text @click.stop="removeInventoryFormImageAt(imgIdx)">移除</el-button>
+                <el-button size="small" type="danger" text @click.stop="removeInventoryFormImageAt(imgIdx)">{{ t('inventory.remove') }}</el-button>
                 <el-button
                   v-if="imgUrl"
                   size="small"
@@ -565,7 +565,7 @@
                   text
                   @click.stop="replaceInventoryFormImageAt(imgIdx)"
                 >
-                  更换
+                  {{ t('inventory.replace') }}
                 </el-button>
               </div>
             </div>
@@ -579,7 +579,7 @@
               >
                 <div class="upload-placeholder">
                   <el-icon size="32" color="#4a5a72"><Camera /></el-icon>
-                  <span class="img-add-hint">还可添加 {{ MAX_INVENTORY_IMAGES - form.images.length }} 张</span>
+                  <span class="img-add-hint">{{ t('inventory.canAddMore', { n: MAX_INVENTORY_IMAGES - form.images.length }) }}</span>
                 </div>
               </div>
               <div
@@ -606,10 +606,10 @@
             @change="handleInventoryImageFileChange"
           />
         </el-form-item>
-        <el-form-item label="出品标题">
+        <el-form-item :label="t('inventory.listingTitle')">
           <el-input v-model="form.listing_title" class="listing-field-fullwidth" type="text" clearable />
         </el-form-item>
-        <el-form-item label="商品说明">
+        <el-form-item :label="t('inventory.productDescription')">
           <el-input
             v-model="form.listing_body"
             class="listing-field-fullwidth"
@@ -619,22 +619,22 @@
           />
         </el-form-item>
         <template v-if="form.id">
-          <el-form-item label="煤炉商品ID">
+          <el-form-item :label="t('inventory.mercariItemId')">
             <div class="mercari-id-editor">
               <div v-for="(_, idx) in mercariIdList" :key="idx" class="mercari-id-row">
                 <el-input
                   v-model="mercariIdList[idx]"
                   size="small"
-                  placeholder="输入商品ID"
+                  :placeholder="t('inventory.inputItemId')"
                   class="mercari-id-input"
                   clearable
                 />
-                <el-button size="small" type="danger" text @click="removeMercariId(idx)">删除</el-button>
+                <el-button size="small" type="danger" text @click="removeMercariId(idx)">{{ t('common.delete') }}</el-button>
               </div>
-              <el-button size="small" type="primary" plain @click="addMercariId">+ 添加商品ID</el-button>
+              <el-button size="small" type="primary" plain @click="addMercariId">{{ t('inventory.addItemId') }}</el-button>
             </div>
           </el-form-item>
-          <el-form-item label="在售数量">
+          <el-form-item :label="t('inventory.onSaleQuantity')">
             <el-input-number v-model="form.on_sale_quantity" :min="0" :max="999999" :step="1" controls-position="right" style="width: 160px" />
           </el-form-item>
         </template>
@@ -645,7 +645,7 @@
           class="product-edit-dialog-layout__aside"
           v-loading="combinedEditDetailLoading"
         >
-          <div class="combined-edit-aside-title">组合组成明细</div>
+          <div class="combined-edit-aside-title">{{ t('inventory.combinedComponentsDetail') }}</div>
           <div class="combined-edit-aside-list">
             <div
               v-for="row in combinedEditDetailRows"
@@ -668,16 +668,16 @@
                     <span class="combined-edit-aside-item__img-fallback">-</span>
                   </template>
                 </el-image>
-                <div v-else class="combined-edit-aside-item__img-placeholder">无图</div>
+                <div v-else class="combined-edit-aside-item__img-placeholder">{{ t('inventory.noImage') }}</div>
               </div>
               <div class="combined-edit-aside-item__body">
                 <div class="combined-edit-aside-item__title">
-                  管理 {{ row.inventory_id }} · {{ row.name || '—' }}
+                  {{ t('inventory.mgmtPrefix') }} {{ row.inventory_id }} · {{ row.name || '—' }}
                 </div>
                 <div class="combined-edit-aside-item__meta">
-                  <span>每套 <strong>{{ row.per_combo_quantity }}</strong></span>
+                  <span>{{ t('inventory.perSet') }} <strong>{{ row.per_combo_quantity }}</strong></span>
                   <span v-if="row.loadError" class="combined-edit-aside-item__err">{{ row.loadError }}</span>
-                  <span v-else>库存 <strong>{{ row.current_quantity ?? '—' }}</strong></span>
+                  <span v-else>{{ t('inventory.stockColumn') }} <strong>{{ row.current_quantity ?? '—' }}</strong></span>
                 </div>
 
                 <div
@@ -701,7 +701,7 @@
               </div>
             </div>
             <div v-if="!combinedEditDetailLoading && combinedEditDetailRows.length === 0" class="combined-edit-aside-empty">
-              未解析到组成数据（可能缺少 combined_items 记录）
+              {{ t('inventory.noCombinedItemsParsed') }}
             </div>
           </div>
         </aside>
@@ -710,22 +710,22 @@
         <div class="product-dialog-footer">
           <div class="product-dialog-footer__left">
             <template v-if="form.id">
-              <el-button type="success" @click="openOcrForRow(form)">OCR</el-button>
-              <el-popconfirm title="确认删除该商品？" @confirm="remove(form.id); dialogVisible = false">
+              <el-button type="success" @click="openOcrForRow(form)">{{ t('inventory.ocr') }}</el-button>
+              <el-popconfirm :title="t('inventory.deleteConfirm')" @confirm="remove(form.id); dialogVisible = false">
                 <template #reference>
-                  <el-button type="danger">删除</el-button>
+                  <el-button type="danger">{{ t('common.delete') }}</el-button>
                 </template>
               </el-popconfirm>
             </template>
           </div>
           <div class="product-dialog-footer__right">
-            <el-button @click="dialogVisible = false">取消</el-button>
+            <el-button @click="dialogVisible = false">{{ t('common.cancel') }}</el-button>
             <el-button
               type="primary"
               @click="submit"
               :loading="submitting"
               :disabled="inventorySaveBlockedByImageUpload"
-            >保存</el-button>
+            >{{ t('common.save') }}</el-button>
           </div>
         </div>
       </template>
@@ -733,14 +733,14 @@
 
     <el-dialog
       v-model="combinedLinkImageDialogVisible"
-      title="关联图片"
+      :title="t('inventory.linkImage')"
       :width="isMobile ? '94vw' : '560px'"
       append-to-body
       destroy-on-close
       class="combined-link-image-dialog"
     >
       <p class="combined-link-image-dialog__hint">
-        从组成商品（管理 ID）已有图片中点选，加入组合商品图。已选图片显示绿色边框，再次点击可取消。
+        {{ t('inventory.linkImageHint') }}
       </p>
       <div v-loading="combinedEditDetailLoading" class="combined-link-image-dialog__body">
         <template v-if="combinedEditDetailRows.length">
@@ -750,7 +750,7 @@
             class="combined-link-image-dialog__group"
           >
             <div class="combined-link-image-dialog__group-title">
-              管理 {{ row.inventory_id }} · {{ row.name || '—' }}
+              {{ t('inventory.mgmtPrefix') }} {{ row.inventory_id }} · {{ row.name || '—' }}
             </div>
             <div
               v-if="!row.loadError && inventoryRowImages(row).length"
@@ -776,21 +776,21 @@
                 <span
                   v-if="isImageInCombinedForm(imgUrl)"
                   class="combined-edit-aside-item__pick-badge"
-                >已选</span>
+                >{{ t('inventory.alreadySelected') }}</span>
               </div>
             </div>
             <div v-else-if="row.loadError" class="combined-link-image-dialog__empty">
               {{ row.loadError }}
             </div>
-            <div v-else class="combined-link-image-dialog__empty">该管理 ID 暂无图片</div>
+            <div v-else class="combined-link-image-dialog__empty">{{ t('inventory.mgmtNoImage') }}</div>
           </div>
         </template>
         <div v-else-if="!combinedEditDetailLoading" class="combined-link-image-dialog__empty">
-          未解析到组成商品，请确认组合数据后重试
+          {{ t('inventory.noComponentsRetry') }}
         </div>
       </div>
       <template #footer>
-        <el-button type="primary" @click="combinedLinkImageDialogVisible = false">完成</el-button>
+        <el-button type="primary" @click="combinedLinkImageDialogVisible = false">{{ t('inventory.done') }}</el-button>
       </template>
     </el-dialog>
 
@@ -805,11 +805,11 @@
     >
       <div class="scan-box">
         <div v-if="inventoryCameraDevices.length > 0" class="camera-device-row">
-          <span class="camera-device-label">摄像头</span>
+          <span class="camera-device-label">{{ t('inventory.camera') }}</span>
           <el-select
             v-model="productImgCameraSelectId"
             filterable
-            placeholder="选择摄像头"
+            :placeholder="t('inventory.selectCamera')"
             class="camera-device-select"
             :disabled="Boolean(productImgPreviewUrl) || productImgCapturing"
             @change="onProductImgCameraDeviceChanged"
@@ -834,28 +834,28 @@
           v-show="productImgPreviewUrl"
           :src="productImgPreviewUrl || undefined"
           class="scan-video product-img-preview-still"
-          alt="预览"
+          :alt="t('inventory.preview')"
         />
         <div class="scan-tip">
           {{
             productImgPreviewUrl
-              ? '确认效果后点击「确认拍照」保存，或「重新拍摄」'
-              : '对准商品后点击「拍照」生成预览，满意后再确认'
+              ? t('inventory.confirmShotTip')
+              : t('inventory.shotPreviewTip')
           }}
         </div>
         <div v-if="nbCameraUploading" class="nb-inventory-upload-progress nb-inventory-upload-progress--camera">
           <el-progress :percentage="nbCameraUploadPercent" :stroke-width="10" />
-          <div class="nb-inventory-upload-hint">正在上传图片…</div>
+          <div class="nb-inventory-upload-hint">{{ t('inventory.uploadingImage') }}</div>
         </div>
       </div>
       <template #footer>
         <template v-if="!productImgPreviewUrl">
-          <el-button @click="productImgCameraVisible = false">取消</el-button>
-          <el-button type="primary" :loading="productImgCapturing" @click="takeProductImgDraft">拍照</el-button>
+          <el-button @click="productImgCameraVisible = false">{{ t('common.cancel') }}</el-button>
+          <el-button type="primary" :loading="productImgCapturing" @click="takeProductImgDraft">{{ t('inventory.takePhoto') }}</el-button>
         </template>
         <template v-else>
-          <el-button @click="retakeProductImg" :disabled="nbCameraUploading">重新拍摄</el-button>
-          <el-button type="primary" :loading="productImgCapturing" @click="applyProductImgConfirm">确认拍照</el-button>
+          <el-button @click="retakeProductImg" :disabled="nbCameraUploading">{{ t('inventory.retakePhoto') }}</el-button>
+          <el-button type="primary" :loading="productImgCapturing" @click="applyProductImgConfirm">{{ t('inventory.confirmPhoto') }}</el-button>
         </template>
       </template>
     </el-dialog>
@@ -871,32 +871,32 @@
 
     <el-dialog
       v-model="combinedProductDialogVisible"
-      title="组合商品"
+      :title="t('inventory.combinedProduct')"
       :width="isMobile ? '94vw' : '720px'"
       class="product-dialog combined-product-dialog"
       destroy-on-close
     >
       <el-form :model="combinedProductForm" label-width="112px" class="combined-product-form">
-        <el-form-item label="商品名称" required>
-          <el-input v-model="combinedProductForm.name" placeholder="请输入组合商品名称" clearable />
+        <el-form-item :label="t('inventory.productNameCol')" required>
+          <el-input v-model="combinedProductForm.name" :placeholder="t('inventory.inputCombinedName')" clearable />
         </el-form-item>
         <el-row :gutter="12">
           <el-col :xs="24" :sm="12">
-            <el-form-item label="组合库存数" required>
+            <el-form-item :label="t('inventory.combinedQuantity')" required>
               <el-input
                 v-model="combinedProductForm.quantity"
                 inputmode="numeric"
-                placeholder="要生成几套组合商品"
+                :placeholder="t('inventory.howManySets')"
               />
             </el-form-item>
           </el-col>
           <el-col :xs="24" :sm="12">
-            <el-form-item label="单价">
-              <el-input v-model="combinedProductForm.price" inputmode="numeric" placeholder="组合商品单价" />
+            <el-form-item :label="t('inventory.unitPrice')">
+              <el-input v-model="combinedProductForm.price" inputmode="numeric" :placeholder="t('inventory.combinedUnitPrice')" />
             </el-form-item>
           </el-col>
         </el-row>
-        <el-form-item label="组成商品" required>
+        <el-form-item :label="t('inventory.combinedComponents')" required>
           <div class="combined-product-items">
             <div v-for="item in combinedProductRows" :key="item.id" class="combined-product-item">
               <div class="combined-product-item__thumb">
@@ -916,15 +916,15 @@
                   </template>
                 </el-image>
                 <div v-else class="combined-product-item__thumb-placeholder">
-                  <span>无正面图</span>
+                  <span>{{ t('inventory.noFrontImage') }}</span>
                 </div>
               </div>
               <div class="combined-product-item__main">
                 <div class="combined-product-item__name">
-                  管理 {{ item.id }} · {{ item.name || '-' }}
+                  {{ t('inventory.mgmtPrefix') }} {{ item.id }} · {{ item.name || '-' }}
                 </div>
                 <div class="combined-product-item__meta">
-                  当前库存 {{ Number(item.quantity || 0) }}，每套使用
+                  {{ t('inventory.currentStockUsePerSet', { qty: Number(item.quantity || 0) }) }}
                 </div>
               </div>
               <el-input
@@ -936,26 +936,26 @@
             </div>
           </div>
         </el-form-item>
-        <el-form-item label="备注">
+        <el-form-item :label="t('common.remark')">
           <el-input
             v-model="combinedProductForm.description"
             type="textarea"
             :rows="3"
-            placeholder="可选；留空则商品说明与出品正文均不自动填写"
+            :placeholder="t('inventory.combinedRemarkPlaceholder')"
           />
         </el-form-item>
       </el-form>
       <template #footer>
-        <el-button @click="combinedProductDialogVisible = false">取消</el-button>
+        <el-button @click="combinedProductDialogVisible = false">{{ t('common.cancel') }}</el-button>
         <el-button type="primary" :loading="combinedProductSubmitting" @click="submitCombinedProduct">
-          创建组合商品
+          {{ t('inventory.createCombinedProduct') }}
         </el-button>
       </template>
     </el-dialog>
 
     <el-dialog
       v-model="scanVisible"
-      title="摄像头扫描条形码"
+      :title="t('inventory.cameraScanBarcode')"
       :width="isMobile ? '94vw' : '640px'"
       class="scan-dialog"
       @closed="stopScan"
@@ -963,12 +963,12 @@
       <div class="scan-box">
         <video ref="videoRef" class="scan-video" autoplay playsinline muted />
         <div class="scan-tip">
-          <span v-if="scanning" class="scanning-hint">识别中…</span>
-          <span v-else>请将条形码置于画面中央，识别后会自动填充</span>
+          <span v-if="scanning" class="scanning-hint">{{ t('inventory.recognizing') }}</span>
+          <span v-else>{{ t('inventory.barcodeCenterTip') }}</span>
         </div>
       </div>
       <template #footer>
-        <el-button @click="scanVisible = false">关闭</el-button>
+        <el-button @click="scanVisible = false">{{ t('common.close') }}</el-button>
       </template>
     </el-dialog>
 
@@ -985,7 +985,7 @@
     <!-- ===== 连续扫码对话框 ===== -->
     <el-dialog
       v-model="contScanVisible"
-      title="条码入库"
+      :title="t('inventory.barcodeInbound')"
       :width="isMobile ? '94vw' : '580px'"
       class="scan-dialog"
       @closed="stopContScan"
@@ -993,11 +993,11 @@
       <!-- 扫码中：显示摄像头（多摄像头时可选设备，选择会记住到本机） -->
       <div v-show="contState === 'scanning'" class="scan-box">
         <div v-if="inventoryCameraDevices.length > 0" class="camera-device-row">
-          <span class="camera-device-label">摄像头</span>
+          <span class="camera-device-label">{{ t('inventory.camera') }}</span>
           <el-select
             v-model="inventoryCameraSelectId"
             filterable
-            placeholder="选择摄像头"
+            :placeholder="t('inventory.selectCamera')"
             class="camera-device-select"
             @change="onContCameraDeviceChanged"
           >
@@ -1011,21 +1011,20 @@
         </div>
         <video ref="contVideoRef" class="scan-video" autoplay playsinline muted />
         <div class="scan-tip">
-          <span v-if="contScanning" class="scanning-hint">识别中…</span>
-          <span v-else>将条形码对准摄像头，自动识别</span>
+          <span v-if="contScanning" class="scanning-hint">{{ t('inventory.recognizing') }}</span>
+          <span v-else>{{ t('inventory.alignBarcodeToCamera') }}</span>
         </div>
       </div>
 
       <!-- iOS / HTTP 降级：拍照按钮 -->
       <div v-if="contState === 'ios-fallback'" class="ios-fallback-box">
         <el-icon size="50" color="#4a5a72"><Camera /></el-icon>
-        <p style="color:#8e9bb3;margin:12px 0">当前环境无法在网页内直接预览摄像头连续扫码。</p>
+        <p style="color:#8e9bb3;margin:12px 0">{{ t('inventory.cannotPreviewCameraInPage') }}</p>
         <p v-if="contScanNeedsHttpsHint" class="cont-https-hint">
-          当前为 <strong>HTTP</strong> 且非 localhost：浏览器不允许网页使用摄像头连续预览，只能选图/拍照。
-          若要用摄像头：请用 <strong>https://</strong> 打开本站（开发环境为自签名证书，在浏览器中选「高级 → 继续访问」），或使用 <strong>http://localhost:9600</strong>。
+          {{ t('inventory.httpNotLocalhostHint') }}
         </p>
         <p style="color:#8e9bb3;margin:12px 0">
-          {{ canPickImageWithCamera ? '也可点击下方拍照，或从相册选择条形码图片进行识别。' : '也可点击下方上传条形码图片进行识别。' }}
+          {{ canPickImageWithCamera ? t('inventory.alsoTakeOrPickPhoto') : t('inventory.alsoUploadBarcodeImg') }}
         </p>
         <el-button type="primary" @click="triggerContCapture">{{ formImageUploadTip }}</el-button>
       </div>
@@ -1043,28 +1042,28 @@
               :key="`cont-img-${ci}`"
               class="result-img-wrap"
             >
-              <span class="img-side-label">{{ ci === 0 ? '主图' : `图${ci + 1}` }}</span>
+              <span class="img-side-label">{{ ci === 0 ? t('inventory.primaryImage') : t('inventory.imageShortN', { n: ci + 1 }) }}</span>
               <img :src="u" class="result-img" />
             </div>
           </template>
           <div v-else class="no-image-placeholder">
             <el-icon size="40" color="#4a5a72"><Picture /></el-icon>
-            <p>暂无图片</p>
+            <p>{{ t('inventory.noImageYet') }}</p>
           </div>
         </div>
         <div class="product-meta">
-          <span class="product-meta-name">{{ contInventory.name || '(未命名)' }}</span>
-          <el-tag type="info" size="small">当前库存 {{ contInventory.quantity ?? 0 }} 件</el-tag>
-          <el-tag size="small" effect="plain">仓库 {{ contInventory.warehouse_name || '未设置' }}</el-tag>
+          <span class="product-meta-name">{{ contInventory.name || t('inventory.unnamed') }}</span>
+          <el-tag type="info" size="small">{{ t('inventory.currentStockPieces', { qty: contInventory.quantity ?? 0 }) }}</el-tag>
+          <el-tag size="small" effect="plain">{{ t('inventory.warehouseLabel', { name: contInventory.warehouse_name || t('inventory.notSet') }) }}</el-tag>
         </div>
         <div class="cont-quantity-row">
-          <span class="cont-quantity-label">本次数量</span>
+          <span class="cont-quantity-label">{{ t('inventory.thisTimeQuantity') }}</span>
           <el-input-number v-model="contQuantity" :min="1" :max="9999" :step="1" controls-position="right" />
         </div>
         <div class="cont-actions">
-          <el-button @click="resumeContScan">继续扫码</el-button>
+          <el-button @click="resumeContScan">{{ t('inventory.continueScan') }}</el-button>
           <el-button type="primary" size="large" :loading="contConfirming" @click="confirmContAction">
-            确认入库 +{{ contQuantity }}
+            {{ t('inventory.confirmInbound') }} +{{ contQuantity }}
           </el-button>
         </div>
       </div>
@@ -1077,16 +1076,16 @@
         </div>
         <div class="notfound-box">
           <el-icon size="44" color="#e6a23c"><Warning /></el-icon>
-          <p>该条形码尚未登记商品</p>
+          <p>{{ t('inventory.barcodeNotRegistered') }}</p>
         </div>
         <div class="cont-actions">
-          <el-button @click="resumeContScan">继续扫码</el-button>
-          <el-button type="primary" @click="openAddFromScan">新增商品</el-button>
+          <el-button @click="resumeContScan">{{ t('inventory.continueScan') }}</el-button>
+          <el-button type="primary" @click="openAddFromScan">{{ t('inventory.addNewItem') }}</el-button>
         </div>
       </div>
 
       <template #footer>
-        <el-button @click="contScanVisible = false">关闭</el-button>
+        <el-button @click="contScanVisible = false">{{ t('common.close') }}</el-button>
       </template>
     </el-dialog>
 
@@ -1110,7 +1109,7 @@
     <!-- ===== OCR 框选弹窗 ===== -->
     <el-dialog
       v-model="ocrVisible"
-      title="框选文字区域 → OCR识别名称"
+      :title="t('inventory.ocrDialogTitle')"
       :width="isMobile ? '96vw' : '700px'"
       class="ocr-dialog"
       destroy-on-close
@@ -1125,10 +1124,10 @@
           @click="switchOcrImage(oidx)"
           :disabled="!src"
         >
-          图 {{ oidx + 1 }}
+          {{ t('inventory.imageShortN', { n: oidx + 1 }) }}
         </el-button>
       </div>
-      <p class="ocr-hint">在图片上拖动框选要识别的文字区域，松手后自动识别写入商品名称</p>
+      <p class="ocr-hint">{{ t('inventory.ocrHint') }}</p>
       <div class="ocr-canvas-wrap" ref="ocrWrapRef">
         <canvas
           ref="ocrCanvasRef"
@@ -1143,10 +1142,10 @@
         />
       </div>
       <div v-if="ocrLoading" class="ocr-loading">
-        <span class="scanning-hint">识别中，请稍候…</span>
+        <span class="scanning-hint">{{ t('inventory.recognizingWait') }}</span>
       </div>
       <template #footer>
-        <el-button @click="ocrVisible = false">取消</el-button>
+        <el-button @click="ocrVisible = false">{{ t('common.cancel') }}</el-button>
       </template>
     </el-dialog>
 
@@ -1161,7 +1160,7 @@
         <div class="listing-post-overlay__box">
           <el-icon class="is-loading listing-post-overlay__icon" :size="40"><Loading /></el-icon>
           <div class="listing-post-overlay__title">{{ listingPostOverlayTitle }}</div>
-          <div class="listing-post-overlay__step">{{ listingPostProgressLabel || '请稍候…' }}</div>
+          <div class="listing-post-overlay__step">{{ listingPostProgressLabel || t('inventory.pleaseWait') }}</div>
         </div>
       </div>
     </teleport>
@@ -1172,6 +1171,7 @@
 import { ref, computed, watch, onMounted, onBeforeUnmount, nextTick, reactive } from 'vue'
 import { ElMessage } from 'element-plus'
 import { Loading } from '@element-plus/icons-vue'
+import { useI18n } from 'vue-i18n'
 import {
   inventoryApi,
   categoryApi,
@@ -1189,6 +1189,8 @@ import SingleListingFormDialog from '@/components/SingleListingFormDialog.vue'
 import { encodeMgmtId } from '@/utils/mgmtIdCipher.js'
 import { warehouseShelfLeafLabel } from '@/utils/warehouseLabel.js'
 
+const { t } = useI18n()
+
 const list = ref([])
 const inventoryTableRef = ref(null)
 const loading = ref(false)
@@ -1197,27 +1199,27 @@ const inventorySortProp = ref('')
 const inventorySortOrder = ref('') // 'ascending' | 'descending' | ''
 
 const inventorySummary = ref({})
-const inventoryStatCards = [
-  { key: 'total_inventory', label: '库存条目', icon: 'Goods', color: '#409EFF' },
-  { key: 'total_quantity', label: '总库存量', icon: 'Box', color: '#E6A23C' },
-  { key: 'today_in', label: '今日入库', icon: 'Top', color: '#67C23A' },
-  { key: 'today_out', label: '今日出库', icon: 'Bottom', color: '#F56C6C' },
-]
-const onSaleStatusMap = {
-  on_sale: { label: '出售中', tag: 'success' },
-  stop: { label: '暂停出售', tag: 'warning' },
-  trading: { label: '交易中', tag: 'primary' },
-  wait_payment: { label: '待支付', tag: 'warning' },
-  wait_shipping: { label: '待发货', tag: 'warning' },
-  wait_review: { label: '待评价', tag: 'primary' },
-  sold_out: { label: '已售完', tag: 'info' },
-  done: { label: '已完成', tag: 'success' },
-  cancelled: { label: '已取消', tag: 'info' },
-  cancel_request: { label: '取消申请中', tag: 'danger' },
-  deleted: { label: '已删除', tag: 'danger' },
-  private: { label: '非公开', tag: 'info' },
-  pending: { label: '待处理', tag: 'info' },
-}
+const inventoryStatCards = computed(() => [
+  { key: 'total_inventory', label: t('inventory.statTotalInventory'), icon: 'Goods', color: '#409EFF' },
+  { key: 'total_quantity', label: t('inventory.statTotalQuantity'), icon: 'Box', color: '#E6A23C' },
+  { key: 'today_in', label: t('inventory.statTodayIn'), icon: 'Top', color: '#67C23A' },
+  { key: 'today_out', label: t('inventory.statTodayOut'), icon: 'Bottom', color: '#F56C6C' },
+])
+const onSaleStatusMap = computed(() => ({
+  on_sale: { label: t('inventory.osOnSale'), tag: 'success' },
+  stop: { label: t('inventory.osStop'), tag: 'warning' },
+  trading: { label: t('inventory.osTrading'), tag: 'primary' },
+  wait_payment: { label: t('inventory.osWaitPayment'), tag: 'warning' },
+  wait_shipping: { label: t('inventory.osWaitShipping'), tag: 'warning' },
+  wait_review: { label: t('inventory.osWaitReview'), tag: 'primary' },
+  sold_out: { label: t('inventory.osSoldOut'), tag: 'info' },
+  done: { label: t('inventory.osDone'), tag: 'success' },
+  cancelled: { label: t('inventory.osCancelled'), tag: 'info' },
+  cancel_request: { label: t('inventory.osCancelRequest'), tag: 'danger' },
+  deleted: { label: t('inventory.osDeleted'), tag: 'danger' },
+  private: { label: t('inventory.osPrivate'), tag: 'info' },
+  pending: { label: t('inventory.osPending'), tag: 'info' },
+}))
 const categories = ref([])
 const warehouses = ref([])
 const productTypes = ref([])
@@ -1300,9 +1302,9 @@ const productImgPreviewUrl = ref(null)
 const productImgCapturing = ref(false)
 const productImgCameraSelectId = ref('')
 const productImgCameraTitle = computed(() => {
-  const t = productImgCameraTargetIndex.value
-  if (t < 0) return `拍摄新图片（第 ${(form.value.images?.length || 0) + 1} 张）`
-  return `拍摄图 ${t + 1}${t === 0 ? '（主图）' : ''}`
+  const idx = productImgCameraTargetIndex.value
+  if (idx < 0) return t('inventory.takeNewImage', { n: (form.value.images?.length || 0) + 1 })
+  return t('inventory.takeImageN', { n: idx + 1, primary: idx === 0 ? t('inventory.primaryImageInParen') : '' })
 })
 let productImgStream = null
 const listingDialogVisible = ref(false)
@@ -1348,7 +1350,7 @@ const noBarcodeUploadAbortByIndex = {}
 const MAX_UPLOAD_IMAGE_BYTES = 25 * 1024 * 1024
 /** WebDriver 出品自动化：全屏等待与步骤文案（与 progress_job_id 轮询同步） */
 const listingPostOverlayVisible = ref(false)
-const listingPostOverlayTitle = ref('正在上架')
+const listingPostOverlayTitle = ref(t('inventory.listingInProgress'))
 const listingPostOverlayFailed = ref(false)
 const listingPostProgressLabel = ref('')
 let listingPostProgressTimer = null
@@ -1365,8 +1367,8 @@ const isIOS = ref(false)
 const canPickImageWithCamera = computed(
   () => isIOS.value || typeof navigator.mediaDevices?.getUserMedia === 'function'
 )
-const formImageUploadTip = computed(() => (canPickImageWithCamera.value ? '点击拍照' : '点击上传'))
-const barcodePickButtonLabel = computed(() => (canPickImageWithCamera.value ? '拍照' : '上传'))
+const formImageUploadTip = computed(() => (canPickImageWithCamera.value ? t('inventory.clickToTakePhoto') : t('inventory.clickToUpload')))
+const barcodePickButtonLabel = computed(() => (canPickImageWithCamera.value ? t('inventory.takePhoto') : t('common.upload')))
 
 const MAX_INVENTORY_IMAGES = 20
 
@@ -1635,14 +1637,14 @@ async function refreshInventoryCameraDeviceList(fallbackStream = null) {
   const inputs = list.filter((d) => d.kind === 'videoinput')
   let mapped = inputs.map((d, i) => ({
     deviceId: d.deviceId,
-    label: (d.label && String(d.label).trim()) ? d.label : `摄像头 ${i + 1}`,
+    label: (d.label && String(d.label).trim()) ? d.label : t('inventory.cameraN', { n: i + 1 }),
   }))
   if (!mapped.length && fallbackStream?.getVideoTracks) {
     const track = fallbackStream.getVideoTracks()[0]
     const id = track?.getSettings?.()?.deviceId
     if (id) {
       const lb = track.label && String(track.label).trim()
-      mapped = [{ deviceId: id, label: lb || '当前摄像头' }]
+      mapped = [{ deviceId: id, label: lb || t('inventory.currentCamera') }]
     }
   }
   inventoryCameraDevices.value = mapped
@@ -1673,7 +1675,7 @@ async function onContCameraDeviceChanged(deviceId) {
     const okDev = contStream.getVideoTracks()[0]?.getSettings?.()?.deviceId
     if (okDev) writeSavedInventoryCameraDeviceId(okDev)
   } catch {
-    ElMessage.error('无法切换到所选摄像头，将尝试默认摄像头')
+    ElMessage.error(t('inventory.cannotSwitchCamera'))
     try {
       contStream = await getInventoryCameraStream(null)
       videoEl.srcObject = contStream
@@ -1685,7 +1687,7 @@ async function onContCameraDeviceChanged(deviceId) {
       const fbDev = contStream.getVideoTracks()[0]?.getSettings?.()?.deviceId
       if (fbDev) writeSavedInventoryCameraDeviceId(fbDev)
     } catch {
-      ElMessage.error('无法打开摄像头')
+      ElMessage.error(t('inventory.cannotOpenCamera'))
       contScanVisible.value = false
     }
   }
@@ -1748,13 +1750,13 @@ const productEditDialogWidth = computed(() => {
   return `${PRODUCT_EDIT_DIALOG_FORM_WIDTH}px`
 })
 
-const rules = {
-  barcode: [{ required: true, message: '请填写或扫描条形码', trigger: 'blur' }],
+const rules = computed(() => ({
+  barcode: [{ required: true, message: t('inventory.barcodeRequiredMsg'), trigger: 'blur' }],
   image_front: [
     {
       validator: (_, val, cb) => {
         if (Number(form.value?.is_combined || 0) === 1) return cb()
-        return val ? cb() : cb(new Error('请至少上传一张商品图'))
+        return val ? cb() : cb(new Error(t('inventory.uploadAtLeastOneImage')))
       },
       trigger: 'change',
     },
@@ -1763,13 +1765,13 @@ const rules = {
     {
       validator: (_, val, cb) => {
         const n = Number(val)
-        if (Number.isNaN(n) || n < 0) cb(new Error('单价须为大于等于 0 的数字'))
+        if (Number.isNaN(n) || n < 0) cb(new Error(t('inventory.priceMustBeNonNegative')))
         else cb()
       },
       trigger: 'blur',
     },
   ],
-}
+}))
 
 const productTypeCascaderProps = {
   value: 'value',
@@ -1854,7 +1856,7 @@ async function initOcrCanvas() {
     img.onerror = reject
     img.src = src
   }).catch(() => {
-    ElMessage.error('图片加载失败，无法进行 OCR')
+    ElMessage.error(t('inventory.imageLoadFailedOcr'))
   })
 }
 
@@ -1953,18 +1955,18 @@ async function _ocrSendRegion() {
         // 从列表行直接调用：直接保存到后端并更新行数据
         await inventoryApi.update(ocrTargetRow.value.id, { name: res.text })
         ocrTargetRow.value.name = res.text
-        ElMessage.success(`识别成功并已保存：${res.text}`)
+        ElMessage.success(t('inventory.ocrSavedSuccess', { text: res.text }))
       } else {
         // 从编辑弹窗调用：写入表单
         form.value.name = res.text
-        ElMessage.success(`识别成功：${res.text}`)
+        ElMessage.success(t('inventory.ocrSuccess', { text: res.text }))
       }
       ocrVisible.value = false
     } else {
-      ElMessage.warning('未识别到文字，请重新框选更清晰的区域')
+      ElMessage.warning(t('inventory.ocrNoTextFound'))
     }
   } catch {
-    ElMessage.error('OCR 识别失败，请确认后端已安装 easyocr 并已重启服务')
+    ElMessage.error(t('inventory.ocrFailedHint'))
   } finally {
     ocrLoading.value = false
   }
@@ -2068,7 +2070,7 @@ async function saveInlineEdit(row, field) {
   try {
     newValue = normalizeInlineValue(field, editingValue.value)
   } catch (err) {
-    ElMessage.warning(err.message || '输入格式不正确')
+    ElMessage.warning(err.message || t('inventory.invalidInputFormat'))
     editingCell.value = ''
     editingValue.value = ''
     return
@@ -2082,7 +2084,7 @@ async function saveInlineEdit(row, field) {
   try {
     await inventoryApi.update(row.id, { [field]: newValue })
     row[field] = newValue
-    ElMessage.success('已更新')
+    ElMessage.success(t('inventory.updated'))
   } finally {
     if (editingCell.value === key) {
       editingCell.value = ''
@@ -2103,7 +2105,7 @@ async function saveCategoryInline(row, categoryId) {
     row.category_id = normalizedCategoryId
     const matched = categories.value.find((c) => c.id === normalizedCategoryId)
     row.category_name = matched?.name || null
-    ElMessage.success('游戏分类已更新')
+    ElMessage.success(t('inventory.categoryUpdated'))
   } finally {
     editingCategoryRowId.value = null
   }
@@ -2123,7 +2125,7 @@ async function saveProductTypeInline(row, productTypeId) {
     row.product_type_id = normalized
     const matched = productTypes.value.find((t) => t.id === normalized)
     row.product_type_name = matched?.name || ''
-    ElMessage.success('商品类型已更新')
+    ElMessage.success(t('inventory.productTypeUpdated'))
   } finally {
     editingProductTypeRowId.value = null
   }
@@ -2147,7 +2149,7 @@ async function saveOwnerInline(row, ownerUserId) {
     row.owner_user_id = normalized
     const matched = ownerUsers.value.find((u) => u.id === normalized)
     row.owner_user_name = matched ? (matched.display_name || matched.username) : ''
-    ElMessage.success('商品归属已更新')
+    ElMessage.success(t('inventory.ownerUpdated'))
   } finally {
     editingOwnerRowId.value = null
   }
@@ -2196,7 +2198,7 @@ const productTypeTreeMeta = computed(() => {
     if (!idRaw || !typeName) continue
     const id = Number(idRaw)
     if (!Number.isFinite(id)) continue
-    const l1 = String(m?.category_level1 ?? '').trim() || '未分类'
+    const l1 = String(m?.category_level1 ?? '').trim() || t('inventory.uncategorized')
     const l2 = String(m?.category_level2 ?? '').trim()
     const l3 = String(m?.category_level3 ?? '').trim()
 
@@ -2228,7 +2230,7 @@ const productTypeTreeMeta = computed(() => {
 
 const productTypeCascaderOptions = computed(() => productTypeTreeMeta.value.roots)
 
-const DEFAULT_WH_LABEL = '默认仓库'
+const DEFAULT_WH_LABEL = t('inventory.defaultWarehouse')
 /** 与后端 WarehouseModel.normalize_warehouse_key 一致 */
 function warehouseGroupKey(w) {
   const t = String(w?.warehouse ?? '').trim()
@@ -2244,7 +2246,7 @@ function shelfNamePartitionKey(w) {
 }
 
 function shelfNamePartitionLabelFromKey(pk) {
-  if (pk === EMPTY_SHELF_NAME_PART) return '（未设置货架名称）'
+  if (pk === EMPTY_SHELF_NAME_PART) return t('inventory.unsetShelfName')
   return pk
 }
 
@@ -2378,7 +2380,7 @@ function handleFilterProductTypeChange(path) {
 async function confirmCreateCategory() {
   const name = newCategoryName.value.trim()
   if (!name) {
-    ElMessage.warning('请输入分类名称')
+    ElMessage.warning(t('inventory.inputCategoryName'))
     return
   }
   const created = await categoryApi.create({ name })
@@ -2386,7 +2388,7 @@ async function confirmCreateCategory() {
   form.value.category_id = created?.id ?? form.value.category_id
   newCategoryName.value = ''
   categoryCreateMode.value = false
-  ElMessage.success('分类创建成功')
+  ElMessage.success(t('inventory.categoryCreated'))
 }
 
 /** 从指定 video 元素抓一帧，返回 Blob（JPEG） */
@@ -2818,35 +2820,35 @@ function getInventoryOutboundExpandRows(row) {
   return slot.outboundRows
 }
 
-const orderStatusMap = {
-  pending: { label: '待处理', tag: 'info' },
-  trading: { label: '交易中', tag: 'warning' },
-  wait_payment: { label: '待支付', tag: 'warning' },
-  wait_shipping: { label: '待发货', tag: 'warning' },
-  wait_review: { label: '待评价', tag: 'primary' },
-  done: { label: '已完成', tag: 'success' },
-  sold_out: { label: '已售完', tag: 'info' },
-  cancelled: { label: '已取消', tag: 'info' },
-  cancel_request: { label: '取消申请中', tag: 'danger' }
-}
+const orderStatusMap = computed(() => ({
+  pending: { label: t('inventory.osPending'), tag: 'info' },
+  trading: { label: t('inventory.osTrading'), tag: 'warning' },
+  wait_payment: { label: t('inventory.osWaitPayment'), tag: 'warning' },
+  wait_shipping: { label: t('inventory.osWaitShipping'), tag: 'warning' },
+  wait_review: { label: t('inventory.osWaitReview'), tag: 'primary' },
+  done: { label: t('inventory.osDone'), tag: 'success' },
+  sold_out: { label: t('inventory.osSoldOut'), tag: 'info' },
+  cancelled: { label: t('inventory.osCancelled'), tag: 'info' },
+  cancel_request: { label: t('inventory.osCancelRequest'), tag: 'danger' }
+}))
 
 function displayOrderStatus(status) {
   const key = String(status ?? '').trim()
   if (!key) return '-'
-  return orderStatusMap[key]?.label || key
+  return orderStatusMap.value[key]?.label || key
 }
 
 function orderStatusTagType(status) {
   const key = String(status ?? '').trim()
-  return orderStatusMap[key]?.tag || 'info'
+  return orderStatusMap.value[key]?.tag || 'info'
 }
 
 function outboundLineKindLabel(line) {
   const k = line?.line_kind
-  if (k === 'bundle_title') return '组合标题'
-  if (k === 'manual') return '手动添加'
-  if (k === 'barcode') return '条码'
-  return '管理ID'
+  if (k === 'bundle_title') return t('inventory.lineKindBundleTitle')
+  if (k === 'manual') return t('inventory.lineKindManual')
+  if (k === 'barcode') return t('inventory.lineKindBarcode')
+  return t('inventory.lineKindMgmtId')
 }
 
 function formatUnixTs(sec) {
@@ -2862,12 +2864,12 @@ function formatUnixTs(sec) {
 function displayOnSaleStatus(status) {
   const key = String(status ?? '').trim()
   if (!key) return '-'
-  return onSaleStatusMap[key]?.label || key
+  return onSaleStatusMap.value[key]?.label || key
 }
 
 function onSaleStatusTagType(status) {
   const key = String(status ?? '').trim()
-  return onSaleStatusMap[key]?.tag || 'info'
+  return onSaleStatusMap.value[key]?.tag || 'info'
 }
 
 async function loadInventoryOnSaleExpand(row, slot) {
@@ -3009,7 +3011,7 @@ async function loadCombinedEditDetailForRow(row) {
             images: [],
             image_front: null,
             current_quantity: null,
-            loadError: '无法加载该库存条目'
+            loadError: t('inventory.cannotLoadInventoryItem')
           }
         }
       })
@@ -3039,7 +3041,7 @@ async function openCombinedLinkImageDialog() {
     })
   }
   if (!combinedEditDetailRows.value.length) {
-    ElMessage.warning('暂无组成商品或无法加载关联图片')
+    ElMessage.warning(t('inventory.noComponentsOrCannotLoad'))
     return
   }
   combinedLinkImageDialogVisible.value = true
@@ -3055,17 +3057,17 @@ function pickComponentImageForCombinedForm(imgPath) {
     form.value.images = current
     syncFormLegacyImageFieldsFromImages()
     formRef.value?.validateField('image_front')
-    ElMessage.success('已从组合商品图片中移除')
+    ElMessage.success(t('inventory.removedFromCombinedImages'))
     return
   }
   if (current.length >= MAX_INVENTORY_IMAGES) {
-    ElMessage.warning(`组合商品最多 ${MAX_INVENTORY_IMAGES} 张图片`)
+    ElMessage.warning(t('inventory.combinedMaxImages', { n: MAX_INVENTORY_IMAGES }))
     return
   }
   form.value.images = [...current, key]
   syncFormLegacyImageFieldsFromImages()
   formRef.value?.validateField('image_front')
-  ElMessage.success('已加入左侧组合商品图，请点击保存')
+  ElMessage.success(t('inventory.addedToCombinedImagesSave'))
 }
 
 function openDialog(row = null) {
@@ -3257,7 +3259,7 @@ function toPositiveInt(value, fallback = 1) {
 function openCombinedProductDialog(rows) {
   if (!Array.isArray(rows) || !rows.length) return
   if (rows.some((r) => Number(r?.is_combined || 0) === 1)) {
-    ElMessage.warning('组合商品不能再次作为组合来源')
+    ElMessage.warning(t('inventory.combinedCannotBeSource'))
     return
   }
   const first = rows[0]
@@ -3267,7 +3269,7 @@ function openCombinedProductDialog(rows) {
   const sameWarehouse = rows.every((r) => r.warehouse_id === first.warehouse_id)
   combinedProductRows.value = rows.map((r) => ({ ...r, combine_quantity: 1 }))
   combinedProductForm.value = {
-    name: `${rows.map((r) => String(r.name || '').trim()).filter(Boolean).join(' + ') || '组合商品'} 组合`,
+    name: t('inventory.combinedDefaultName', { names: rows.map((r) => String(r.name || '').trim()).filter(Boolean).join(' + ') || t('inventory.combinedProduct') }),
     quantity: 1,
     price: rows.reduce((sum, r) => sum + Math.round(Number(r.price ?? 0)), 0),
     description: '',
@@ -3289,16 +3291,16 @@ function normalizeCombinedProductItemQty(item) {
 async function submitCombinedProduct() {
   const comboQty = toPositiveInt(combinedProductForm.value.quantity, 0)
   if (comboQty <= 0) {
-    ElMessage.warning('组合库存数必须大于 0')
+    ElMessage.warning(t('inventory.combinedQuantityMustBePositive'))
     return
   }
   const name = String(combinedProductForm.value.name || '').trim()
   if (!name) {
-    ElMessage.warning('请输入组合商品名称')
+    ElMessage.warning(t('inventory.inputCombinedName'))
     return
   }
   if (combinedProductRows.value.some((r) => Number(r?.is_combined || 0) === 1)) {
-    ElMessage.warning('组合商品不能再次作为组合来源')
+    ElMessage.warning(t('inventory.combinedCannotBeSource'))
     return
   }
   const components = combinedProductRows.value.map((r) => ({
@@ -3309,7 +3311,7 @@ async function submitCombinedProduct() {
     const row = combinedProductRows.value.find((r) => r.id === comp.inventory_id)
     const need = comp.quantity * comboQty
     if (need > Number(row?.quantity || 0)) {
-      ElMessage.warning(`管理番号 ${comp.inventory_id} 库存不足，需要 ${need}，当前 ${Number(row?.quantity || 0)}`)
+      ElMessage.warning(t('inventory.mgmtStockInsufficient', { id: comp.inventory_id, need, current: Number(row?.quantity || 0) }))
       return
     }
   }
@@ -3332,7 +3334,7 @@ async function submitCombinedProduct() {
   combinedProductSubmitting.value = true
   try {
     const res = await inventoryApi.combine(payload)
-    ElMessage.success(`组合商品已创建，管理番号：${res?.id ?? '-'}`)
+    ElMessage.success(t('inventory.combinedCreated', { id: res?.id ?? '-' }))
     combinedProductDialogVisible.value = false
     await load({ resetPage: false })
     loadInventoryStats()
@@ -3342,27 +3344,27 @@ async function submitCombinedProduct() {
 }
 
 /** 煤炉 WebDriver 自动化返回的 *_error 字段 → 中文项目名（用于「上架失败」提示） */
-const WEB_DRIVE_LISTING_ERROR_LABELS = [
-  ['switch_error', '页面开关'],
-  ['images_error', '图片上传'],
-  ['name_error', '商品名称'],
-  ['category_error', '商品类型'],
-  ['sell_wizard_error', '出品向导页'],
-  ['condition_error', '商品状态'],
-  ['description_error', '商品说明'],
-  ['shipping_payer_error', '快递费负担'],
-  ['shipping_method_error', '配送方法'],
-  ['shipping_from_error', '发货地址'],
-  ['shipping_days_error', '发货天数'],
-  ['sale_price_error', '销售方式与价格'],
-  ['submit_error', '出品提交'],
-  ['fatal_error', '上架流程']
-]
+const webDriveListingErrorLabels = computed(() => [
+  ['switch_error', t('inventory.errPageSwitch')],
+  ['images_error', t('inventory.errImagesUpload')],
+  ['name_error', t('inventory.errProductName')],
+  ['category_error', t('inventory.errProductType')],
+  ['sell_wizard_error', t('inventory.errSellWizard')],
+  ['condition_error', t('inventory.errCondition')],
+  ['description_error', t('inventory.errDescription')],
+  ['shipping_payer_error', t('inventory.errShippingPayer')],
+  ['shipping_method_error', t('inventory.errShippingMethod')],
+  ['shipping_from_error', t('inventory.errShippingFrom')],
+  ['shipping_days_error', t('inventory.errShippingDays')],
+  ['sale_price_error', t('inventory.errSalePrice')],
+  ['submit_error', t('inventory.errSubmit')],
+  ['fatal_error', t('inventory.errFatal')]
+])
 
 function collectWebDriveListingFailures(data) {
   if (!data || typeof data !== 'object') return []
   const out = []
-  for (const [key, label] of WEB_DRIVE_LISTING_ERROR_LABELS) {
+  for (const [key, label] of webDriveListingErrorLabels.value) {
     const detail = data[key]
     if (detail != null && String(detail).trim()) {
       out.push({ key, label, detail: String(detail).trim() })
@@ -3402,7 +3404,7 @@ async function onListingFormSaved(data) {
   // ── 2. 派发出品自动化（开启浏览器，填写 Mercari 出品页） ─────────────── //
   const accountId = data.mercari_account_id
   if (!accountId) {
-    ElMessage.success('出品标题、商品说明与单价已保存到库存（未选出品账号，跳过自动化）')
+    ElMessage.success(t('inventory.listingSavedNoAccount'))
     await load({ resetPage: false })
     loadInventoryStats()
     return
@@ -3453,9 +3455,9 @@ async function onListingFormSaved(data) {
     }
   }
 
-  listingPostOverlayTitle.value = '正在上架'
+  listingPostOverlayTitle.value = t('inventory.listingInProgress')
   listingPostOverlayFailed.value = false
-  listingPostProgressLabel.value = '正在连接服务器…'
+  listingPostProgressLabel.value = t('inventory.connectingToServer')
   listingPostOverlayVisible.value = true
   await pollListingPostProgress()
   listingPostProgressTimer = setInterval(pollListingPostProgress, 400)
@@ -3487,31 +3489,31 @@ async function onListingFormSaved(data) {
       if (failures.length) {
         listingPostHadStepErrors = true
         const detailMsg = formatWebDriveListingFailureMessage(failures)
-        listingPostOverlayTitle.value = '上架失败'
+        listingPostOverlayTitle.value = t('inventory.listingFailed')
         listingPostOverlayFailed.value = true
         listingPostProgressLabel.value = detailMsg
         console.error('[出品自动化] 上架失败', failures)
-        ElMessage.error(`上架失败：${detailMsg}`)
+        ElMessage.error(t('inventory.listingFailedWithDetail', { detail: detailMsg }))
       } else {
         const parts = []
-        if (d.images_uploaded) parts.push(`已上传 ${d.images_uploaded} 张图片`)
-        if (d.name_filled) parts.push('出品标题已填写')
-        if (d.description_filled) parts.push('商品说明已填写')
-        if (d.category_selected) parts.push('商品类型已选择')
-        if (d.sell_wizard_back_clicked) parts.push('已从煤炉出品向导返回表单')
-        if (d.condition_set) parts.push('商品状态已选择')
-        if (d.shipping_payer_set) parts.push('快递费负担已设置')
-        if (d.shipping_method_set) parts.push('配送方法已设置')
-        if (d.sale_type_set && d.price_filled) parts.push('销售方式与价格已填写')
-        if (d.shipping_days_set) parts.push('发货天数已设置')
-        if (d.shipping_from_set) parts.push('发货地址已设置')
+        if (d.images_uploaded) parts.push(t('inventory.uploadedNImages', { n: d.images_uploaded }))
+        if (d.name_filled) parts.push(t('inventory.listingTitleFilled'))
+        if (d.description_filled) parts.push(t('inventory.descriptionFilled'))
+        if (d.category_selected) parts.push(t('inventory.productTypeSelected'))
+        if (d.sell_wizard_back_clicked) parts.push(t('inventory.returnedFromWizard'))
+        if (d.condition_set) parts.push(t('inventory.conditionSelected'))
+        if (d.shipping_payer_set) parts.push(t('inventory.shippingPayerSet'))
+        if (d.shipping_method_set) parts.push(t('inventory.shippingMethodSet'))
+        if (d.sale_type_set && d.price_filled) parts.push(t('inventory.salePriceSet'))
+        if (d.shipping_days_set) parts.push(t('inventory.shippingDaysSet'))
+        if (d.shipping_from_set) parts.push(t('inventory.shippingFromSet'))
         if (d.submitted === true) {
-          ElMessage.success('出品成功！' + (d.submit_message ? `（${d.submit_message}）` : ''))
+          ElMessage.success(t('inventory.listingSuccess') + (d.submit_message ? `（${d.submit_message}）` : ''))
         } else if (d.submitted === false && d.submit_message) {
-          ElMessage.warning(`出品提示异常：${d.submit_message}`)
+          ElMessage.warning(t('inventory.listingSubmitWarning', { msg: d.submit_message }))
         } else {
           ElMessage.success(
-            parts.length ? `出品页填写完成：${parts.join('、')}` : '浏览器已打开出品页'
+            parts.length ? t('inventory.listingPageFilled', { parts: parts.join('、') }) : t('inventory.browserOpenedListing')
           )
         }
       }
@@ -3527,17 +3529,17 @@ async function onListingFormSaved(data) {
       await new Promise((r) => setTimeout(r, 1200))
     }
     listingPostOverlayVisible.value = false
-    listingPostOverlayTitle.value = '正在上架'
+    listingPostOverlayTitle.value = t('inventory.listingInProgress')
     listingPostOverlayFailed.value = false
     listingPostProgressLabel.value = ''
   }
 
   if (listingPostHadStepErrors) {
     ElMessage.info(
-      '出品标题、商品说明与单价已写入本地库存。上架已终止，浏览器保持打开，请根据上方红色提示在煤炉页面补全或重试。'
+      t('inventory.listingAbortedFollowRed')
     )
   } else {
-    ElMessage.success('出品标题、商品说明与单价已保存到库存')
+    ElMessage.success(t('inventory.listingFieldsSaved'))
   }
   await load({ resetPage: false })
   loadInventoryStats()
@@ -3561,7 +3563,7 @@ async function enterListingPickMode() {
 function openListingFormForRow(row) {
   if (!row || row.id == null) return
   if (Number(row?.quantity ?? 0) <= 0) {
-    ElMessage.warning('库存为 0 的商品无法出品')
+    ElMessage.warning(t('inventory.cannotListZeroStock'))
     return
   }
   listingSeedData.value = buildListingSeedFromInventoryRows([row])
@@ -3583,11 +3585,11 @@ function toggleListingPickRow(row) {
     return
   }
   if (Number(row?.is_combined || 0) === 1) {
-    ElMessage.warning('组合商品不能再次作为组合来源')
+    ElMessage.warning(t('inventory.combinedCannotBeSource'))
     return
   }
   if (Number(row?.quantity ?? 0) <= 0) {
-    ElMessage.warning('库存为 0 的商品不能选中')
+    ElMessage.warning(t('inventory.cannotSelectZeroStock'))
     return
   }
   next.add(row.id)
@@ -3626,7 +3628,7 @@ function closeAllInlineEditors() {
 
 async function confirmListingPick() {
   if (!listingPickIds.value.size) {
-    ElMessage.warning('请至少选择一条商品')
+    ElMessage.warning(t('inventory.pickAtLeastOne'))
     return
   }
   const idSet = listingPickIds.value
@@ -3634,7 +3636,7 @@ async function confirmListingPick() {
     (r) => idSet.has(r.id) && isListingPickSelectable(r)
   )
   if (!rows.length) {
-    ElMessage.warning('所选商品无法用于组合（库存为 0 或已为组合商品）')
+    ElMessage.warning(t('inventory.selectionInvalidForCombined'))
     return
   }
   await exitListingPickMode()
@@ -3685,7 +3687,7 @@ async function onProductImgCameraDeviceChanged(deviceId) {
     const okDev = productImgStream.getVideoTracks()[0]?.getSettings?.()?.deviceId
     if (okDev) writeSavedInventoryCameraDeviceId(okDev)
   } catch {
-    ElMessage.error('无法切换到所选摄像头，将尝试默认摄像头')
+    ElMessage.error(t('inventory.cannotSwitchCamera'))
     try {
       productImgStream = await getInventoryCameraStream(null)
       v.srcObject = productImgStream
@@ -3698,7 +3700,7 @@ async function onProductImgCameraDeviceChanged(deviceId) {
       const fbDev = productImgStream.getVideoTracks()[0]?.getSettings?.()?.deviceId
       if (fbDev) writeSavedInventoryCameraDeviceId(fbDev)
     } catch {
-      ElMessage.error('无法打开摄像头，将改为从本机选择图片')
+      ElMessage.error(t('inventory.cannotOpenCameraPickFile'))
       productImgCameraVisible.value = false
       stopProductImgCameraStream()
       triggerInventoryFileOnlyClick(productImgCameraTargetIndex.value)
@@ -3712,7 +3714,7 @@ async function onProductImgCameraDeviceChanged(deviceId) {
  */
 async function openProductImageSource(slotIndex) {
   if (slotIndex === -1 && form.value.images.length >= MAX_INVENTORY_IMAGES) {
-    ElMessage.warning(`最多上传 ${MAX_INVENTORY_IMAGES} 张图片`)
+    ElMessage.warning(t('inventory.maxImagesAllowed', { n: MAX_INVENTORY_IMAGES }))
     return
   }
   const canStream = typeof navigator.mediaDevices?.getUserMedia === 'function'
@@ -3737,7 +3739,7 @@ async function openProductImageSource(slotIndex) {
       const curDev = productImgStream.getVideoTracks()[0]?.getSettings?.()?.deviceId
       if (curDev) writeSavedInventoryCameraDeviceId(curDev)
     } catch {
-      ElMessage.error('无法打开摄像头，将改为从本机选择图片')
+      ElMessage.error(t('inventory.cannotOpenCameraPickFile'))
       productImgCameraVisible.value = false
       stopProductImgCameraStream()
       triggerInventoryFileOnlyClick(slotIndex)
@@ -3753,7 +3755,7 @@ async function takeProductImgDraft() {
   try {
     const blob = await captureFrame(productImgVideoRef)
     if (!blob) {
-      ElMessage.warning('请等待摄像头画面就绪后再拍')
+      ElMessage.warning(t('inventory.waitForCameraReady'))
       return
     }
     const dataUrl = await new Promise((resolve, reject) => {
@@ -3764,7 +3766,7 @@ async function takeProductImgDraft() {
     })
     productImgPreviewUrl.value = dataUrl
   } catch {
-    ElMessage.warning('读取照片失败，请重试')
+    ElMessage.warning(t('inventory.readPhotoFailed'))
   } finally {
     productImgCapturing.value = false
   }
@@ -3789,13 +3791,13 @@ async function applyProductImgConfirm() {
         const resFetch = await fetch(url)
         blob = await resFetch.blob()
       } catch {
-        ElMessage.warning('读取照片失败，请重试')
+        ElMessage.warning(t('inventory.readPhotoFailed'))
         return
       }
       const mime = blob.type && blob.type.startsWith('image/') ? blob.type : 'image/jpeg'
       const file = new File([blob], 'capture.jpg', { type: mime })
       if (file.size > MAX_UPLOAD_IMAGE_BYTES) {
-        ElMessage.warning('图片不能超过25MB')
+        ElMessage.warning(t('inventory.imageMax25MB'))
         return
       }
       const writeIdx = slot < 0 ? form.value.images.length : slot
@@ -3805,19 +3807,19 @@ async function applyProductImgConfirm() {
       })
       const path = res?.path || ''
       if (!path) {
-        ElMessage.error('上传失败：未返回路径')
+        ElMessage.error(t('inventory.uploadFailedNoPath'))
         return
       }
       if (slot < 0) {
         if (form.value.images.length >= MAX_INVENTORY_IMAGES) {
-          ElMessage.warning(`最多上传 ${MAX_INVENTORY_IMAGES} 张图片`)
+          ElMessage.warning(t('inventory.maxImagesAllowed', { n: MAX_INVENTORY_IMAGES }))
           return
         }
         form.value.images.push(path)
       } else {
         const copy = [...form.value.images]
         if (slot >= copy.length) {
-          ElMessage.error('无效的图片槽位')
+          ElMessage.error(t('inventory.invalidImageSlot'))
           return
         }
         copy[slot] = path
@@ -3829,14 +3831,14 @@ async function applyProductImgConfirm() {
     } else {
       if (slot < 0) {
         if (form.value.images.length >= MAX_INVENTORY_IMAGES) {
-          ElMessage.warning(`最多上传 ${MAX_INVENTORY_IMAGES} 张图片`)
+          ElMessage.warning(t('inventory.maxImagesAllowed', { n: MAX_INVENTORY_IMAGES }))
           return
         }
         form.value.images.push(url)
       } else {
         const copy = [...form.value.images]
         if (slot >= copy.length) {
-          ElMessage.error('无效的图片槽位')
+          ElMessage.error(t('inventory.invalidImageSlot'))
           return
         }
         copy[slot] = url
@@ -3860,17 +3862,17 @@ async function handleInventoryImageFileChange(e) {
   if (e.target) e.target.value = ''
   if (!file) return
   if (file.size > MAX_UPLOAD_IMAGE_BYTES) {
-    ElMessage.warning('图片不能超过25MB')
+    ElMessage.warning(t('inventory.imageMax25MB'))
     return
   }
   const targetIdx = inventoryImagePickTargetIndex.value
   if (targetIdx === -1 && form.value.images.length >= MAX_INVENTORY_IMAGES) {
-    ElMessage.warning(`最多上传 ${MAX_INVENTORY_IMAGES} 张图片`)
+    ElMessage.warning(t('inventory.maxImagesAllowed', { n: MAX_INVENTORY_IMAGES }))
     inventoryImagePickTargetIndex.value = -2
     return
   }
   if (targetIdx >= 0 && targetIdx >= form.value.images.length) {
-    ElMessage.warning('无效的图片槽位')
+    ElMessage.warning(t('inventory.invalidImageSlot'))
     inventoryImagePickTargetIndex.value = -2
     return
   }
@@ -3894,12 +3896,12 @@ async function handleInventoryImageFileChange(e) {
       )
       const path = res?.path || ''
       if (!path) {
-        ElMessage.error('上传失败：未返回路径')
+        ElMessage.error(t('inventory.uploadFailedNoPath'))
         return
       }
       if (targetIdx < 0) {
         if (form.value.images.length >= MAX_INVENTORY_IMAGES) {
-          ElMessage.warning(`最多上传 ${MAX_INVENTORY_IMAGES} 张图片`)
+          ElMessage.warning(t('inventory.maxImagesAllowed', { n: MAX_INVENTORY_IMAGES }))
           return
         }
         form.value.images.push(path)
@@ -3961,7 +3963,7 @@ async function submit() {
       (x) => x != null && String(x).trim()
     )
     if (imgs.length > MAX_INVENTORY_IMAGES) {
-      ElMessage.warning(`最多上传 ${MAX_INVENTORY_IMAGES} 张图片`)
+      ElMessage.warning(t('inventory.maxImagesAllowed', { n: MAX_INVENTORY_IMAGES }))
       submitting.value = false
       return
     }
@@ -3976,7 +3978,7 @@ async function submit() {
         writeNoBarcodeFormSelectionsCache(payload)
       }
     }
-    ElMessage.success('保存成功')
+    ElMessage.success(t('inventory.saveSuccess'))
     dialogVisible.value = false
     await load({ resetPage: false })
     loadInventoryStats()
@@ -3987,7 +3989,7 @@ async function submit() {
 
 async function remove(id) {
   await inventoryApi.remove(id)
-  ElMessage.success('删除成功')
+  ElMessage.success(t('inventory.deleteSuccess'))
   await load({ resetPage: false })
   loadInventoryStats()
 }
@@ -4000,7 +4002,7 @@ async function openScanDialog() {
   const canStream = typeof navigator.mediaDevices?.getUserMedia === 'function'
   if (!canStream) {
     if (!window.isSecureContext) {
-      ElMessage.warning('HTTP 非 localhost 无法使用摄像头，已改为选图。请用 https:// 打开（自签名证书点继续访问）或 http://localhost:9600。')
+      ElMessage.warning(t('inventory.httpNoCameraSwitchToPick'))
     }
     cameraInputRef.value.value = ''
     cameraInputRef.value.click()
@@ -4029,7 +4031,7 @@ async function openScanDialog() {
         const res = await scanApi.scanBarcode(blob)
         if (res?.found && res.barcode) {
           form.value.barcode = res.barcode
-          ElMessage.success(`扫码成功：${res.barcode}`)
+          ElMessage.success(t('inventory.scanSuccess', { code: res.barcode }))
           scanVisible.value = false
         }
       } catch {
@@ -4039,7 +4041,7 @@ async function openScanDialog() {
       }
     }, SCAN_INTERVAL_MS)
   } catch {
-    ElMessage.error('无法打开摄像头，请检查浏览器摄像头权限后重试。')
+    ElMessage.error(t('inventory.cannotOpenCameraCheckPermission'))
     scanVisible.value = false
   }
 }
@@ -4066,12 +4068,12 @@ async function handleCameraCapture(e) {
     const res = await scanApi.scanBarcode(file)
     if (res?.found && res.barcode) {
       form.value.barcode = res.barcode
-      ElMessage.success(`扫码成功：${res.barcode}`)
+      ElMessage.success(t('inventory.scanSuccess', { code: res.barcode }))
     } else {
-      ElMessage.warning('未能识别条形码，请确保照片清晰并对准条形码')
+      ElMessage.warning(t('inventory.scanBarcodeNotRecognized'))
     }
   } catch {
-    ElMessage.warning('识别请求失败，请检查网络连接后重试')
+    ElMessage.warning(t('inventory.scanRequestFailed'))
   }
 }
 
@@ -4120,7 +4122,7 @@ async function openContScan() {
     if (curDev) writeSavedInventoryCameraDeviceId(curDev)
     startContTimer()
   } catch {
-    ElMessage.error('无法打开摄像头，请检查权限后重试')
+    ElMessage.error(t('inventory.cannotOpenCameraCheckPermission'))
     contScanVisible.value = false
   }
 }
@@ -4158,7 +4160,7 @@ async function handleContBarcode(barcode) {
       contState.value = 'notfound'
     }
   } catch {
-    ElMessage.error('查询商品失败，请检查网络连接')
+    ElMessage.error(t('inventory.queryItemFailed'))
     contState.value = 'notfound'
   }
 }
@@ -4179,7 +4181,7 @@ function resumeContScan() {
 
 async function confirmContAction() {
   if (!contInventory.value?.warehouse_id) {
-    ElMessage.warning('该商品未设置所属货架，请先编辑商品后再操作')
+    ElMessage.warning(t('inventory.itemNoShelfSetEditFirst'))
     return
   }
   contConfirming.value = true
@@ -4190,7 +4192,7 @@ async function confirmContAction() {
       quantity,
       remark: '连续扫码入库'
     })
-    ElMessage.success(`入库成功，当前库存：${res.new_quantity} 件`)
+    ElMessage.success(t('inventory.inboundSuccessQty', { qty: res.new_quantity }))
     load()
     loadInventoryStats()
     contScanVisible.value = false
@@ -4242,10 +4244,10 @@ async function handleContCapture(e) {
       }
       await handleContBarcode(res.barcode)
     } else {
-      ElMessage.warning('未识别到条形码，请重拍')
+      ElMessage.warning(t('inventory.contBarcodeNotRecognizedRetake'))
     }
   } catch {
-    ElMessage.warning('识别失败，请重试')
+    ElMessage.warning(t('inventory.recognitionFailedRetry'))
   } finally {
     contScanning.value = false
   }

@@ -9,7 +9,7 @@
     :close-on-click-modal="false"
     class="bundle-purchase-dialog"
   >
-    <div v-loading="loading" element-loading-text="正在打开浏览器并捕获合并购买详情...">
+    <div v-loading="loading" :element-loading-text="t('dialogs.bundlePurchase.loadingText')">
       <template v-if="bundle">
         <el-alert
           v-if="isDecided"
@@ -20,27 +20,27 @@
           :closable="false"
         />
         <el-descriptions :column="2" border size="small" class="bundle-meta">
-          <el-descriptions-item label="买家">
+          <el-descriptions-item :label="t('dialogs.bundlePurchase.buyer')">
             <span>{{ bundle.buyer_username || '-' }}</span>
             <span v-if="bundle.buyer_id" class="muted"> ({{ bundle.buyer_id }})</span>
           </el-descriptions-item>
-          <el-descriptions-item label="状态">
+          <el-descriptions-item :label="t('common.status')">
             {{ bundleStateLabel(bundle.state) }}
           </el-descriptions-item>
-          <el-descriptions-item label="合计金额">
+          <el-descriptions-item :label="t('dialogs.bundlePurchase.totalAmount')">
             <span class="amount">¥{{ formatYen(bundle.suggested_price) }}</span>
             <span v-if="differsFromOriginal" class="muted">
-              （原始: ¥{{ formatYen(bundle.original_price) }}）
+              {{ t('dialogs.bundlePurchase.originalPrice', { price: formatYen(bundle.original_price) }) }}
             </span>
           </el-descriptions-item>
-          <el-descriptions-item label="过期时间">
+          <el-descriptions-item :label="t('dialogs.bundlePurchase.expireTime')">
             {{ displayTs(bundle.bundle_expire) }}
           </el-descriptions-item>
         </el-descriptions>
 
-        <div class="section-title">商品一览（{{ items.length }} 件）</div>
+        <div class="section-title">{{ t('dialogs.bundlePurchase.itemsOverview', { count: items.length }) }}</div>
         <el-table :data="items" border size="small" class="bundle-items">
-          <el-table-column label="图" width="80" align="center">
+          <el-table-column :label="t('dialogs.bundlePurchase.image')" width="80" align="center">
             <template #default="{ row }">
               <el-image
                 v-if="row.thumbnail"
@@ -54,7 +54,7 @@
               <span v-else class="muted">-</span>
             </template>
           </el-table-column>
-          <el-table-column label="商品" min-width="280">
+          <el-table-column :label="t('dialogs.bundlePurchase.itemColumn')" min-width="280">
             <template #default="{ row }">
               <div class="item-name">{{ row.displayName || '-' }}</div>
               <div class="item-id">
@@ -69,14 +69,14 @@
               </div>
             </template>
           </el-table-column>
-          <el-table-column label="价格" width="120" align="right">
+          <el-table-column :label="t('onSaleItems.itemPrice')" width="120" align="right">
             <template #default="{ row }">
               ¥{{ formatYen(row.price) }}
             </template>
           </el-table-column>
         </el-table>
 
-        <div class="section-title">出品表单</div>
+        <div class="section-title">{{ t('dialogs.bundlePurchase.listingForm') }}</div>
         <el-form
           ref="formRef"
           :model="form"
@@ -88,7 +88,7 @@
           <el-form-item label="配送料の負担" prop="shipping_payer" required>
             <el-select
               v-model="form.shipping_payer"
-              placeholder="请选择"
+              :placeholder="t('common.selectPlaceholder')"
               style="width: 100%"
             >
               <el-option
@@ -102,7 +102,7 @@
           <el-form-item label="配送の方法" prop="shipping_method" required>
             <el-select
               v-model="form.shipping_method"
-              placeholder="请选择"
+              :placeholder="t('common.selectPlaceholder')"
               style="width: 100%"
             >
               <el-option
@@ -120,7 +120,7 @@
               :props="shippingFromCascaderProps"
               :show-all-levels="false"
               filterable
-              placeholder="请选择发货地（必选）"
+              :placeholder="t('dialogs.bundlePurchase.shippingFromPlaceholder')"
               style="width: 100%"
               @change="handleShippingFromChange"
             />
@@ -128,7 +128,7 @@
           <el-form-item label="発送までの日数" prop="shipping_days" required>
             <el-select
               v-model="form.shipping_days"
-              placeholder="请选择"
+              :placeholder="t('common.selectPlaceholder')"
               style="width: 100%"
             >
               <el-option
@@ -142,13 +142,13 @@
         </el-form>
       </template>
       <template v-else-if="!loading">
-        <el-empty description="尚未捕获到合并购买请求数据" />
+        <el-empty :description="t('dialogs.bundlePurchase.emptyDescription')" />
       </template>
     </div>
 
     <template #footer>
       <div class="dialog-footer">
-        <el-button @click="onVisibleChange(false)" :disabled="busy">关闭</el-button>
+        <el-button @click="onVisibleChange(false)" :disabled="busy">{{ t('common.close') }}</el-button>
         <el-button
           v-if="bundle"
           type="danger"
@@ -156,7 +156,7 @@
           :disabled="accepting || isDecided"
           @click="onReject"
         >
-          取消
+          {{ t('common.cancel') }}
         </el-button>
         <el-button
           v-if="bundle"
@@ -175,11 +175,13 @@
 
 <script setup>
 import { computed, onBeforeUnmount, ref, watch } from 'vue'
+import { useI18n } from 'vue-i18n'
 import { ElMessage } from 'element-plus'
 import { notificationsApi } from '@/api'
 import { useSyncOverlay } from '@/composables/useSyncOverlay'
 import SyncOverlay from '@/components/SyncOverlay.vue'
 
+const { t } = useI18n()
 const bundleOverlay = useSyncOverlay()
 onBeforeUnmount(() => bundleOverlay.dispose())
 import {
@@ -223,10 +225,10 @@ const isDecided = computed(() => {
 })
 const decidedBannerText = computed(() => {
   const s = String(bundle.value?.state || '').trim().toUpperCase()
-  if (s === 'ACCEPTED') return '此请求已承諾，无需再次操作'
-  if (s === 'REJECTED') return '此请求已拒绝（依頼を断る），无法再次操作'
-  if (s === 'EXPIRED') return '此请求已过期，无法再操作'
-  return '此请求已处理'
+  if (s === 'ACCEPTED') return t('dialogs.bundlePurchase.bannerAccepted')
+  if (s === 'REJECTED') return t('dialogs.bundlePurchase.bannerRejected')
+  if (s === 'EXPIRED') return t('dialogs.bundlePurchase.bannerExpired')
+  return t('dialogs.bundlePurchase.bannerProcessed')
 })
 
 const form = ref({
@@ -237,23 +239,23 @@ const form = ref({
 })
 
 const rules = {
-  shipping_payer: [{ required: true, message: '请选择送料负担', trigger: 'change' }],
-  shipping_method: [{ required: true, message: '请选择配送方法', trigger: 'change' }],
-  shipping_from: [{ required: true, message: '请选择发货地', trigger: 'change' }],
-  shipping_days: [{ required: true, message: '请选择发货天数', trigger: 'change' }],
+  shipping_payer: [{ required: true, message: t('dialogs.bundlePurchase.rulePayer'), trigger: 'change' }],
+  shipping_method: [{ required: true, message: t('dialogs.bundlePurchase.ruleMethod'), trigger: 'change' }],
+  shipping_from: [{ required: true, message: t('dialogs.bundlePurchase.ruleFrom'), trigger: 'change' }],
+  shipping_days: [{ required: true, message: t('dialogs.bundlePurchase.ruleDays'), trigger: 'change' }],
 }
 
 // 顺序对应煤炉下拉框（第一个=包邮，第二个=到付）
 const shippingPayerOptions = [
-  { label: '送料込み（出品者负担）', value: 'seller' },
-  { label: '着払い（购买者负担）', value: 'buyer' },
+  { label: t('dialogs.bundlePurchase.payerSeller'), value: 'seller' },
+  { label: t('dialogs.bundlePurchase.payerBuyer'), value: 'buyer' },
 ]
 
 // 顺序与 /bundle_offer/{id} 下拉一致：未定 / らくらく / ゆうゆう / 梱包・発送たのメル便 /
 // ゆうメール / レターパック / 郵便（定型・定形外・書留など） / クロネコヤマト /
 // ゆうパック / クリックポスト / ゆうパケット
 const shippingMethodOptions = [
-  { label: '未定', value: 'undecided' },
+  { label: t('dialogs.bundlePurchase.methodUndecided'), value: 'undecided' },
   { label: 'らくらくメルカリ便', value: 'rakuraku' },
   { label: 'ゆうゆうメルカリ便', value: 'yuuyu' },
   { label: '梱包・発送たのメル便', value: 'takunomeru' },
@@ -267,9 +269,9 @@ const shippingMethodOptions = [
 ]
 
 const shippingDaysOptions = [
-  { label: '1~2天', value: '1_2_days' },
-  { label: '2~3天', value: '2_3_days' },
-  { label: '4~7天', value: '4_7_days' },
+  { label: t('dialogs.bundlePurchase.days1_2'), value: '1_2_days' },
+  { label: t('dialogs.bundlePurchase.days2_3'), value: '2_3_days' },
+  { label: t('dialogs.bundlePurchase.days4_7'), value: '4_7_days' },
 ]
 
 const shippingFromCascaderProps = {
@@ -315,8 +317,8 @@ function handleShippingFromChange(path) {
 }
 
 const dialogTitle = computed(() => {
-  if (props.bundleId) return `合并购买请求详情 · ${props.bundleId}`
-  return '合并购买请求详情'
+  if (props.bundleId) return `${t('dialogs.bundlePurchase.title')} · ${props.bundleId}`
+  return t('dialogs.bundlePurchase.title')
 })
 
 const differsFromOriginal = computed(() => {
@@ -328,10 +330,10 @@ const differsFromOriginal = computed(() => {
 
 function bundleStateLabel(state) {
   const map = {
-    NOTIFIED: '待处理',
-    ACCEPTED: '已承诺',
-    REJECTED: '已拒绝',
-    EXPIRED: '已过期',
+    NOTIFIED: t('dialogs.bundlePurchase.statePending'),
+    ACCEPTED: t('dialogs.bundlePurchase.stateAccepted'),
+    REJECTED: t('dialogs.bundlePurchase.stateRejected'),
+    EXPIRED: t('dialogs.bundlePurchase.stateExpired'),
   }
   return map[state] || state || '-'
 }
@@ -385,7 +387,7 @@ async function loadDetail() {
     return true
   } catch (e) {
     if (e?.response?.status === 404) return false
-    ElMessage.error(e?.message || '加载失败')
+    ElMessage.error(e?.message || t('dialogs.bundlePurchase.loadFailed'))
     return false
   }
 }
@@ -395,7 +397,7 @@ async function runSync() {
   loading.value = true
   try {
     await bundleOverlay.run({
-      title: '正在抓取合并购买请求详情',
+      title: t('dialogs.bundlePurchase.syncTitle'),
       consoleTag: '[合并购买同步]',
       pollFn: (jobId) => notificationsApi.getSyncProgress(jobId),
       actionFn: (jobId) =>
@@ -408,7 +410,7 @@ async function runSync() {
     })
     await loadDetail()
   } catch (e) {
-    ElMessage.error(e?.response?.data?.detail || e?.message || '同步失败')
+    ElMessage.error(e?.response?.data?.detail || e?.message || t('dialogs.bundlePurchase.syncFailed'))
   } finally {
     loading.value = false
   }
@@ -424,7 +426,7 @@ async function onAccept() {
   accepting.value = true
   try {
     const res = await bundleOverlay.run({
-      title: '正在承诺合并购买请求',
+      title: t('dialogs.bundlePurchase.acceptTitle'),
       consoleTag: '[合并购买承诺]',
       pollFn: (jobId) => notificationsApi.getSyncProgress(jobId),
       actionFn: (jobId) =>
@@ -440,10 +442,10 @@ async function onAccept() {
     })
     if (res?.skipped) {
       ElMessage.warning(
-        `页面已显示「${res.skipped_reason || '已承諾済み'}」，无需操作；本地状态已同步`,
+        t('dialogs.bundlePurchase.acceptSkipped', { reason: res.skipped_reason || '已承諾済み' }),
       )
     } else {
-      ElMessage.success('已点击「依頼を承諾する」')
+      ElMessage.success(t('dialogs.bundlePurchase.acceptClicked'))
     }
     emit('decided', {
       bundle_id: props.bundleId,
@@ -455,7 +457,7 @@ async function onAccept() {
     emit('update:modelValue', false)
     resetState()
   } catch (e) {
-    ElMessage.error(e?.response?.data?.detail || e?.message || '承诺失败')
+    ElMessage.error(e?.response?.data?.detail || e?.message || t('dialogs.bundlePurchase.acceptFailed'))
   } finally {
     accepting.value = false
   }
@@ -465,7 +467,7 @@ async function onReject() {
   rejecting.value = true
   try {
     const res = await bundleOverlay.run({
-      title: '正在拒绝合并购买请求',
+      title: t('dialogs.bundlePurchase.rejectTitle'),
       consoleTag: '[合并购买拒绝]',
       pollFn: (jobId) => notificationsApi.getSyncProgress(jobId),
       actionFn: (jobId) =>
@@ -477,10 +479,10 @@ async function onReject() {
     })
     if (res?.skipped) {
       ElMessage.warning(
-        `页面已显示「${res.skipped_reason || '已処理済み'}」，无需操作；本地状态已同步`,
+        t('dialogs.bundlePurchase.rejectSkipped', { reason: res.skipped_reason || '已処理済み' }),
       )
     } else {
-      ElMessage.success('已点击「依頼を断る」')
+      ElMessage.success(t('dialogs.bundlePurchase.rejectClicked'))
     }
     emit('decided', {
       bundle_id: props.bundleId,
@@ -492,7 +494,7 @@ async function onReject() {
     emit('update:modelValue', false)
     resetState()
   } catch (e) {
-    ElMessage.error(e?.response?.data?.detail || e?.message || '取消失败')
+    ElMessage.error(e?.response?.data?.detail || e?.message || t('dialogs.bundlePurchase.rejectFailed'))
   } finally {
     rejecting.value = false
   }

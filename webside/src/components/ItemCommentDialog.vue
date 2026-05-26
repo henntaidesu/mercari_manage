@@ -9,7 +9,7 @@
     :close-on-click-modal="false"
     class="item-comment-dialog"
   >
-    <div v-loading="loading" element-loading-text="正在打开浏览器并捕获商品评论...">
+    <div v-loading="loading" :element-loading-text="t('dialogs.itemComment.loadingCapture')">
       <template v-if="item">
         <div class="item-card">
           <el-image
@@ -41,10 +41,10 @@
         </div>
 
         <div class="section-title">
-          评论 ({{ comments.length }})
+          {{ t('dialogs.itemComment.commentsTitle', { count: comments.length }) }}
         </div>
         <div v-if="comments.length === 0" class="empty">
-          <el-empty description="暂无评论" :image-size="80" />
+          <el-empty :description="t('dialogs.itemComment.noComments')" :image-size="80" />
         </div>
         <div v-else class="comments">
           <div
@@ -65,7 +65,7 @@
           </div>
         </div>
 
-        <div class="section-title reply-title">回复</div>
+        <div class="section-title reply-title">{{ t('dialogs.itemComment.replyTitle') }}</div>
         <el-input
           v-model="replyText"
           type="textarea"
@@ -76,20 +76,20 @@
         />
       </template>
       <template v-else-if="!loading">
-        <el-empty description="尚未捕获到商品评论数据" />
+        <el-empty :description="t('dialogs.itemComment.noData')" />
       </template>
     </div>
 
     <template #footer>
       <div class="dialog-footer">
-        <el-button @click="onVisibleChange(false)" :disabled="busy">关闭</el-button>
+        <el-button @click="onVisibleChange(false)" :disabled="busy">{{ t('common.close') }}</el-button>
         <el-button
           v-if="item"
           :loading="syncing"
           :disabled="posting"
           @click="runSync"
         >
-          刷新评论
+          {{ t('dialogs.itemComment.refreshComments') }}
         </el-button>
         <el-button
           v-if="item"
@@ -98,7 +98,7 @@
           :disabled="!canSubmit"
           @click="onSubmit"
         >
-          コメントを送信する
+          {{ t('dialogs.itemComment.submitComment') }}
         </el-button>
       </div>
     </template>
@@ -109,10 +109,12 @@
 <script setup>
 import { computed, onBeforeUnmount, ref, watch } from 'vue'
 import { ElMessage } from 'element-plus'
+import { useI18n } from 'vue-i18n'
 import { notificationsApi } from '@/api'
 import { useSyncOverlay } from '@/composables/useSyncOverlay'
 import SyncOverlay from '@/components/SyncOverlay.vue'
 
+const { t } = useI18n()
 const commentOverlay = useSyncOverlay()
 
 const props = defineProps({
@@ -147,9 +149,10 @@ const itemUrl = computed(() =>
 )
 
 const dialogTitle = computed(() => {
-  if (props.itemName) return `留言详情 · ${props.itemName}`
-  if (item.value?.name) return `留言详情 · ${item.value.name}`
-  return `留言详情 · ${itemId.value || ''}`
+  const prefix = t('dialogs.itemComment.title')
+  if (props.itemName) return `${prefix} · ${props.itemName}`
+  if (item.value?.name) return `${prefix} · ${item.value.name}`
+  return `${prefix} · ${itemId.value || ''}`
 })
 
 const commentsAsc = computed(() => {
@@ -166,10 +169,10 @@ function isOwn(c) {
 
 function itemStatusLabel(s) {
   const m = {
-    on_sale: '在售',
-    trading: '交易中',
-    sold_out: '已售',
-    stop: '已下架',
+    on_sale: t('dialogs.itemComment.status.onSale'),
+    trading: t('dialogs.itemComment.status.trading'),
+    sold_out: t('dialogs.itemComment.status.soldOut'),
+    stop: t('dialogs.itemComment.status.stop'),
   }
   return m[s] || s || '-'
 }
@@ -211,7 +214,7 @@ async function runSync() {
   browserOpened.value = true
   try {
     const res = await commentOverlay.run({
-      title: '正在抓取评论',
+      title: t('dialogs.itemComment.fetchingComments'),
       consoleTag: '[评论同步]',
       pollFn: (jobId) => notificationsApi.getSyncProgress(jobId),
       actionFn: (jobId) =>
@@ -223,7 +226,7 @@ async function runSync() {
     })
     applyResponse(res)
   } catch (e) {
-    ElMessage.error(e?.response?.data?.detail || e?.message || '同步评论失败')
+    ElMessage.error(e?.response?.data?.detail || e?.message || t('dialogs.itemComment.syncFailed'))
   } finally {
     syncing.value = false
     loading.value = false
@@ -236,7 +239,7 @@ async function onSubmit() {
   posting.value = true
   try {
     const res = await commentOverlay.run({
-      title: '正在发送评论',
+      title: t('dialogs.itemComment.sendingComment'),
       consoleTag: '[发送评论]',
       pollFn: (jobId) => notificationsApi.getSyncProgress(jobId),
       actionFn: (jobId) =>
@@ -247,7 +250,7 @@ async function onSubmit() {
           progress_job_id: jobId,
         }),
     })
-    ElMessage.success('已发送评论')
+    ElMessage.success(t('dialogs.itemComment.sendSuccess'))
     emit('posted', { item_id: props.itemId, message: msg })
     replyText.value = ''
     // 后端在同一浏览器会话内 reload 并重新抓取了 items/get,
@@ -256,7 +259,7 @@ async function onSubmit() {
       applyResponse(res)
     }
   } catch (e) {
-    ElMessage.error(e?.response?.data?.detail || e?.message || '发送评论失败')
+    ElMessage.error(e?.response?.data?.detail || e?.message || t('dialogs.itemComment.sendFailed'))
   } finally {
     posting.value = false
   }

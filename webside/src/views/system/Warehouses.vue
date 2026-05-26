@@ -4,25 +4,25 @@
       <template #header>
         <div class="list-card-header">
           <div class="list-card-header-start">
-            <span class="list-card-title">仓库与货架</span>
+            <span class="list-card-title">{{ t('system.warehouseAndShelves') }}</span>
             <div class="header-overview-grid">
               <div class="header-overview-item">
                 <div class="header-overview-value">{{ mergedWarehouse.shelf_count }}</div>
-                <div class="header-overview-label">货架位</div>
+                <div class="header-overview-label">{{ t('system.shelfSlot') }}</div>
               </div>
               <div class="header-overview-item">
                 <div class="header-overview-value">{{ mergedWarehouse.product_types }}</div>
-                <div class="header-overview-label">商品种类</div>
+                <div class="header-overview-label">{{ t('system.productTypes') }}</div>
               </div>
               <div class="header-overview-item">
                 <div class="header-overview-value">{{ mergedWarehouse.total_quantity }}</div>
-                <div class="header-overview-label">总库存量</div>
+                <div class="header-overview-label">{{ t('system.totalQuantity') }}</div>
               </div>
             </div>
           </div>
           <el-button type="primary" class="header-primary-btn" @click="openAddWarehouseNameDialog">
             <el-icon><Plus /></el-icon>
-            添加仓库
+            {{ t('system.addWarehouse') }}
           </el-button>
         </div>
       </template>
@@ -41,29 +41,29 @@
                 <div class="collapse-stat-grid collapse-stat-grid--primary">
                   <div class="collapse-stat-item">
                     <div class="collapse-stat-value">{{ grp.shelfNameGroups.length }}</div>
-                    <div class="collapse-stat-label">货架分区</div>
+                    <div class="collapse-stat-label">{{ t('system.shelfPartition') }}</div>
                   </div>
                   <div class="collapse-stat-item">
                     <div class="collapse-stat-value">{{ grp.shelfCount }}</div>
-                    <div class="collapse-stat-label">货架号</div>
+                    <div class="collapse-stat-label">{{ t('system.shelfNumber') }}</div>
                   </div>
                   <div class="collapse-stat-item">
                     <div class="collapse-stat-value">{{ grp.productTypes }}</div>
-                    <div class="collapse-stat-label">商品种类</div>
+                    <div class="collapse-stat-label">{{ t('system.productTypes') }}</div>
                   </div>
                   <div class="collapse-stat-item">
                     <div class="collapse-stat-value">{{ grp.totalQuantity }}</div>
-                    <div class="collapse-stat-label">总库存</div>
+                    <div class="collapse-stat-label">{{ t('system.totalStock') }}</div>
                   </div>
                 </div>
               </div>
               <div class="collapse-title-end collapse-title-actions" @click.stop>
                 <el-button type="primary" size="small" @click.stop="openDialogShelfOnly(grp.warehouse, '')">
                   <el-icon><Plus /></el-icon>
-                  添加货架
+                  {{ t('system.addShelfSlot') }}
                 </el-button>
                 <el-button type="primary" size="small" plain @click.stop="openRenameWarehouseDialog(grp)">
-                  修改名称
+                  {{ t('system.renameAction') }}
                 </el-button>
               </div>
             </div>
@@ -86,15 +86,15 @@
                     <div class="collapse-stat-grid collapse-stat-grid--secondary">
                       <div class="collapse-stat-item collapse-stat-item--compact">
                         <div class="collapse-stat-value">{{ sub.shelfCount }}</div>
-                        <div class="collapse-stat-label">货架号</div>
+                        <div class="collapse-stat-label">{{ t('system.shelfNumber') }}</div>
                       </div>
                       <div class="collapse-stat-item collapse-stat-item--compact">
                         <div class="collapse-stat-value">{{ sub.productTypes }}</div>
-                        <div class="collapse-stat-label">商品种类</div>
+                        <div class="collapse-stat-label">{{ t('system.productTypes') }}</div>
                       </div>
                       <div class="collapse-stat-item collapse-stat-item--compact">
                         <div class="collapse-stat-value">{{ sub.totalQuantity }}</div>
-                        <div class="collapse-stat-label">总库存</div>
+                        <div class="collapse-stat-label">{{ t('system.totalStock') }}</div>
                       </div>
                     </div>
                   </div>
@@ -106,24 +106,24 @@
                       @click.stop="openDialogForShelfGroup(grp.warehouse, sub.rawShelfName)"
                     >
                       <el-icon><Plus /></el-icon>
-                      添加货架号
+                      {{ t('system.addShelfNumber') }}
                     </el-button>
                     <el-button type="primary" size="small" plain @click.stop="openRenameShelfNameDialog(grp, sub)">
-                      修改名称
+                      {{ t('system.renameAction') }}
                     </el-button>
                   </div>
                 </div>
               </template>
               <el-table :data="sub.shelves" border stripe size="small" class="shelf-subtable shelf-no-table">
-                <el-table-column label="货架主键" prop="id" width="88" align="center" />
-                <el-table-column label="货架号" prop="name" min-width="120" />
-                <el-table-column label="位置" prop="location" min-width="130" />
-                <el-table-column label="描述" prop="description" min-width="160" show-overflow-tooltip />
-                <el-table-column label="商品种类" prop="product_types" width="100" align="center" />
-                <el-table-column label="总库存量" prop="total_quantity" width="100" align="center" />
-                <el-table-column label="操作" width="100" fixed="right">
+                <el-table-column :label="t('system.shelfPrimaryKey')" prop="id" width="88" align="center" />
+                <el-table-column :label="t('system.shelfNumber')" prop="name" min-width="120" />
+                <el-table-column :label="t('system.locationField')" prop="location" min-width="130" />
+                <el-table-column :label="t('common.description')" prop="description" min-width="160" show-overflow-tooltip />
+                <el-table-column :label="t('system.productTypes')" prop="product_types" width="100" align="center" />
+                <el-table-column :label="t('system.totalQuantity')" prop="total_quantity" width="100" align="center" />
+                <el-table-column :label="t('common.actions')" width="100" fixed="right">
                   <template #default="{ row }">
-                    <el-button size="small" type="primary" link @click="openDialog(row)">编辑</el-button>
+                    <el-button size="small" type="primary" link @click="openDialog(row)">{{ t('common.edit') }}</el-button>
                   </template>
                 </el-table-column>
               </el-table>
@@ -131,47 +131,47 @@
           </el-collapse>
         </el-collapse-item>
       </el-collapse>
-      <el-empty v-else description="还没有货架数据，请先添加仓库">
+      <el-empty v-else :description="t('system.noShelfDataHint')">
         <el-button type="primary" @click="openAddWarehouseNameDialog">
           <el-icon><Plus /></el-icon>
-          添加仓库
+          {{ t('system.addWarehouse') }}
         </el-button>
       </el-empty>
     </el-card>
 
     <el-dialog v-model="dialogVisible" :title="shelfDialogTitle" width="460px" destroy-on-close>
       <el-form :model="form" :rules="rules" ref="formRef" label-width="92px">
-        <el-form-item v-if="form.id" label="货架主键">
+        <el-form-item v-if="form.id" :label="t('system.shelfPrimaryKey')">
           <el-input :model-value="String(form.id)" disabled />
         </el-form-item>
-        <el-form-item label="所属仓库" prop="warehouse">
+        <el-form-item :label="t('system.belongingWarehouse')" prop="warehouse">
           <el-input v-model="form.warehouse" clearable />
         </el-form-item>
-        <el-form-item label="货架名称">
+        <el-form-item :label="t('system.shelfNameLabel')">
           <el-input v-model="form.shelf_name" clearable />
         </el-form-item>
-        <el-form-item v-if="form.id || createDialogKind !== 'shelfOnly'" label="货架号" prop="name">
+        <el-form-item v-if="form.id || createDialogKind !== 'shelfOnly'" :label="t('system.shelfNumber')" prop="name">
           <el-input v-model="form.name" clearable />
         </el-form-item>
-        <el-form-item label="位置">
+        <el-form-item :label="t('system.locationField')">
           <el-input v-model="form.location" clearable />
         </el-form-item>
-        <el-form-item label="描述">
+        <el-form-item :label="t('common.description')">
           <el-input v-model="form.description" type="textarea" :rows="3" clearable />
         </el-form-item>
-        <el-form-item v-if="form.id" label="库存迁移">
-          <el-button type="warning" plain @click="openMigrateInventoryDialog">一键迁移物品</el-button>
+        <el-form-item v-if="form.id" :label="t('system.inventoryMigration')">
+          <el-button type="warning" plain @click="openMigrateInventoryDialog">{{ t('system.migrateItemsOneClick') }}</el-button>
         </el-form-item>
       </el-form>
       <template #footer>
-        <el-button @click="dialogVisible = false">取消</el-button>
-        <el-button type="primary" @click="submit" :loading="submitting">保存</el-button>
+        <el-button @click="dialogVisible = false">{{ t('common.cancel') }}</el-button>
+        <el-button type="primary" @click="submit" :loading="submitting">{{ t('common.save') }}</el-button>
       </template>
     </el-dialog>
 
-    <el-dialog v-model="migrateInventoryDialogVisible" title="一键迁移物品" width="440px" destroy-on-close @closed="onMigrateInventoryDialogClosed">
+    <el-dialog v-model="migrateInventoryDialogVisible" :title="t('system.migrateItemsOneClick')" width="440px" destroy-on-close @closed="onMigrateInventoryDialogClosed">
       <el-form label-width="88px">
-        <el-form-item label="目标货架" required>
+        <el-form-item :label="t('system.targetShelf')" required>
           <el-cascader
             v-model="migrateTargetWarehousePath"
             :options="migrateTargetCascaderOptions"
@@ -186,24 +186,24 @@
         </el-form-item>
       </el-form>
       <template #footer>
-        <el-button @click="migrateInventoryDialogVisible = false">取消</el-button>
-        <el-button type="primary" :loading="migrateInventorySubmitting" @click="confirmMigrateInventory">确定迁移</el-button>
+        <el-button @click="migrateInventoryDialogVisible = false">{{ t('common.cancel') }}</el-button>
+        <el-button type="primary" :loading="migrateInventorySubmitting" @click="confirmMigrateInventory">{{ t('system.confirmMigrate') }}</el-button>
       </template>
     </el-dialog>
 
     <el-dialog
       v-model="renameWarehouseDialogVisible"
-      title="修改仓库名称"
+      :title="t('system.renameWarehouseTitle')"
       width="640px"
       destroy-on-close
       class="rename-warehouse-dialog"
       @closed="onRenameWarehouseDialogClosed"
     >
       <el-form label-width="96px">
-        <el-form-item label="当前名称">
+        <el-form-item :label="t('system.currentName')">
           <el-input :model-value="renameWarehouseOld" disabled />
         </el-form-item>
-        <el-form-item label="新名称" required>
+        <el-form-item :label="t('system.newName')" required>
           <el-input
             v-model="renameWarehouseNew"
             clearable
@@ -212,24 +212,24 @@
         </el-form-item>
       </el-form>
 
-      <el-divider content-position="left">货架位与删除</el-divider>
+      <el-divider content-position="left">{{ t('system.shelfSlotsAndDelete') }}</el-divider>
       <el-table :data="renameDialogShelves" border stripe size="small" max-height="280" class="rename-shelf-table">
-        <el-table-column label="货架主键" prop="id" width="88" align="center" />
-        <el-table-column label="货架号" prop="name" min-width="100" />
-        <el-table-column label="货架名称" min-width="100" show-overflow-tooltip>
+        <el-table-column :label="t('system.shelfPrimaryKey')" prop="id" width="88" align="center" />
+        <el-table-column :label="t('system.shelfNumber')" prop="name" min-width="100" />
+        <el-table-column :label="t('system.shelfNameLabel')" min-width="100" show-overflow-tooltip>
           <template #default="{ row }">{{ row.shelf_name || '—' }}</template>
         </el-table-column>
-        <el-table-column label="位置" prop="location" min-width="100" show-overflow-tooltip />
-        <el-table-column label="总库存" prop="total_quantity" width="80" align="center" />
-        <el-table-column label="操作" width="88" align="center" fixed="right">
+        <el-table-column :label="t('system.locationField')" prop="location" min-width="100" show-overflow-tooltip />
+        <el-table-column :label="t('system.totalStock')" prop="total_quantity" width="80" align="center" />
+        <el-table-column :label="t('common.actions')" width="88" align="center" fixed="right">
           <template #default="{ row }">
             <el-popconfirm
-              title="仅当该货架无库存且无出入库记录时可删除，确定删除？"
+              :title="t('system.shelfDeleteConfirm')"
               width="260"
               @confirm="removeShelfFromRenameDialog(row.id)"
             >
               <template #reference>
-                <el-button type="danger" link size="small" @click.stop>删除</el-button>
+                <el-button type="danger" link size="small" @click.stop>{{ t('common.delete') }}</el-button>
               </template>
             </el-popconfirm>
           </template>
@@ -241,17 +241,17 @@
           <el-popconfirm
             :title="warehouseDeleteConfirmTextForDialog()"
             width="320"
-            confirm-button-text="确定删除"
-            cancel-button-text="取消"
+            :confirm-button-text="t('system.confirmDelete')"
+            :cancel-button-text="t('common.cancel')"
             @confirm="removeWarehouseGroupForDialog"
           >
             <template #reference>
-              <el-button type="danger" plain>删除整个仓库</el-button>
+              <el-button type="danger" plain>{{ t('system.deleteEntireWarehouse') }}</el-button>
             </template>
           </el-popconfirm>
           <div class="rename-dialog-footer-right">
-            <el-button @click="renameWarehouseDialogVisible = false">关闭</el-button>
-            <el-button type="primary" :loading="renameWarehouseSubmitting" @click="submitRenameWarehouse">保存名称</el-button>
+            <el-button @click="renameWarehouseDialogVisible = false">{{ t('common.close') }}</el-button>
+            <el-button type="primary" :loading="renameWarehouseSubmitting" @click="submitRenameWarehouse">{{ t('system.saveName') }}</el-button>
           </div>
         </div>
       </template>
@@ -259,19 +259,19 @@
 
     <el-dialog
       v-model="renameShelfNameDialogVisible"
-      title="修改货架名称"
+      :title="t('system.renameShelfTitle')"
       width="440px"
       destroy-on-close
       @closed="onRenameShelfNameDialogClosed"
     >
       <el-form label-width="100px">
-        <el-form-item label="所属仓库">
+        <el-form-item :label="t('system.belongingWarehouse')">
           <el-input :model-value="renameShelfWarehouse" disabled />
         </el-form-item>
-        <el-form-item label="当前名称">
+        <el-form-item :label="t('system.currentName')">
           <el-input :model-value="renameShelfOldDisplay" disabled />
         </el-form-item>
-        <el-form-item label="新名称">
+        <el-form-item :label="t('system.newName')">
           <el-input
             v-model="renameShelfNew"
             clearable
@@ -280,14 +280,14 @@
         </el-form-item>
       </el-form>
       <template #footer>
-        <el-button @click="renameShelfNameDialogVisible = false">取消</el-button>
-        <el-button type="primary" :loading="renameShelfSubmitting" @click="submitRenameShelfName">保存</el-button>
+        <el-button @click="renameShelfNameDialogVisible = false">{{ t('common.cancel') }}</el-button>
+        <el-button type="primary" :loading="renameShelfSubmitting" @click="submitRenameShelfName">{{ t('common.save') }}</el-button>
       </template>
     </el-dialog>
 
-    <el-dialog v-model="addWarehouseNameDialogVisible" title="添加仓库" width="420px" destroy-on-close @closed="onAddWarehouseNameDialogClosed">
+    <el-dialog v-model="addWarehouseNameDialogVisible" :title="t('system.addWarehouse')" width="420px" destroy-on-close @closed="onAddWarehouseNameDialogClosed">
       <el-form label-width="88px" @submit.prevent="confirmAddWarehouseName">
-        <el-form-item label="仓库名称" required>
+        <el-form-item :label="t('system.warehouseName')" required>
           <el-input
             v-model="newWarehouseNameInput"
             clearable
@@ -296,8 +296,8 @@
         </el-form-item>
       </el-form>
       <template #footer>
-        <el-button @click="addWarehouseNameDialogVisible = false">取消</el-button>
-        <el-button type="primary" @click="confirmAddWarehouseName">下一步：添加货架</el-button>
+        <el-button @click="addWarehouseNameDialogVisible = false">{{ t('common.cancel') }}</el-button>
+        <el-button type="primary" @click="confirmAddWarehouseName">{{ t('system.nextAddShelf') }}</el-button>
       </template>
     </el-dialog>
   </div>
@@ -307,8 +307,11 @@
 import { computed, ref, onMounted } from 'vue'
 import { ElMessage } from 'element-plus'
 import { Plus } from '@element-plus/icons-vue'
+import { useI18n } from 'vue-i18n'
 import { warehouseApi } from '@/api/index.js'
 import { warehouseShelfLabel, warehouseShelfLeafLabel } from '@/utils/warehouseLabel.js'
+
+const { t } = useI18n()
 
 const DEFAULT_WAREHOUSE = '默认仓库'
 
@@ -329,7 +332,7 @@ function buildShelfNameGroups(shelves) {
       m.set(key, {
         key,
         rawShelfName: raw,
-        label: raw || '（未设置货架名称）',
+        label: raw,
         shelves: []
       })
     }
@@ -340,6 +343,7 @@ function buildShelfNameGroups(shelves) {
     const totalQuantity = g.shelves.reduce((s, i) => s + Number(i.total_quantity || 0), 0)
     return {
       ...g,
+      label: g.rawShelfName || t('system.unsetShelfName'),
       shelfCount: g.shelves.length,
       productTypes,
       totalQuantity
@@ -392,28 +396,28 @@ const migrateTargetWarehousePath = ref([])
 const migrateInventorySubmitting = ref(false)
 
 const shelfDialogTitle = computed(() => {
-  if (form.value?.id) return '编辑货架'
+  if (form.value?.id) return t('system.editShelf')
   const wh = normalizeWarehouseName(form.value?.warehouse)
   if (createDialogKind.value === 'shelfNo') {
     const sn = (form.value?.shelf_name || '').trim()
-    if (sn) return `添加货架号 · ${wh} / ${sn}`
-    return `添加货架号 · ${wh}`
+    if (sn) return `${t('system.addShelfNumber')} · ${wh} / ${sn}`
+    return `${t('system.addShelfNumber')} · ${wh}`
   }
   if (createDialogKind.value === 'shelfOnly') {
-    if (wh && wh !== DEFAULT_WAREHOUSE) return `添加货架 · ${wh}`
-    return '添加货架'
+    if (wh && wh !== DEFAULT_WAREHOUSE) return `${t('system.addShelfSlot')} · ${wh}`
+    return t('system.addShelfSlot')
   }
-  if (wh && wh !== DEFAULT_WAREHOUSE) return `新增货架 · ${wh}`
-  return '新增货架'
+  if (wh && wh !== DEFAULT_WAREHOUSE) return `${t('system.createShelf')} · ${wh}`
+  return t('system.createShelf')
 })
 
 const rules = {
-  warehouse: [{ required: true, message: '请填写所属仓库', trigger: 'blur' }],
+  warehouse: [{ required: true, message: t('system.pleaseFillWarehouse'), trigger: 'blur' }],
   name: [
     {
       validator: (_, val, cb) => {
         if (!form.value.id && createDialogKind.value === 'shelfOnly') return cb()
-        if (!String(val ?? '').trim()) return cb(new Error('请填写货架号'))
+        if (!String(val ?? '').trim()) return cb(new Error(t('system.pleaseFillShelfNumber')))
         cb()
       },
       trigger: 'blur',
@@ -495,19 +499,20 @@ const migrateTargetCascaderOptions = computed(() => {
     if (b === DEFAULT_WAREHOUSE) return 1
     return a.localeCompare(b, 'zh-CN')
   })
+  const UNSET = t('system.unsetShelfName')
   return whNames.map((wh) => {
     const rows = byWh.get(wh)
     const shelfMap = new Map()
     for (const r of rows) {
       const sn = r?.shelf_name && String(r.shelf_name).trim()
         ? String(r.shelf_name).trim()
-        : '（未设置货架名称）'
+        : UNSET
       if (!shelfMap.has(sn)) shelfMap.set(sn, [])
       shelfMap.get(sn).push(r)
     }
     const snKeys = [...shelfMap.keys()].sort((a, b) => {
-      if (a === '（未设置货架名称）') return 1
-      if (b === '（未设置货架名称）') return -1
+      if (a === UNSET) return 1
+      if (b === UNSET) return -1
       return a.localeCompare(b, 'zh-CN')
     })
     return {
@@ -563,11 +568,11 @@ async function confirmMigrateInventory() {
   const tid = migrateTargetWarehouseId.value
   const sid = migrateSourceWarehouseId.value
   if (tid == null || tid === '') {
-    ElMessage.warning('请选择目标货架')
+    ElMessage.warning(t('system.pleaseSelectTargetShelf'))
     return
   }
   if (Number(tid) === Number(sid)) {
-    ElMessage.warning('目标不能与当前货架相同')
+    ElMessage.warning(t('system.targetSameAsCurrent'))
     return
   }
   migrateInventorySubmitting.value = true
@@ -576,13 +581,13 @@ async function confirmMigrateInventory() {
     const n = res?.moved ?? 0
     try {
       await warehouseApi.remove(Number(sid))
-      ElMessage.success(n > 0 ? `已迁移 ${n} 条库存，并已删除原货架` : '已删除原货架')
+      ElMessage.success(n > 0 ? t('system.migratedAndDeleted', { n }) : t('system.deletedOriginalShelf'))
     } catch (e2) {
       const msg = apiErrorMessage(e2)
       ElMessage.warning(
         n > 0
-          ? `已迁移 ${n} 条库存，但删除原货架失败：${msg}`
-          : `库存迁移完成，但删除原货架失败：${msg}`
+          ? t('system.migratedButDeleteFailed', { n, msg })
+          : t('system.migrateDoneDeleteFailed', { msg })
       )
     }
     migrateInventoryDialogVisible.value = false
@@ -614,7 +619,7 @@ function onRenameShelfNameDialogClosed() {
 function openRenameShelfNameDialog(grp, sub) {
   renameShelfWarehouse.value = String(grp?.warehouse ?? '').trim() || DEFAULT_WAREHOUSE
   renameShelfOldRaw.value = sub?.rawShelfName != null ? String(sub.rawShelfName).trim() : ''
-  renameShelfOldDisplay.value = String(sub?.label ?? '').trim() || '（未设置货架名称）'
+  renameShelfOldDisplay.value = String(sub?.label ?? '').trim() || t('system.unsetShelfName')
   renameShelfNew.value = renameShelfOldRaw.value
   renameShelfNameDialogVisible.value = true
 }
@@ -623,7 +628,7 @@ async function submitRenameShelfName() {
   const oldRaw = String(renameShelfOldRaw.value ?? '').trim()
   const newT = String(renameShelfNew.value ?? '').trim()
   if (oldRaw === newT) {
-    ElMessage.warning('名称未变化')
+    ElMessage.warning(t('system.nameUnchanged'))
     return
   }
   renameShelfSubmitting.value = true
@@ -633,7 +638,7 @@ async function submitRenameShelfName() {
       old_shelf_name: oldRaw,
       new_shelf_name: newT,
     })
-    ElMessage.success('货架名称已更新')
+    ElMessage.success(t('system.shelfNameUpdated'))
     renameShelfNameDialogVisible.value = false
     await load()
   } catch (e) {
@@ -661,17 +666,17 @@ async function submitRenameWarehouse() {
   const oldW = (renameWarehouseOld.value || '').trim()
   const newW = (renameWarehouseNew.value || '').trim()
   if (!newW) {
-    ElMessage.warning('请输入新仓库名称')
+    ElMessage.warning(t('system.pleaseEnterNewWarehouseName'))
     return
   }
   if (normalizeWarehouseName(oldW) === normalizeWarehouseName(newW)) {
-    ElMessage.warning('名称未变化')
+    ElMessage.warning(t('system.nameUnchanged'))
     return
   }
   renameWarehouseSubmitting.value = true
   try {
     await warehouseApi.renameGroup({ old_warehouse: oldW, new_warehouse: newW })
-    ElMessage.success('仓库名称已更新')
+    ElMessage.success(t('system.warehouseNameUpdated'))
     const nextKey = normalizeWarehouseName(newW)
     renameWarehouseGroupKey.value = nextKey
     renameWarehouseOld.value = nextKey
@@ -692,7 +697,7 @@ function openAddWarehouseNameDialog() {
 function confirmAddWarehouseName() {
   const raw = (newWarehouseNameInput.value || '').trim()
   if (!raw) {
-    ElMessage.warning('请输入仓库名称')
+    ElMessage.warning(t('system.pleaseEnterWarehouseName'))
     return
   }
   const name = normalizeWarehouseName(raw)
@@ -703,8 +708,8 @@ function confirmAddWarehouseName() {
 function warehouseDeleteConfirmTextForDialog() {
   const n = renameDialogShelves.value.length
   const wh = renameWarehouseGroupKey.value || ''
-  const base = `将依次删除该仓库下全部 ${n} 个货架位；每个须无库存、无出入库及费用关联记录。确定删除「${wh}」？`
-  if (wh === DEFAULT_WAREHOUSE) return `【默认仓库】${base}（删除后若仍有业务数据，部分货架位可能无法删除，请以提示为准。）`
+  const base = t('system.warehouseDeleteConfirmBase', { n, wh })
+  if (wh === DEFAULT_WAREHOUSE) return t('system.warehouseDeleteConfirmDefault', { base })
   return base
 }
 
@@ -730,12 +735,12 @@ async function removeWarehouseGroup(grp, options = {}) {
     } catch {
       await load()
       if (removed > 0) {
-        ElMessage.warning(`已删除 ${removed} 个货架位后中止，请处理剩余项后重试`)
+        ElMessage.warning(t('system.removedThenAborted', { removed }))
       }
       return
     }
   }
-  ElMessage.success(`已删除仓库「${grp.warehouse}」共 ${removed} 个货架位`)
+  ElMessage.success(t('system.removedWarehouseSummary', { wh: grp.warehouse, removed }))
   await load()
   if (options.closeRenameDialog) renameWarehouseDialogVisible.value = false
 }
@@ -743,7 +748,7 @@ async function removeWarehouseGroup(grp, options = {}) {
 async function removeShelfFromRenameDialog(id) {
   try {
     await warehouseApi.remove(id)
-    ElMessage.success('删除成功')
+    ElMessage.success(t('system.deleteSuccess'))
     await load()
     if (!renameDialogShelves.value.length) renameWarehouseDialogVisible.value = false
   } catch (e) {
@@ -796,7 +801,7 @@ function apiErrorMessage(err) {
   const d = err?.response?.data?.detail
   if (typeof d === 'string') return d
   if (Array.isArray(d) && d[0]?.msg) return d.map((x) => x.msg).join('；')
-  return err?.message || '请求失败'
+  return err?.message || t('system.requestFailed')
 }
 
 async function submit() {
@@ -812,10 +817,10 @@ async function submit() {
     }
     if (form.value.id) {
       await warehouseApi.update(form.value.id, payload)
-      ElMessage.success('保存成功')
+      ElMessage.success(t('system.saveSuccess'))
     } else {
       const created = await warehouseApi.create(payload)
-      ElMessage.success(`保存成功，货架主键：${created?.id ?? '—'}`)
+      ElMessage.success(t('system.saveSuccessWithId', { id: created?.id ?? '—' }))
     }
     dialogVisible.value = false
     load()

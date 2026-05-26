@@ -3,31 +3,31 @@
     <el-card shadow="never" class="search-card">
       <el-row :gutter="0" align="middle" class="search-row">
         <el-col :xs="24" :md="16" class="search-left-group">
-          <el-select v-model="filters.type" placeholder="成本类型" clearable @change="onFilterChange" style="width: 100%">
+          <el-select v-model="filters.type" :placeholder="t('system.costRecordTypeFilter')" clearable @change="onFilterChange" style="width: 100%">
             <el-option v-for="item in typeOptions" :key="item.value" :label="item.label" :value="item.value" />
           </el-select>
-          <el-select v-model="filters.warehouse_id" placeholder="选择仓库" clearable @change="onFilterChange" style="width: 100%">
+          <el-select v-model="filters.warehouse_id" :placeholder="t('system.costRecordSelectWarehouse')" clearable @change="onFilterChange" style="width: 100%">
             <el-option v-for="w in warehouses" :key="w.id" :label="warehouseShelfLabel(w)" :value="w.id" />
           </el-select>
           <el-date-picker
             v-model="dateRange"
             type="daterange"
-            range-separator="至"
-            start-placeholder="开始日期"
-            end-placeholder="结束日期"
+            :range-separator="t('common.to')"
+            :start-placeholder="t('common.startDate')"
+            :end-placeholder="t('common.endDate')"
             value-format="YYYY-MM-DD"
             @change="onFilterChange"
           />
         </el-col>
         <el-col :xs="24" :md="8" class="search-actions">
-          <el-button type="primary" @click="openCreate">新增库存包材</el-button>
+          <el-button type="primary" @click="openCreate">{{ t('system.costRecordCreate') }}</el-button>
         </el-col>
       </el-row>
     </el-card>
 
     <el-card shadow="never" class="table-card">
       <el-table :data="list" v-loading="loading" stripe>
-        <el-table-column label="物品图" width="90" align="center">
+        <el-table-column :label="t('system.costRecordItemImage')" width="90" align="center">
           <template #default="{ row }">
             <el-image
               v-if="row.item_image"
@@ -42,47 +42,47 @@
             <span v-else>-</span>
           </template>
         </el-table-column>
-        <el-table-column label="类型" width="110" align="center">
+        <el-table-column :label="t('common.type')" width="110" align="center">
           <template #default="{ row }">
             <el-tag :type="typeMap[row.type]?.tag || 'info'" size="small" effect="light">
               {{ typeMap[row.type]?.label || row.type }}
             </el-tag>
           </template>
         </el-table-column>
-        <el-table-column label="物品名称" prop="item_name" min-width="140" />
-        <el-table-column label="金额" width="120" align="right">
+        <el-table-column :label="t('system.costRecordItemName')" prop="item_name" min-width="140" />
+        <el-table-column :label="t('common.amount')" width="120" align="right">
           <template #default="{ row }">
             <span class="amount">¥{{ Math.round(row.amount || 0) }}</span>
           </template>
         </el-table-column>
-        <el-table-column label="数量" width="100" align="center">
+        <el-table-column :label="t('common.quantity')" width="100" align="center">
           <template #default="{ row }">
             {{ row.quantity || 0 }}
           </template>
         </el-table-column>
-        <el-table-column label="总价" width="120" align="right">
+        <el-table-column :label="t('system.costRecordTotalAmount')" width="120" align="right">
           <template #default="{ row }">
             <span class="amount">¥{{ Math.round((row.amount || 0) * (row.quantity || 0)) }}</span>
           </template>
         </el-table-column>
-        <el-table-column label="仓库" prop="warehouse_name" width="140">
+        <el-table-column :label="t('inventory.warehouse')" prop="warehouse_name" width="140">
           <template #default="{ row }">
             {{ row.warehouse_name || '-' }}
           </template>
         </el-table-column>
-        <el-table-column label="备注" prop="remark" min-width="180" show-overflow-tooltip />
-        <el-table-column label="操作人" prop="operator" width="100" />
-        <el-table-column label="记录时间" width="175">
+        <el-table-column :label="t('common.remark')" prop="remark" min-width="180" show-overflow-tooltip />
+        <el-table-column :label="t('common.operator')" prop="operator" width="100" />
+        <el-table-column :label="t('system.costRecordRecordTime')" width="175">
           <template #default="{ row }">
             {{ formatTs(row.cost_date) }}
           </template>
         </el-table-column>
-        <el-table-column label="操作" width="150" fixed="right">
+        <el-table-column :label="t('common.actions')" width="150" fixed="right">
           <template #default="{ row }">
-            <el-button size="small" @click="openEdit(row)">编辑</el-button>
-            <el-popconfirm title="确认删除该记录？" @confirm="remove(row.id)">
+            <el-button size="small" @click="openEdit(row)">{{ t('common.edit') }}</el-button>
+            <el-popconfirm :title="t('system.costRecordDeleteConfirm')" @confirm="remove(row.id)">
               <template #reference>
-                <el-button size="small" type="danger">删除</el-button>
+                <el-button size="small" type="danger">{{ t('common.delete') }}</el-button>
               </template>
             </el-popconfirm>
           </template>
@@ -105,89 +105,92 @@
 
     <el-dialog
       v-model="dialogVisible"
-      :title="form.id ? '编辑库存包材' : '新增库存包材'"
+      :title="form.id ? t('system.costRecordEdit') : t('system.costRecordCreate')"
       width="520px"
       destroy-on-close
     >
       <el-form :model="form" :rules="rules" ref="formRef" label-width="78px">
-        <el-form-item label="记录时间" prop="cost_date">
+        <el-form-item :label="t('system.costRecordRecordTime')" prop="cost_date">
           <el-date-picker
             v-model="form.cost_date"
             type="datetime"
             value-format="x"
-            placeholder="请选择记录时间"
+            :placeholder="t('system.costRecordSelectRecordTime')"
             style="width: 100%"
           />
         </el-form-item>
-        <el-form-item label="类型" prop="type">
-          <el-select v-model="form.type" placeholder="请选择类型" style="width: 100%">
+        <el-form-item :label="t('common.type')" prop="type">
+          <el-select v-model="form.type" :placeholder="t('system.costRecordSelectType')" style="width: 100%">
             <el-option v-for="item in typeOptions" :key="item.value" :label="item.label" :value="item.value" />
           </el-select>
         </el-form-item>
-        <el-form-item label="物品名称" prop="item_name">
-          <el-input v-model="form.item_name" placeholder="请输入物品名称" maxlength="60" clearable />
+        <el-form-item :label="t('system.costRecordItemName')" prop="item_name">
+          <el-input v-model="form.item_name" :placeholder="t('system.costRecordInputItemName')" maxlength="60" clearable />
         </el-form-item>
-        <el-form-item label="物品图">
+        <el-form-item :label="t('system.costRecordItemImage')">
           <div class="image-row">
             <div class="image-upload-box" @click="fileInputRef?.click()">
               <img v-if="form.item_image" :src="form.item_image" class="image-preview" />
-              <span v-else class="image-placeholder">点击上传</span>
+              <span v-else class="image-placeholder">{{ t('system.costRecordClickUpload') }}</span>
             </div>
             <div class="image-actions">
-              <el-button size="small" @click="fileInputRef?.click()" :loading="uploadingImage">选择图片</el-button>
-              <el-button size="small" type="danger" text @click="clearImage" :disabled="!form.item_image">移除</el-button>
+              <el-button size="small" @click="fileInputRef?.click()" :loading="uploadingImage">{{ t('system.costRecordSelectImage') }}</el-button>
+              <el-button size="small" type="danger" text @click="clearImage" :disabled="!form.item_image">{{ t('system.costRecordRemove') }}</el-button>
             </div>
           </div>
           <input ref="fileInputRef" type="file" accept="image/*" style="display:none" @change="handleImageUpload" />
         </el-form-item>
         <el-row :gutter="12">
           <el-col :span="12">
-            <el-form-item label="单价" prop="amount">
+            <el-form-item :label="t('system.costRecordUnitPrice')" prop="amount">
               <el-input-number
                 v-model="form.amount"
                 :min="1"
                 :precision="0"
                 :controls="false"
-                placeholder="请输入单价"
+                :placeholder="t('system.costRecordInputUnitPrice')"
                 style="width: 100%"
               />
             </el-form-item>
           </el-col>
           <el-col :span="12">
-            <el-form-item label="数量" prop="quantity">
+            <el-form-item :label="t('common.quantity')" prop="quantity">
               <el-input-number
                 v-model="form.quantity"
                 :min="1"
                 :precision="0"
                 :controls="false"
-                placeholder="请输入数量"
+                :placeholder="t('system.costRecordInputQuantity')"
                 style="width: 100%"
               />
             </el-form-item>
           </el-col>
         </el-row>
-        <el-form-item label="仓库">
-          <el-select v-model="form.warehouse_id" clearable placeholder="可不选" style="width: 100%">
+        <el-form-item :label="t('inventory.warehouse')">
+          <el-select v-model="form.warehouse_id" clearable :placeholder="t('system.costRecordWarehouseOptional')" style="width: 100%">
             <el-option v-for="w in warehouses" :key="w.id" :label="warehouseShelfLabel(w)" :value="w.id" />
           </el-select>
         </el-form-item>
-        <el-form-item label="备注">
+        <el-form-item :label="t('common.remark')">
           <el-input v-model="form.remark" type="textarea" :rows="3" maxlength="200" show-word-limit />
         </el-form-item>
       </el-form>
       <template #footer>
-        <el-button @click="dialogVisible = false">取消</el-button>
-        <el-button type="primary" :loading="submitting" @click="submit">保存</el-button>
+        <el-button @click="dialogVisible = false">{{ t('common.cancel') }}</el-button>
+        <el-button type="primary" :loading="submitting" @click="submit">{{ t('common.save') }}</el-button>
       </template>
     </el-dialog>
   </div>
 </template>
 
 <script setup>
-import { ref, onMounted } from 'vue'
+import { ref, computed, onMounted } from 'vue'
 import { ElMessage } from 'element-plus'
+import { useI18n } from 'vue-i18n'
 import { costRecordApi, warehouseApi } from '@/api/index.js'
 import { warehouseShelfLabel } from '@/utils/warehouseLabel.js'
+
+const { t } = useI18n()
 
 const loading = ref(false)
 const submitting = ref(false)
@@ -207,21 +210,21 @@ const filters = ref({
   warehouse_id: null,
 })
 
-const typeOptions = [
-  { label: '采购成本', value: 'purchase' },
-  { label: '物流成本', value: 'shipping' },
-  { label: '包装成本', value: 'packaging' },
-  { label: '运营成本', value: 'operation' },
-  { label: '其他成本', value: 'other' },
-]
+const typeOptions = computed(() => [
+  { label: t('system.costRecordTypePurchase'), value: 'purchase' },
+  { label: t('system.costRecordTypeShipping'), value: 'shipping' },
+  { label: t('system.costRecordTypePackaging'), value: 'packaging' },
+  { label: t('system.costRecordTypeOperation'), value: 'operation' },
+  { label: t('system.costRecordTypeOther'), value: 'other' },
+])
 
-const typeMap = {
-  purchase: { label: '采购成本', tag: 'primary' },
-  shipping: { label: '物流成本', tag: 'warning' },
-  packaging: { label: '包装成本', tag: 'danger' },
-  operation: { label: '运营成本', tag: 'success' },
-  other: { label: '其他成本', tag: 'info' },
-}
+const typeMap = computed(() => ({
+  purchase: { label: t('system.costRecordTypePurchase'), tag: 'primary' },
+  shipping: { label: t('system.costRecordTypeShipping'), tag: 'warning' },
+  packaging: { label: t('system.costRecordTypePackaging'), tag: 'danger' },
+  operation: { label: t('system.costRecordTypeOperation'), tag: 'success' },
+  other: { label: t('system.costRecordTypeOther'), tag: 'info' },
+}))
 
 const createDefaultForm = () => ({
   id: null,
@@ -242,13 +245,13 @@ function formatTs(ts) {
   return new Date(ts * 1000).toLocaleString()
 }
 
-const rules = {
-  cost_date: [{ required: true, message: '请选择记录时间', trigger: 'change' }],
-  type: [{ required: true, message: '请选择类型', trigger: 'change' }],
-  item_name: [{ required: true, message: '请输入物品名称', trigger: 'blur' }],
-  amount: [{ required: true, message: '请输入金额', trigger: 'blur' }],
-  quantity: [{ required: true, message: '请输入数量', trigger: 'blur' }],
-}
+const rules = computed(() => ({
+  cost_date: [{ required: true, message: t('system.costRecordSelectRecordTime'), trigger: 'change' }],
+  type: [{ required: true, message: t('system.costRecordSelectType'), trigger: 'change' }],
+  item_name: [{ required: true, message: t('system.costRecordInputItemName'), trigger: 'blur' }],
+  amount: [{ required: true, message: t('system.costRecordInputAmount'), trigger: 'blur' }],
+  quantity: [{ required: true, message: t('system.costRecordInputQuantity'), trigger: 'blur' }],
+}))
 
 async function load() {
   loading.value = true
@@ -317,10 +320,10 @@ async function submit() {
   try {
     if (form.value.id) {
       await costRecordApi.update(form.value.id, payload)
-      ElMessage.success('更新成功')
+      ElMessage.success(t('system.costRecordUpdateSuccess'))
     } else {
       await costRecordApi.create(payload)
-      ElMessage.success('新增成功')
+      ElMessage.success(t('system.costRecordCreateSuccess'))
     }
     dialogVisible.value = false
     load()
@@ -334,14 +337,14 @@ async function handleImageUpload(e) {
   e.target.value = ''
   if (!file) return
   if (file.size > 25 * 1024 * 1024) {
-    ElMessage.warning('图片不能超过25MB')
+    ElMessage.warning(t('system.costRecordImageSizeLimit'))
     return
   }
   uploadingImage.value = true
   try {
     const res = await costRecordApi.uploadImage(file)
     form.value.item_image = res.path || ''
-    ElMessage.success('图片上传成功')
+    ElMessage.success(t('system.costRecordImageUploadSuccess'))
   } finally {
     uploadingImage.value = false
   }
@@ -353,7 +356,7 @@ function clearImage() {
 
 async function remove(id) {
   await costRecordApi.remove(id)
-  ElMessage.success('删除成功')
+  ElMessage.success(t('system.costRecordDeleteSuccess'))
   if (list.value.length === 1 && page.value > 1) page.value -= 1
   load()
 }

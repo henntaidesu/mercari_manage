@@ -5,13 +5,13 @@
         <el-col :xs="24" :md="16" class="search-left-group">
           <el-input
             v-model="filters.keyword"
-            placeholder="搜索订单号、备注等"
+            :placeholder="t('orders.searchKeywordPlaceholder')"
             clearable
             @change="onFilterChange"
           />
           <el-select
             v-model="filters.status"
-            placeholder="待发货 / 待评价 / 已完成 / 已取消"
+            :placeholder="t('orders.statusFilterPlaceholder')"
             clearable
             filterable
             style="width: 100%"
@@ -22,16 +22,16 @@
           <el-date-picker
             v-model="dateRange"
             type="daterange"
-            range-separator="至"
-            start-placeholder="最后时间起"
-            end-placeholder="最后时间止"
+            :range-separator="t('common.to')"
+            :start-placeholder="t('orders.lastTimeStart')"
+            :end-placeholder="t('orders.lastTimeEnd')"
             value-format="YYYY-MM-DD"
             style="width: 100%"
             @change="onFilterChange"
           />
           <el-select
             v-model="filters.owner_user_id"
-            placeholder="商品归属"
+            :placeholder="t('orders.ownerFilterPlaceholder')"
             clearable
             filterable
             style="width: 100%"
@@ -48,7 +48,7 @@
         <el-col :xs="24" :md="8" class="search-actions">
           <el-select
             v-model="globalAccountId"
-            placeholder="选择煤炉账号"
+            :placeholder="t('orders.selectMercariAccount')"
             filterable
             class="sync-account-select"
             :loading="mercariAccountStore.loading"
@@ -60,8 +60,8 @@
               :value="acc.id"
             />
           </el-select>
-          <el-button type="success" :icon="RefreshRight" :loading="syncLoading && syncMode === 'newData'" @click="runSync('newData')">更新列表</el-button>
-          <el-button type="primary" :icon="Refresh" :loading="syncLoading && syncMode === 'statusRefresh'" @click="runSync('statusRefresh')">更新状态</el-button>
+          <el-button type="success" :icon="RefreshRight" :loading="syncLoading && syncMode === 'newData'" @click="runSync('newData')">{{ t('orders.updateList') }}</el-button>
+          <el-button type="primary" :icon="Refresh" :loading="syncLoading && syncMode === 'statusRefresh'" @click="runSync('statusRefresh')">{{ t('orders.updateStatus') }}</el-button>
         </el-col>
       </el-row>
     </el-card>
@@ -81,7 +81,7 @@
             <div class="stat-info">
               <div class="stat-value-row">
                 <span class="stat-value" :class="card.valueClass">{{ card.display }}</span>
-                <span class="stat-today">（今日新增 {{ card.todayDisplay }}）</span>
+                <span class="stat-today">{{ t('orders.todayAddedSuffix', { count: card.todayDisplay }) }}</span>
               </div>
               <div class="stat-label">{{ card.label }}</div>
             </div>
@@ -112,69 +112,69 @@
                   class="order-expand-inner-table"
                   :row-class-name="outboundLineRowClassName"
                 >
-                  <el-table-column label="类型" width="80" align="center">
+                  <el-table-column :label="t('common.type')" width="80" align="center">
                     <template #default="{ row: line }">
                       {{ outboundLineKindLabel(line) }}
                     </template>
                   </el-table-column>
-                  <el-table-column label="标识" min-width="120" align="center" show-overflow-tooltip>
+                  <el-table-column :label="t('orders.identifier')" min-width="120" align="center" show-overflow-tooltip>
                     <template #default="{ row: line }">
                       {{ formatOutboundManagementId(line) }}
                     </template>
                   </el-table-column>
-                  <el-table-column label="库存ID" width="88" align="center">
+                  <el-table-column :label="t('orders.inventoryId')" width="88" align="center">
                     <template #default="{ row: line }">
                       {{ line.inventory_id != null ? line.inventory_id : '—' }}
                     </template>
                   </el-table-column>
-                  <el-table-column label="库存名称" prop="inventory_name" min-width="140" show-overflow-tooltip />
-                  <el-table-column label="商品归属" width="110" align="center" show-overflow-tooltip>
+                  <el-table-column :label="t('orders.inventoryName')" prop="inventory_name" min-width="140" show-overflow-tooltip />
+                  <el-table-column :label="t('orders.ownership')" width="110" align="center" show-overflow-tooltip>
                     <template #default="{ row: line }">
                       <span :class="{ 'order-owner-unmatched-text': isOutboundLineOwnerUnmatched(line) }">
                         {{ line.inventory_owner_name || '—' }}
                       </span>
                     </template>
                   </el-table-column>
-                  <el-table-column label="仓库" width="110" show-overflow-tooltip>
+                  <el-table-column :label="t('orders.warehouse')" width="110" show-overflow-tooltip>
                     <template #default="{ row: line }">
                       {{ line.warehouse_name || '—' }}
                     </template>
                   </el-table-column>
-                  <el-table-column label="货架" width="110" show-overflow-tooltip>
+                  <el-table-column :label="t('orders.shelf')" width="110" show-overflow-tooltip>
                     <template #default="{ row: line }">
                       {{ line.shelf_name || '—' }}
                     </template>
                   </el-table-column>
-                  <el-table-column label="货架号" width="100" show-overflow-tooltip>
+                  <el-table-column :label="t('orders.shelfCode')" width="100" show-overflow-tooltip>
                     <template #default="{ row: line }">
                       {{ line.shelf_code || '—' }}
                     </template>
                   </el-table-column>
-                  <el-table-column label="当前库存" width="96" align="center">
+                  <el-table-column :label="t('orders.currentStock')" width="96" align="center">
                     <template #default="{ row: line }">
                       {{ line.stock_quantity != null ? line.stock_quantity : '—' }}
                     </template>
                   </el-table-column>
-                  <el-table-column label="本单件数" prop="quantity" width="96" align="center" />
-                  <el-table-column label="商品原价格" width="120" align="center">
+                  <el-table-column :label="t('orders.orderQty')" prop="quantity" width="96" align="center" />
+                  <el-table-column :label="t('orders.originalPrice')" width="120" align="center">
                     <template #default="{ row: line }">
                       <span v-if="outboundLineShowsRatioPricing(line)">{{ orderMoneyField(line.original_price) ?? '-' }}</span>
                       <span v-else class="cell-dash">-</span>
                     </template>
                   </el-table-column>
-                  <el-table-column label="货物比例" width="120" align="center">
+                  <el-table-column :label="t('orders.goodsRatio')" width="120" align="center">
                     <template #default="{ row: line }">
                       <span v-if="outboundLineShowsRatioPricing(line) && line.goods_ratio != null">{{ formatGoodsRatio(line.goods_ratio) }}</span>
                       <span v-else class="cell-dash">-</span>
                     </template>
                   </el-table-column>
-                  <el-table-column label="比例价格" width="120" align="center">
+                  <el-table-column :label="t('orders.ratioPrice')" width="120" align="center">
                     <template #default="{ row: line }">
                       <span v-if="outboundLineShowsRatioPricing(line)">{{ orderMoneyField(line.ratio_price) ?? '-' }}</span>
                       <span v-else class="cell-dash">-</span>
                     </template>
                   </el-table-column>
-                  <el-table-column label="待出库" width="88" align="center">
+                  <el-table-column :label="t('orders.pendingOutbound')" width="88" align="center">
                     <template #default="{ row: line }">
                       <el-tag
                         v-if="Number(outboundPendingQty(line)) > 0"
@@ -186,17 +186,17 @@
                       <span v-else class="cell-dash">0</span>
                     </template>
                   </el-table-column>
-                  <el-table-column label="状态" width="90" align="center">
+                  <el-table-column :label="t('common.status')" width="90" align="center">
                     <template #default="{ row: line }">
                       <el-tag
                         :type="Number(line?.is_stocked_out || 0) === 1 ? 'success' : 'info'"
                         size="small"
                       >
-                        {{ Number(line?.is_stocked_out || 0) === 1 ? '已出库' : '待出库' }}
+                        {{ Number(line?.is_stocked_out || 0) === 1 ? t('orders.stockedOut') : t('orders.pendingStockOut') }}
                       </el-tag>
                     </template>
                   </el-table-column>
-                  <el-table-column label="操作" width="168" align="center">
+                  <el-table-column :label="t('common.operate')" width="168" align="center">
                     <template #default="{ row: line }">
                       <div class="order-outbound-actions">
                         <el-button
@@ -206,12 +206,12 @@
                           :disabled="outboundLineHasBoundInventory(line)"
                           @click="openBindOutboundInventoryDialog(row, line)"
                         >
-                          修改
+                          {{ t('common.edit') }}
                         </el-button>
                         <el-popconfirm
-                          title="确认出库？"
-                          confirm-button-text="确认"
-                          cancel-button-text="取消"
+                          :title="t('orders.confirmStockOut')"
+                          :confirm-button-text="t('common.confirm')"
+                          :cancel-button-text="t('common.cancel')"
                           @confirm="stockOutLine(row, line)"
                         >
                           <template #reference>
@@ -221,7 +221,7 @@
                               :loading="lineStockingKey === outboundLineKey(row.order_no, line.id)"
                               :disabled="!canStockOutLine(line)"
                             >
-                              出库
+                              {{ t('orders.stockOut') }}
                             </el-button>
                           </template>
                         </el-popconfirm>
@@ -238,7 +238,7 @@
                   <template #default>
                     <div style="display:flex; flex-direction:column; align-items:center; gap:8px;">
                       <el-button size="small" type="primary" @click="openManualOutboundDialog(row)">
-                        手动添加出库
+                        {{ t('orders.manualAddOutbound') }}
                       </el-button>
                     </div>
                   </template>
@@ -249,37 +249,37 @@
                     size="small"
                     border
                   >
-                    <el-table-column label="物品名称" min-width="180" show-overflow-tooltip>
+                    <el-table-column :label="t('orders.itemName')" min-width="180" show-overflow-tooltip>
                       <template #default="{ row: expense }">
                         {{ expense.__placeholder ? '-' : (expense.item_name || '-') }}
                       </template>
                     </el-table-column>
-                    <el-table-column label="承担人" min-width="110" align="center">
+                    <el-table-column :label="t('orders.bearer')" min-width="110" align="center">
                       <template #default="{ row: expense }">
-                        {{ expense.__placeholder ? '-' : (expense.owner || '未分配') }}
+                        {{ expense.__placeholder ? '-' : (expense.owner || t('orders.unassigned')) }}
                       </template>
                     </el-table-column>
-                    <el-table-column label="数量" width="90" align="center">
+                    <el-table-column :label="t('common.quantity')" width="90" align="center">
                       <template #default="{ row: expense }">
                         {{ expense.__placeholder ? '-' : (expense.quantity ?? '-') }}
                       </template>
                     </el-table-column>
-                    <el-table-column label="单价" width="100" align="center">
+                    <el-table-column :label="t('orders.unitPrice')" width="100" align="center">
                       <template #default="{ row: expense }">
                         {{ expense.__placeholder ? '-' : Math.round(Number(expense.unit_price || 0)) }}
                       </template>
                     </el-table-column>
-                    <el-table-column label="金额" width="100" align="center">
+                    <el-table-column :label="t('common.amount')" width="100" align="center">
                       <template #default="{ row: expense }">
                         {{ expense.__placeholder ? '-' : Math.round(expenseAmount(expense)) }}
                       </template>
                     </el-table-column>
-                    <el-table-column label="记录时间" width="168" align="center">
+                    <el-table-column :label="t('orders.recordTime')" width="168" align="center">
                       <template #default="{ row: expense }">
                         {{ expense.__placeholder ? '-' : formatExpenseTs(expense.record_time) }}
                       </template>
                     </el-table-column>
-                    <el-table-column label="操作" width="120" align="center">
+                    <el-table-column :label="t('common.operate')" width="120" align="center">
                       <template #default="{ row: expense }">
                         <el-button
                           v-if="expense.__placeholder"
@@ -287,7 +287,7 @@
                           type="primary"
                           @click="openPackagingDialog(row)"
                         >
-                          添加包材
+                          {{ t('orders.addPackaging') }}
                         </el-button>
                         <span v-else class="cell-dash">-</span>
                       </template>
@@ -297,18 +297,18 @@
                     v-if="packagingState[row.order_no]?.loaded"
                     class="order-packaging-total-line"
                   >
-                    包材合计：
+                    {{ t('orders.packagingTotal') }}
                     <span class="order-packaging-total-value">
                       {{ Math.round(Number(packagingState[row.order_no]?.total_amount || 0)) }}
                     </span>
-                    日元
+                    {{ t('orders.jpy') }}
                   </div>
                 </div>
               </template>
             </div>
           </template>
         </el-table-column>
-        <el-table-column label="图片" width="76" align="center" header-align="center">
+        <el-table-column :label="t('common.image')" width="76" align="center" header-align="center">
           <template #default="{ row }">
             <el-image
               v-if="firstThumbUrl(row)"
@@ -328,32 +328,32 @@
             <span v-else class="thumb-fallback">-</span>
           </template>
         </el-table-column>
-        <el-table-column label="订单号" prop="order_no" width="150" align="center" header-align="center" />
-        <el-table-column label="商品名称" prop="remark" min-width="160" show-overflow-tooltip align="left" header-align="center" />
-        <el-table-column label="最后更新" width="176" show-overflow-tooltip align="center" header-align="center">
+        <el-table-column :label="t('orders.orderNumber')" prop="order_no" width="150" align="center" header-align="center" />
+        <el-table-column :label="t('orders.itemNameCol')" prop="remark" min-width="160" show-overflow-tooltip align="left" header-align="center" />
+        <el-table-column :label="t('orders.updateTime')" width="176" show-overflow-tooltip align="center" header-align="center">
           <template #default="{ row }">{{ displayTsLocal(row.order_updated_at) }}</template>
         </el-table-column>
-        <el-table-column label="购入时间" width="176" show-overflow-tooltip align="center" header-align="center">
+        <el-table-column :label="t('orders.purchaseTime')" width="176" show-overflow-tooltip align="center" header-align="center">
           <template #default="{ row }">{{ displayTsLocal(row.purchase_time) }}</template>
         </el-table-column>
-        <el-table-column label="状态" width="110" align="center" header-align="center">
+        <el-table-column :label="t('common.status')" width="110" align="center" header-align="center">
           <template #default="{ row }">
             <el-tag :type="statusMap[row.status]?.tag || 'info'" size="small" effect="light">
               {{ statusMap[row.status]?.label || row.status }}
             </el-tag>
           </template>
         </el-table-column>
-        <el-table-column label="金额" width="120" align="center" header-align="center">
+        <el-table-column :label="t('common.amount')" width="120" align="center" header-align="center">
           <template #default="{ row }">
             <span class="amount">{{ Math.round(Number(row.amount || 0)) }}</span>
           </template>
         </el-table-column>
-        <el-table-column label="手续/快递" width="128" align="center" header-align="center">
+        <el-table-column :label="t('orders.feeShipping')" width="128" align="center" header-align="center">
           <template #default="{ row }">
             <span class="col-fee-ship">{{ formatFeeShippingCell(row) }}</span>
           </template>
         </el-table-column>
-        <el-table-column label="净收益" width="112" align="center" header-align="center">
+        <el-table-column :label="t('orders.netIncome')" width="112" align="center" header-align="center">
           <template #default="{ row }">
             <span v-if="orderMoneyField(row.net_income) != null" class="col-net">
               {{ orderMoneyField(row.net_income) }}
@@ -361,15 +361,15 @@
             <span v-else class="cell-dash">-</span>
           </template>
         </el-table-column>
-        <el-table-column label="操作" width="156" fixed="right" align="center" header-align="center">
+        <el-table-column :label="t('common.operate')" width="156" fixed="right" align="center" header-align="center">
           <template #default="{ row }">
             <div class="order-row-actions">
-              <el-button size="small" @click="openEdit(row)">编辑</el-button>
+              <el-button size="small" @click="openEdit(row)">{{ t('common.edit') }}</el-button>
               <el-button
                 size="small"
                 :loading="refreshingId === row.id"
                 @click="refreshOrder(row)"
-              >刷新</el-button>
+              >{{ t('common.refresh') }}</el-button>
             </div>
           </template>
         </el-table-column>
@@ -391,111 +391,111 @@
 
     <el-dialog
       v-model="dialogVisible"
-      title="编辑订单"
+      :title="t('orders.editOrder')"
       width="720px"
       destroy-on-close
       class="order-edit-dialog"
     >
       <el-form :model="form" :rules="rules" ref="formRef" label-width="140px" class="order-edit-form">
-        <el-form-item v-if="form.id != null" label="数据库 ID">
+        <el-form-item v-if="form.id != null" :label="t('orders.dbId')">
           <el-input :model-value="String(form.id)" disabled />
         </el-form-item>
-        <el-form-item label="订单号" prop="order_no">
-          <el-input v-model="form.order_no" placeholder="请输入订单号" maxlength="60" clearable />
+        <el-form-item :label="t('orders.orderNumber')" prop="order_no">
+          <el-input v-model="form.order_no" :placeholder="t('orders.orderNumberPlaceholder')" maxlength="60" clearable />
         </el-form-item>
-        <el-form-item label="订单时间" prop="order_date">
+        <el-form-item :label="t('orders.orderTime')" prop="order_date">
           <el-date-picker
             v-model="form.order_date"
             type="datetime"
             value-format="YYYY-MM-DD HH:mm:ss"
             style="width: 100%"
-            placeholder="order_date（库内 Unix 秒，存库基准）"
+            :placeholder="t('orders.orderDatePlaceholder')"
             clearable
           />
         </el-form-item>
-        <el-form-item label="最后更新">
+        <el-form-item :label="t('orders.updateTime')">
           <el-date-picker
             v-model="form.order_updated_at"
             type="datetime"
             value-format="YYYY-MM-DD HH:mm:ss"
             style="width: 100%"
-            placeholder="可选"
+            :placeholder="t('common.optional')"
             clearable
           />
         </el-form-item>
-        <el-form-item label="购入时间">
+        <el-form-item :label="t('orders.purchaseTime')">
           <el-date-picker
             v-model="form.purchase_time"
             type="datetime"
             value-format="YYYY-MM-DD HH:mm:ss"
             style="width: 100%"
-            placeholder="可选"
+            :placeholder="t('common.optional')"
             clearable
           />
         </el-form-item>
-        <el-form-item label="卖家ID">
+        <el-form-item :label="t('orders.sellerId')">
           <el-input v-model="form.data_user" placeholder="data_user（Mercari seller.id）" maxlength="64" clearable />
         </el-form-item>
-        <el-form-item label="买家ID">
-          <el-input v-model="form.customer_name" placeholder="customer_name（Mercari 买家用户 ID）" maxlength="30" clearable />
+        <el-form-item :label="t('orders.buyerId')">
+          <el-input v-model="form.customer_name" :placeholder="t('orders.buyerIdPlaceholder')" maxlength="30" clearable />
         </el-form-item>
-        <el-form-item label="订单状态" prop="status">
+        <el-form-item :label="t('orders.orderStatus')" prop="status">
           <el-select v-model="form.status" filterable style="width: 100%">
             <el-option v-for="item in formOrderStatusOptions" :key="item.value" :label="item.label" :value="item.value" />
           </el-select>
         </el-form-item>
-        <el-form-item label="订单金额（日元）" prop="amount">
+        <el-form-item :label="t('orders.amountJpy')" prop="amount">
           <el-input-number v-model="form.amount" :min="1" :precision="0" :controls="false" style="width: 100%" />
         </el-form-item>
-        <el-form-item label="手续费（日元）">
+        <el-form-item :label="t('orders.serviceFeeJpy')">
           <el-input-number
             v-model="form.service_fee"
             :precision="0"
             :controls="false"
             style="width: 100%"
-            placeholder="可选，整数"
+            :placeholder="t('orders.optionalInteger')"
           />
         </el-form-item>
-        <el-form-item label="净收益（日元）">
+        <el-form-item :label="t('orders.netIncomeJpy')">
           <el-input-number
             v-model="form.net_income"
             :precision="0"
             :controls="false"
             style="width: 100%"
-            placeholder="可选，整数"
+            :placeholder="t('orders.optionalInteger')"
           />
         </el-form-item>
-        <el-form-item label="快递公司">
+        <el-form-item :label="t('orders.carrier')">
           <el-input v-model="form.carrier_display_name" clearable placeholder="carrier_display_name" />
         </el-form-item>
-        <el-form-item label="寄件方式名">
+        <el-form-item :label="t('orders.shippingMethod')">
           <el-input v-model="form.request_class_display_name" clearable placeholder="request_class_display_name" />
         </el-form-item>
-        <el-form-item label="快递费（日元）">
+        <el-form-item :label="t('orders.shippingFeeJpy')">
           <el-input-number
             v-model="form.shipping_fee"
             :precision="0"
             :controls="false"
             style="width: 100%"
-            placeholder="可选，整数"
+            :placeholder="t('orders.optionalInteger')"
           />
         </el-form-item>
-        <el-form-item label="快递单号">
+        <el-form-item :label="t('orders.trackingNo')">
           <el-input v-model="form.tracking_no" clearable placeholder="tracking_no" />
         </el-form-item>
-        <el-form-item label="取引凭证 ID">
+        <el-form-item :label="t('orders.transactionEvidenceId')">
           <el-input-number
             v-model="form.transaction_evidence_id"
             :precision="0"
             :controls="false"
             style="width: 100%"
-            placeholder="transaction_evidence.id（煤炉）"
+            :placeholder="t('orders.transactionEvidenceIdPlaceholder')"
           />
         </el-form-item>
-        <el-form-item label="商品名称">
+        <el-form-item :label="t('orders.itemNameCol')">
           <el-input v-model="form.remark" type="textarea" :rows="2" maxlength="2000" show-word-limit placeholder="remark" />
         </el-form-item>
-        <el-form-item label="商品说明">
+        <el-form-item :label="t('orders.itemDescription')">
           <el-input
             v-model="form.description"
             type="textarea"
@@ -506,30 +506,30 @@
           />
           <div v-if="orderDescriptionMgmtHint" class="form-hint">{{ orderDescriptionMgmtHint }}</div>
         </el-form-item>
-        <el-form-item label="缩略图 JSON">
+        <el-form-item :label="t('orders.thumbnailsJson')">
           <el-input
             v-model="form.thumbnails_text"
             type="textarea"
             :rows="4"
-            placeholder='JSON 数组，如 ["https://..."]；也可每行一个 URL'
+            :placeholder="t('orders.thumbnailsJsonPlaceholder')"
           />
-          <div class="form-hint">对应库字段 thumbnails；留空表示不设置（更新时传空可清空）</div>
+          <div class="form-hint">{{ t('orders.thumbnailsJsonHint') }}</div>
         </el-form-item>
       </el-form>
       <template #footer>
         <div class="order-dialog-footer">
           <el-popconfirm
             v-if="form.id"
-            title="确认删除该订单？"
+            :title="t('orders.deleteConfirm')"
             @confirm="removeFromDialog"
           >
             <template #reference>
-              <el-button type="danger">删除</el-button>
+              <el-button type="danger">{{ t('common.delete') }}</el-button>
             </template>
           </el-popconfirm>
           <div class="order-dialog-footer-right">
-            <el-button @click="dialogVisible = false">取消</el-button>
-            <el-button type="primary" :loading="submitting" @click="submit">保存</el-button>
+            <el-button @click="dialogVisible = false">{{ t('common.cancel') }}</el-button>
+            <el-button type="primary" :loading="submitting" @click="submit">{{ t('common.save') }}</el-button>
           </div>
         </div>
       </template>
@@ -537,20 +537,20 @@
 
     <el-dialog
       v-model="manualOutboundDialogVisible"
-      title="手动添加出库"
+      :title="t('orders.manualAddOutbound')"
       width="760px"
       destroy-on-close
     >
       <el-form label-width="90px">
-        <el-form-item label="订单号">
+        <el-form-item :label="t('orders.orderNumber')">
           <el-input :model-value="manualOutboundForm.order_no" disabled />
         </el-form-item>
-        <el-form-item label="物品筛选" class="manual-outbound-inv-filter-item">
+        <el-form-item :label="t('orders.itemFilter')" class="manual-outbound-inv-filter-item">
           <div class="manual-ob-filter-grid">
             <div class="manual-ob-filter-cell">
               <el-input
                 v-model="manualInvFilters.keyword"
-                placeholder="搜索商品名称或管理番号"
+                :placeholder="t('orders.searchProductPlaceholder')"
                 clearable
                 prefix-icon="Search"
                 @change="reloadManualInventoryList"
@@ -559,7 +559,7 @@
             <div class="manual-ob-filter-cell">
               <el-select
                 v-model="manualInvFilters.filterCat"
-                placeholder="所有游戏分类"
+                :placeholder="t('orders.allGameCategories')"
                 clearable
                 filterable
                 style="width: 100%"
@@ -575,7 +575,7 @@
                 :props="manualInvWarehouseCascaderProps"
                 :show-all-levels="false"
                 style="width: 100%"
-                placeholder="仓库 / 货架名称 / 货架号"
+                :placeholder="t('orders.warehouseShelfPlaceholder')"
                 popper-class="product-type-cascader-popper"
                 clearable
                 filterable
@@ -589,7 +589,7 @@
                 :props="manualInvProductTypeCascaderProps"
                 :show-all-levels="false"
                 style="width: 100%"
-                placeholder="商品类型"
+                :placeholder="t('orders.productType')"
                 popper-class="product-type-cascader-popper"
                 clearable
                 filterable
@@ -599,7 +599,7 @@
             <div class="manual-ob-filter-cell">
               <el-select
                 v-model="manualInvFilters.filterOwnerUserId"
-                placeholder="所有商品归属"
+                :placeholder="t('orders.allOwners')"
                 clearable
                 filterable
                 style="width: 100%"
@@ -615,12 +615,12 @@
             </div>
             <div class="manual-ob-filter-cell manual-ob-filter-cell--checkbox">
               <el-checkbox v-model="manualInvFilters.hideNoWarehouseSlot" class="manual-ob-filter-checkbox">
-                隐藏无在库
+                {{ t('orders.hideNoStock') }}
               </el-checkbox>
             </div>
           </div>
         </el-form-item>
-        <el-form-item label="库存物品">
+        <el-form-item :label="t('orders.inventoryItem')">
           <div class="manual-ob-line-list" v-loading="manualInventoryLoading">
             <div
               v-for="row in manualOutboundForm.rows"
@@ -633,14 +633,14 @@
                 clearable
                 class="manual-inventory-select"
                 style="width: 100%"
-                placeholder="选择库存商品"
+                :placeholder="t('orders.selectInventoryProduct')"
                 popper-class="manual-inventory-select-popper"
                 @change="onManualOutboundRowInventoryChange(row)"
               >
                 <el-option
                   v-for="it in rowInventoryOptions(row.key)"
                   :key="it.id"
-                  :label="`${it.name || '-'}（归属:${it.owner_user_name || '-'}，库存:${Number(it.quantity || 0)}）`"
+                  :label="`${it.name || '-'}（${t('orders.ownerLabel')}:${it.owner_user_name || '-'}，${t('orders.stockLabel')}:${Number(it.quantity || 0)}）`"
                   :value="it.id"
                 >
                   <div class="manual-option-row">
@@ -665,7 +665,7 @@
                     <span v-else class="manual-option-thumb-fallback">-</span>
                     <div class="manual-option-meta">
                       <div class="manual-option-name">{{ it.name || '-' }}</div>
-                      <div class="manual-option-sub">归属: {{ it.owner_user_name || '-' }} ｜ 库存: {{ Number(it.quantity || 0) }}</div>
+                      <div class="manual-option-sub">{{ t('orders.ownerLabel') }}: {{ it.owner_user_name || '-' }} ｜ {{ t('orders.stockLabel') }}: {{ Number(it.quantity || 0) }}</div>
                     </div>
                   </div>
                 </el-option>
@@ -684,45 +684,45 @@
                 plain
                 circle
                 :icon="Minus"
-                title="删除此行"
+                :title="t('orders.deleteRow')"
                 @click="removeManualOutboundRow(row.key)"
               />
             </div>
             <div v-if="!manualOutboundForm.rows.length" class="cell-dash manual-ob-line-empty">
-              点击下方「添加」增加出库明细
+              {{ t('orders.clickAddOutboundHint') }}
             </div>
             <div class="manual-ob-line-add">
               <el-button type="primary" plain :icon="Plus" @click="addManualOutboundRow">
-                添加
+                {{ t('common.add') }}
               </el-button>
             </div>
           </div>
         </el-form-item>
       </el-form>
       <template #footer>
-        <el-button @click="manualOutboundDialogVisible = false">取消</el-button>
+        <el-button @click="manualOutboundDialogVisible = false">{{ t('common.cancel') }}</el-button>
         <el-button type="primary" :loading="manualOutboundSaving" @click="submitManualOutbound">
-          确认添加
+          {{ t('orders.confirmAdd') }}
         </el-button>
       </template>
     </el-dialog>
 
     <el-dialog
       v-model="bindOutboundDialogVisible"
-      title="关联库存"
+      :title="t('orders.bindInventory')"
       width="760px"
       destroy-on-close
     >
       <el-form label-width="90px">
-        <el-form-item label="订单号">
+        <el-form-item :label="t('orders.orderNumber')">
           <el-input :model-value="bindOutboundContext.order_no" disabled />
         </el-form-item>
-        <el-form-item label="物品筛选" class="manual-outbound-inv-filter-item">
+        <el-form-item :label="t('orders.itemFilter')" class="manual-outbound-inv-filter-item">
           <div class="manual-ob-filter-grid">
             <div class="manual-ob-filter-cell">
               <el-input
                 v-model="bindInvFilters.keyword"
-                placeholder="搜索商品名称或管理番号"
+                :placeholder="t('orders.searchProductPlaceholder')"
                 clearable
                 prefix-icon="Search"
                 @change="reloadBindInventoryList"
@@ -731,7 +731,7 @@
             <div class="manual-ob-filter-cell">
               <el-select
                 v-model="bindInvFilters.filterCat"
-                placeholder="所有游戏分类"
+                :placeholder="t('orders.allGameCategories')"
                 clearable
                 filterable
                 style="width: 100%"
@@ -747,7 +747,7 @@
                 :props="bindInvWarehouseCascaderProps"
                 :show-all-levels="false"
                 style="width: 100%"
-                placeholder="仓库 / 货架名称 / 货架号"
+                :placeholder="t('orders.warehouseShelfPlaceholder')"
                 popper-class="product-type-cascader-popper"
                 clearable
                 filterable
@@ -761,7 +761,7 @@
                 :props="bindInvProductTypeCascaderProps"
                 :show-all-levels="false"
                 style="width: 100%"
-                placeholder="商品类型"
+                :placeholder="t('orders.productType')"
                 popper-class="product-type-cascader-popper"
                 clearable
                 filterable
@@ -771,7 +771,7 @@
             <div class="manual-ob-filter-cell">
               <el-select
                 v-model="bindInvFilters.filterOwnerUserId"
-                placeholder="所有商品归属"
+                :placeholder="t('orders.allOwners')"
                 clearable
                 filterable
                 style="width: 100%"
@@ -787,12 +787,12 @@
             </div>
             <div class="manual-ob-filter-cell manual-ob-filter-cell--checkbox">
               <el-checkbox v-model="bindInvFilters.hideNoWarehouseSlot" class="manual-ob-filter-checkbox">
-                隐藏无在库
+                {{ t('orders.hideNoStock') }}
               </el-checkbox>
             </div>
           </div>
         </el-form-item>
-        <el-form-item label="库存物品">
+        <el-form-item :label="t('orders.inventoryItem')">
           <div class="manual-ob-line-list" v-loading="bindInventoryLoading">
             <div class="manual-ob-line-row">
               <el-select
@@ -801,14 +801,14 @@
                 clearable
                 class="manual-inventory-select"
                 style="width: 100%"
-                placeholder="选择库存商品"
+                :placeholder="t('orders.selectInventoryProduct')"
                 popper-class="manual-inventory-select-popper"
                 @change="onBindOutboundInventoryChange"
               >
                 <el-option
                   v-for="it in bindInventoryOptions"
                   :key="it.id"
-                  :label="`${it.name || '-'}（归属:${it.owner_user_name || '-'}，库存:${Number(it.quantity || 0)}）`"
+                  :label="`${it.name || '-'}（${t('orders.ownerLabel')}:${it.owner_user_name || '-'}，${t('orders.stockLabel')}:${Number(it.quantity || 0)}）`"
                   :value="it.id"
                 >
                   <div class="manual-option-row">
@@ -833,7 +833,7 @@
                 <span v-else class="manual-option-thumb-fallback">-</span>
                 <div class="manual-option-meta">
                   <div class="manual-option-name">{{ it.name || '-' }}</div>
-                  <div class="manual-option-sub">归属: {{ it.owner_user_name || '-' }} ｜ 库存: {{ Number(it.quantity || 0) }}</div>
+                  <div class="manual-option-sub">{{ t('orders.ownerLabel') }}: {{ it.owner_user_name || '-' }} ｜ {{ t('orders.stockLabel') }}: {{ Number(it.quantity || 0) }}</div>
                 </div>
               </div>
                 </el-option>
@@ -852,44 +852,44 @@
         </el-form-item>
       </el-form>
       <template #footer>
-        <el-button @click="bindOutboundDialogVisible = false">取消</el-button>
+        <el-button @click="bindOutboundDialogVisible = false">{{ t('common.cancel') }}</el-button>
         <el-button type="primary" :loading="bindOutboundSaving" @click="submitBindOutboundInventory">
-          确认关联
+          {{ t('orders.confirmBind') }}
         </el-button>
       </template>
     </el-dialog>
 
     <el-dialog
       v-model="packagingDialogVisible"
-      title="添加包装材料"
+      :title="t('orders.addPackagingMaterial')"
       width="520px"
       destroy-on-close
     >
       <el-form label-width="96px">
-        <el-form-item label="订单号">
+        <el-form-item :label="t('orders.orderNumber')">
           <el-input :model-value="packagingForm.order_no" disabled />
         </el-form-item>
-        <el-form-item label="包材名称" required>
+        <el-form-item :label="t('orders.packagingName')" required>
           <el-select
             v-model="packagingForm.item_name"
             filterable
             clearable
             style="width: 100%"
-            placeholder="请选择库存包材，或选「不选择包材」"
+            :placeholder="t('orders.packagingItemPlaceholder')"
             @change="onPackagingItemChange"
           >
-            <el-option label="不选择包材" :value="PACKAGING_ITEM_NONE" />
+            <el-option :label="t('orders.noPackaging')" :value="PACKAGING_ITEM_NONE" />
             <el-option
               v-for="item in packagingItemsOptions"
               :key="item.item_name"
-              :label="`${item.item_name}（库存:${Number(item.quantity || 0)}）`"
+              :label="`${item.item_name}（${t('orders.stockLabel')}:${Number(item.quantity || 0)}）`"
               :value="item.item_name"
             />
           </el-select>
         </el-form-item>
         <el-row v-show="isPackagingConcreteItemSelected" :gutter="12">
           <el-col :span="12">
-            <el-form-item label="数量" required>
+            <el-form-item :label="t('common.quantity')" required>
               <el-input-number
                 v-model="packagingForm.quantity"
                 :min="1"
@@ -900,7 +900,7 @@
             </el-form-item>
           </el-col>
           <el-col :span="12">
-            <el-form-item label="单价" required>
+            <el-form-item :label="t('orders.unitPrice')" required>
               <el-input-number
                 v-model="packagingForm.unit_price"
                 :min="1"
@@ -911,14 +911,14 @@
             </el-form-item>
           </el-col>
         </el-row>
-        <el-form-item v-show="isPackagingConcreteItemSelected" label="成本金额">
+        <el-form-item v-show="isPackagingConcreteItemSelected" :label="t('orders.costAmount')">
           <el-input :model-value="String(Math.round(expenseAmount(packagingForm)))" disabled />
         </el-form-item>
       </el-form>
       <template #footer>
-        <el-button @click="packagingDialogVisible = false">取消</el-button>
+        <el-button @click="packagingDialogVisible = false">{{ t('common.cancel') }}</el-button>
         <el-button type="primary" :loading="packagingSubmitting" @click="submitPackagingExpense">
-          确认添加
+          {{ t('orders.confirmAdd') }}
         </el-button>
       </template>
     </el-dialog>
@@ -934,7 +934,7 @@
         <div class="orders-sync-overlay__box">
           <el-icon class="is-loading orders-sync-overlay__icon" :size="40"><Loading /></el-icon>
           <div class="orders-sync-overlay__title">{{ syncOverlayTitle }}</div>
-          <div class="orders-sync-overlay__step">{{ syncProgressLabel || '请稍候…' }}</div>
+          <div class="orders-sync-overlay__step">{{ syncProgressLabel || t('orders.pleaseWait') }}</div>
         </div>
       </div>
     </teleport>
@@ -943,6 +943,7 @@
 
 <script setup>
 import { ref, computed, onMounted, watch, onBeforeUnmount, nextTick } from 'vue'
+import { useI18n } from 'vue-i18n'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { RefreshRight, Refresh, Plus, Minus, Loading } from '@element-plus/icons-vue'
 import {
@@ -955,6 +956,7 @@ import {
 } from '@/api/index.js'
 import { useMercariAccountStore } from '@/stores/mercariAccount.js'
 
+const { t } = useI18n()
 const mercariAccountStore = useMercariAccountStore()
 const globalAccountId = computed({
   get: () => mercariAccountStore.selectedId,
@@ -1127,7 +1129,7 @@ const orderStatCards = computed(() => {
   const o = stats.value
   return [
     {
-      label: '订单笔数',
+      label: t('dashboard.orderCount'),
       display: o.total_count ?? 0,
       todayDisplay: o.today_total_count ?? 0,
       icon: 'Document',
@@ -1136,7 +1138,7 @@ const orderStatCards = computed(() => {
       valueClass: '',
     },
     {
-      label: '金额合计',
+      label: t('dashboard.totalAmount'),
       display: Math.round(Number(o.sum_amount || 0)),
       todayDisplay: Math.round(Number(o.today_sum_amount || 0)),
       icon: 'Money',
@@ -1145,7 +1147,7 @@ const orderStatCards = computed(() => {
       valueClass: '',
     },
     {
-      label: '手续费合计',
+      label: t('dashboard.serviceFee'),
       display: Math.round(Number(o.sum_service_fee || 0)),
       todayDisplay: Math.round(Number(o.today_sum_service_fee || 0)),
       icon: 'Histogram',
@@ -1154,7 +1156,7 @@ const orderStatCards = computed(() => {
       valueClass: '',
     },
     {
-      label: '快递费合计',
+      label: t('dashboard.shippingFee'),
       display: Math.round(Number(o.sum_shipping_fee || 0)),
       todayDisplay: Math.round(Number(o.today_sum_shipping_fee || 0)),
       icon: 'Box',
@@ -1163,7 +1165,7 @@ const orderStatCards = computed(() => {
       valueClass: '',
     },
     {
-      label: '包材合计',
+      label: t('dashboard.packaging'),
       display: Math.round(Number(o.sum_packaging || 0)),
       todayDisplay: Math.round(Number(o.today_sum_packaging || 0)),
       icon: 'ShoppingCart',
@@ -1172,7 +1174,7 @@ const orderStatCards = computed(() => {
       valueClass: '',
     },
     {
-      label: '净收益合计',
+      label: t('dashboard.netIncome'),
       display: Math.round(Number(o.sum_net_income || 0)),
       todayDisplay: Math.round(Number(o.today_sum_net_income || 0)),
       icon: 'TrendCharts',
@@ -1210,32 +1212,32 @@ const ORDER_STATUS_KEYS = [
 ]
 
 /** 展示用标签：value 与数据库/API 一致 */
-const statusMap = {
-  pending:        { label: '待处理', tag: 'info' },
-  trading:        { label: '交易中', tag: 'warning' },
-  wait_payment:   { label: '待支付', tag: 'warning' },
-  wait_shipping:  { label: '待发货', tag: 'warning' },
-  wait_review:    { label: '待评价', tag: 'primary' },
-  done:           { label: '已完成', tag: 'success' },
-  sold_out:       { label: '已售完', tag: 'info' },
-  cancelled:      { label: '已取消', tag: 'info' },
-  cancel_request: { label: '取消申请中', tag: 'danger' },
-}
+const statusMap = computed(() => ({
+  pending:        { label: t('orders.statusPendingHandle'), tag: 'info' },
+  trading:        { label: t('orders.statusTrading'), tag: 'warning' },
+  wait_payment:   { label: t('orders.statusWaitPayment'), tag: 'warning' },
+  wait_shipping:  { label: t('orders.statusPending'), tag: 'warning' },
+  wait_review:    { label: t('orders.statusWaitReview'), tag: 'primary' },
+  done:           { label: t('orders.statusCompleted'), tag: 'success' },
+  sold_out:       { label: t('orders.statusSoldOut'), tag: 'info' },
+  cancelled:      { label: t('orders.statusCancelled'), tag: 'info' },
+  cancel_request: { label: t('orders.statusCancelRequest'), tag: 'danger' },
+}))
 
 /** 列表/统计筛选项：仅四种（与 load 条件一致） */
 const LIST_FILTER_STATUS_KEYS = ['wait_shipping', 'wait_review', 'done', 'cancelled']
 
 const orderListStatusFilterOptions = computed(() =>
-  LIST_FILTER_STATUS_KEYS.filter((k) => statusMap[k]).map((value) => ({
+  LIST_FILTER_STATUS_KEYS.filter((k) => statusMap.value[k]).map((value) => ({
     value,
-    label: statusMap[value].label,
+    label: statusMap.value[value].label,
   }))
 )
 
 const orderStatusOptions = computed(() =>
-  ORDER_STATUS_KEYS.filter((k) => statusMap[k]).map((value) => ({
+  ORDER_STATUS_KEYS.filter((k) => statusMap.value[k]).map((value) => ({
     value,
-    label: statusMap[value].label,
+    label: statusMap.value[value].label,
   }))
 )
 
@@ -1243,8 +1245,8 @@ const orderStatusOptions = computed(() =>
 const formOrderStatusOptions = computed(() => {
   const base = orderStatusOptions.value
   const cur = form.value?.status
-  if (cur && !statusMap[cur]) {
-    return [...base, { value: cur, label: `（旧）${cur}` }]
+  if (cur && !statusMap.value[cur]) {
+    return [...base, { value: cur, label: t('orders.legacyStatusLabel', { status: cur }) }]
   }
   return base
 })
@@ -1256,7 +1258,7 @@ const syncMode = ref('newData')
 
 /** 「更新列表 / 更新状态」全屏等待与步骤文案（与后端 progress_job_id 轮询同步） */
 const syncOverlayVisible = ref(false)
-const syncOverlayTitle = ref('正在同步')
+const syncOverlayTitle = ref('')
 const syncOverlayFailed = ref(false)
 const syncProgressLabel = ref('')
 let syncProgressTimer = null
@@ -1265,16 +1267,16 @@ async function runSync(mode = 'newData') {
   if (syncLoading.value) return
   const aid = mercariAccountStore.selectedId
   if (!aid) {
-    ElMessage.warning('请先在右上角选择煤炉账号')
+    ElMessage.warning(t('orders.pleaseSelectMercariAccount'))
     return
   }
   const name = mercariAccountStore.selectedAccountName || `#${aid}`
-  const actionLabel = mode === 'statusRefresh' ? '批量更新订单状态' : '更新出售中列表（增量入库）'
+  const actionLabel = mode === 'statusRefresh' ? t('orders.actionBatchUpdateStatus') : t('orders.actionUpdateSellingList')
   try {
     await ElMessageBox.confirm(
-      `将使用账号「${name}」${actionLabel}，是否继续？`,
-      '确认同步',
-      { type: 'info', confirmButtonText: '开始', cancelButtonText: '取消' },
+      t('orders.confirmSyncMessage', { name, action: actionLabel }),
+      t('orders.confirmSyncTitle'),
+      { type: 'info', confirmButtonText: t('orders.start'), cancelButtonText: t('common.cancel') },
     )
   } catch {
     return
@@ -1305,9 +1307,9 @@ async function runSync(mode = 'newData') {
   }
 
   syncMode.value = mode
-  syncOverlayTitle.value = mode === 'statusRefresh' ? '正在更新状态' : '正在更新列表'
+  syncOverlayTitle.value = mode === 'statusRefresh' ? t('orders.updatingStatus') : t('orders.updatingList')
   syncOverlayFailed.value = false
-  syncProgressLabel.value = '正在连接服务器…'
+  syncProgressLabel.value = t('orders.connectingServer')
   syncOverlayVisible.value = true
   syncLoading.value = true
   await pollSyncProgress()
@@ -1320,23 +1322,33 @@ async function runSync(mode = 'newData') {
       const res = await mercariApi.batchRefreshInfo(payload)
       const d = res.data || {}
       const failed = d.failed?.length ?? 0
-      const msg = `状态刷新完成：待处理 ${d.total ?? 0} 条，成功 ${d.ok ?? 0}，无对应煤炉账号跳过 ${d.skipped_no_account ?? 0}，失败 ${failed}`
+      const msg = t('orders.statusRefreshDoneMsg', {
+        total: d.total ?? 0,
+        ok: d.ok ?? 0,
+        skipped: d.skipped_no_account ?? 0,
+        failed,
+      })
       if (failed > 0) ElMessage.warning(msg)
       else ElMessage.success(msg)
     } else {
       const res = await mercariApi.syncNewData(payload)
       const d = res.data || {}
       ElMessage.success(
-        `更新完成：接口 ${d.api_item_count ?? 0} 条，待入库新单 ${d.pending_new ?? 0} 条，新增 ${d.inserted ?? 0} 条（回填详情 ${d.info_enriched ?? 0} 条）`
+        t('orders.updateDoneMsg', {
+          api: d.api_item_count ?? 0,
+          pending: d.pending_new ?? 0,
+          inserted: d.inserted ?? 0,
+          enriched: d.info_enriched ?? 0,
+        })
       )
     }
     load()
     loadStats()
   } catch (e) {
     syncHadError = true
-    syncOverlayTitle.value = mode === 'statusRefresh' ? '更新状态失败' : '更新列表失败'
+    syncOverlayTitle.value = mode === 'statusRefresh' ? t('orders.updateStatusFailed') : t('orders.updateListFailed')
     syncOverlayFailed.value = true
-    const msg = e?.response?.data?.detail || e?.message || '同步失败'
+    const msg = e?.response?.data?.detail || e?.message || t('orders.syncFailed')
     syncProgressLabel.value = String(msg)
   } finally {
     if (syncProgressTimer != null) {
@@ -1347,7 +1359,7 @@ async function runSync(mode = 'newData') {
       await new Promise((r) => setTimeout(r, 1200))
     }
     syncOverlayVisible.value = false
-    syncOverlayTitle.value = '正在同步'
+    syncOverlayTitle.value = ''
     syncOverlayFailed.value = false
     syncProgressLabel.value = ''
     syncLoading.value = false
@@ -1575,12 +1587,12 @@ const createDefaultForm = () => ({
 
 const form = ref(createDefaultForm())
 
-const rules = {
-  order_no: [{ required: true, message: '请输入订单号', trigger: 'blur' }],
-  order_date: [{ required: true, message: '请选择订单时间', trigger: 'change' }],
-  status: [{ required: true, message: '请选择订单状态', trigger: 'change' }],
-  amount: [{ required: true, message: '请输入订单金额', trigger: 'blur' }],
-}
+const rules = computed(() => ({
+  order_no: [{ required: true, message: t('orders.orderNumberPlaceholder'), trigger: 'blur' }],
+  order_date: [{ required: true, message: t('orders.pleaseSelectOrderTime'), trigger: 'change' }],
+  status: [{ required: true, message: t('orders.pleaseSelectOrderStatus'), trigger: 'change' }],
+  amount: [{ required: true, message: t('orders.pleaseInputOrderAmount'), trigger: 'blur' }],
+}))
 
 const LIST_FILTER_STATUS_SET = new Set(LIST_FILTER_STATUS_KEYS)
 
@@ -1699,7 +1711,7 @@ function clearOutboundExpandCache(orderNo) {
 const orderDescriptionMgmtHint = computed(() => {
   const ids = parseMgmtIdsFromDescription(form.value.description)
   if (!ids.length) return ''
-  return `从说明解析的管理番号：${ids.join('、')}（含末行 -=~<> 暗号与明文「管理番号」）`
+  return t('orders.mgmtIdsParsedHint', { ids: ids.join('、') })
 })
 
 /** 出库明细「标识」列：mgmt_id 行展示数字；暗号 token 尝试解码 */
@@ -1719,10 +1731,10 @@ function formatOutboundManagementId(line) {
 /** 出库明细行：后端 line_kind 含 mgmt_id | barcode | bundle_title | manual */
 function outboundLineKindLabel(line) {
   const k = line?.line_kind
-  if (k === 'bundle_title') return '组合标题'
-  if (k === 'manual') return '手动添加'
-  if (k === 'barcode') return '条码'
-  return '管理ID'
+  if (k === 'bundle_title') return t('orders.kindBundleTitle')
+  if (k === 'manual') return t('orders.kindManual')
+  if (k === 'barcode') return t('orders.kindBarcode')
+  return t('orders.kindMgmtId')
 }
 
 /** 后端已写入 goods_ratio / ratio_price 时展示（组合标题或按库存价分摊的手动/管理 ID/条码行） */
@@ -1907,19 +1919,19 @@ async function submitBindOutboundInventory() {
   const invId = Number(bindOutboundForm.value.inventory_id || 0)
   if (!orderNo || !lineId) return
   if (!Number.isFinite(invId) || invId <= 0) {
-    ElMessage.warning('请选择库存商品')
+    ElMessage.warning(t('orders.pleaseSelectInventory'))
     return
   }
   const max = maxStockForBindRow(invId)
   const qty = Math.max(1, Number(bindOutboundForm.value.quantity || 1))
   if (max != null && qty > max) {
-    ElMessage.warning(`出库数量不能超过当前库存 ${max}`)
+    ElMessage.warning(t('orders.outboundQtyExceedStock', { max }))
     return
   }
   bindOutboundSaving.value = true
   try {
     await orderApi.bindOutboundLineInventory(lineId, { inventory_id: invId, quantity: qty })
-    ElMessage.success('已关联库存')
+    ElMessage.success(t('orders.boundInventory'))
     bindOutboundDialogVisible.value = false
     await reloadOutboundLinesExpand(orderNo)
     await load()
@@ -2044,7 +2056,7 @@ async function submitPackagingExpense() {
   const unitPrice = Math.max(1, Number(packagingForm.value.unit_price || 0))
   if (!orderNo) return
   if (!itemName) {
-    ElMessage.warning('请选择包材物品')
+    ElMessage.warning(t('orders.pleaseSelectPackaging'))
     return
   }
   if (itemName === PACKAGING_ITEM_NONE) {
@@ -2052,7 +2064,7 @@ async function submitPackagingExpense() {
     try {
       await orderApi.waivePackaging({ order_no: orderNo })
       packagingDialogVisible.value = false
-      ElMessage.success('已确认本单不使用包材')
+      ElMessage.success(t('orders.confirmedNoPackaging'))
       await loadPackagingExpenses(orderNo)
       await load()
     } finally {
@@ -2061,7 +2073,7 @@ async function submitPackagingExpense() {
     return
   }
   if (unitPrice <= 0) {
-    ElMessage.warning('请填写有效单价')
+    ElMessage.warning(t('orders.pleaseInputUnitPrice'))
     return
   }
   packagingSubmitting.value = true
@@ -2072,7 +2084,7 @@ async function submitPackagingExpense() {
       quantity: qty,
       unit_price: unitPrice,
     })
-    ElMessage.success('已添加包装材料并扣减库存')
+    ElMessage.success(t('orders.packagingAddedDeducted'))
     packagingDialogVisible.value = false
     await loadPackagingExpenses(orderNo)
     await load()
@@ -2160,20 +2172,20 @@ async function submitManualOutbound() {
     const iid = Number(row?.inventory_id || 0)
     if (!Number.isFinite(iid) || iid <= 0) continue
     if (seen.has(iid)) {
-      ElMessage.warning('同一库存商品请勿重复选择')
+      ElMessage.warning(t('orders.duplicateInventorySelected'))
       return
     }
     seen.add(iid)
     const max = maxStockForManualRow(iid)
     const qty = Math.max(1, Number(row.quantity || 1))
     if (max != null && qty > max) {
-      ElMessage.warning(`「${inventoryLabelById(iid)}」出库数量不能超过当前库存 ${max}`)
+      ElMessage.warning(t('orders.outboundQtyExceedStockNamed', { name: inventoryLabelById(iid), max }))
       return
     }
     lines.push({ inventory_id: iid, quantity: qty })
   }
   if (!lines.length) {
-    ElMessage.warning('请至少添加一行并选择库存商品')
+    ElMessage.warning(t('orders.pleaseAddAtLeastOneRow'))
     return
   }
   manualOutboundSaving.value = true
@@ -2182,7 +2194,7 @@ async function submitManualOutbound() {
       order_no: orderNo,
       lines,
     })
-    ElMessage.success(`已添加 ${lines.length} 条手动出库明细`)
+    ElMessage.success(t('orders.manualOutboundAdded', { count: lines.length }))
     manualOutboundDialogVisible.value = false
     clearOutboundExpandCache(orderNo)
     await load()
@@ -2193,8 +2205,8 @@ async function submitManualOutbound() {
 
 function inventoryLabelById(iid) {
   const row = (manualInventoryOptions.value || []).find((x) => Number(x.id) === Number(iid))
-  if (!row) return `库存#${iid}`
-  return `${row.name || '-'}（库存:${Number(row.quantity || 0)}）`
+  if (!row) return t('orders.inventoryNumberFallback', { id: iid })
+  return `${row.name || '-'}（${t('orders.stockLabel')}:${Number(row.quantity || 0)}）`
 }
 
 function inventoryThumbUrl(row) {
@@ -2225,7 +2237,7 @@ async function stockOutLine(orderRow, line) {
   lineStockingKey.value = k
   try {
     await orderApi.stockOutOutboundLine(lineId, {})
-    ElMessage.success('出库成功')
+    ElMessage.success(t('inventory.outboundSuccess'))
     const cur = expandState.value[orderNo]
     if (cur?.loaded) {
       const nextRows = (cur.rows || []).map((r) => {
@@ -2282,12 +2294,12 @@ async function refreshOrder(row) {
   if (!row?.id) return
   const orderNo = String(row.order_no || '').trim()
   if (!orderNo) {
-    ElMessage.warning('该订单缺少订单号')
+    ElMessage.warning(t('orders.missingOrderNo'))
     return
   }
   const dataUser = row.data_user != null && row.data_user !== '' ? String(row.data_user).trim() : ''
   if (!dataUser) {
-    ElMessage.warning('该订单缺少卖家ID（data_user），无法选择煤炉账号，请先同步或编辑补全')
+    ElMessage.warning(t('orders.missingSellerId'))
     return
   }
 
@@ -2314,9 +2326,9 @@ async function refreshOrder(row) {
     }
   }
 
-  syncOverlayTitle.value = '正在刷新订单'
+  syncOverlayTitle.value = t('orders.refreshingOrder')
   syncOverlayFailed.value = false
-  syncProgressLabel.value = '正在连接服务器…'
+  syncProgressLabel.value = t('orders.connectingServer')
   syncOverlayVisible.value = true
   refreshingId.value = row.id
   await pollSyncProgress()
@@ -2329,15 +2341,15 @@ async function refreshOrder(row) {
       data_user: dataUser,
       progress_job_id: progressJobId,
     })
-    ElMessage.success('已从煤炉刷新该订单')
+    ElMessage.success(t('orders.refreshedFromMercari'))
     clearOutboundExpandCache(orderNo)
     load()
     loadStats()
   } catch (e) {
     hadError = true
-    syncOverlayTitle.value = '刷新失败'
+    syncOverlayTitle.value = t('orders.refreshFailed')
     syncOverlayFailed.value = true
-    const msg = e?.response?.data?.detail || e?.message || '刷新失败'
+    const msg = e?.response?.data?.detail || e?.message || t('orders.refreshFailed')
     syncProgressLabel.value = String(msg)
   } finally {
     if (syncProgressTimer != null) {
@@ -2348,7 +2360,7 @@ async function refreshOrder(row) {
       await new Promise((r) => setTimeout(r, 1200))
     }
     syncOverlayVisible.value = false
-    syncOverlayTitle.value = '正在同步'
+    syncOverlayTitle.value = ''
     syncOverlayFailed.value = false
     syncProgressLabel.value = ''
     refreshingId.value = null
@@ -2358,12 +2370,12 @@ async function refreshOrder(row) {
 async function submit() {
   await formRef.value?.validate()
   if (!form.value.id) {
-    ElMessage.warning('未选择订单')
+    ElMessage.warning(t('orders.noOrderSelected'))
     return
   }
   const orderDateSec = localFormStringToUnixSec(form.value.order_date)
   if (orderDateSec == null) {
-    ElMessage.warning('订单时间（order_date）无效，请检查「订单时间」')
+    ElMessage.warning(t('orders.orderDateInvalid'))
     return
   }
   submitting.value = true
@@ -2389,7 +2401,7 @@ async function submit() {
   }
   try {
     await orderApi.update(form.value.id, payload)
-    ElMessage.success('更新成功')
+    ElMessage.success(t('orders.updateSuccess'))
     clearOutboundExpandCache(payload.order_no)
     dialogVisible.value = false
     load()
@@ -2401,7 +2413,7 @@ async function submit() {
 
 async function remove(id) {
   await orderApi.remove(id)
-  ElMessage.success('删除成功')
+  ElMessage.success(t('inventory.deleteSuccess'))
   expandState.value = {}
   if (list.value.length === 1 && page.value > 1) page.value -= 1
   load()

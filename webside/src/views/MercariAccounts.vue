@@ -6,7 +6,7 @@
           <div class="add-card">
             <div class="add-card-main" @click="openCreate">
               <el-icon class="add-card-icon"><Plus /></el-icon>
-              <span>新增账号</span>
+              <span>{{ t('mercariAccounts.addAccount') }}</span>
             </div>
           </div>
         </el-col>
@@ -15,21 +15,21 @@
             <div class="card-header">
               <div class="card-title">{{ row.account_name || '-' }}</div>
               <el-tag :type="row.status === 'active' ? 'success' : 'info'" size="small" effect="light">
-                {{ row.status === 'active' ? '启用' : '停用' }}
+                {{ row.status === 'active' ? t('mercariAccounts.enabled') : t('mercariAccounts.disabled') }}
               </el-tag>
             </div>
-            <div class="card-item"><span>平台：</span>{{ row.value?.x_platform || '-' }}</div>
-            <div class="card-item"><span>卖家ID：</span>{{ row.seller_id || '-' }}</div>
+            <div class="card-item"><span>{{ t('mercariAccounts.platformLabel') }}</span>{{ row.value?.x_platform || '-' }}</div>
+            <div class="card-item"><span>{{ t('mercariAccounts.sellerIdLabel') }}</span>{{ row.seller_id || '-' }}</div>
             <div class="card-item">
-              <span>自动数据获取：</span>
+              <span>{{ t('mercariAccounts.autoFetchLabel') }}</span>
               <template v-if="row.is_open === 1">
-                开启 · {{ fetchIntervalLabel(row.fetch_interval) }}
+                {{ t('mercariAccounts.autoFetchOn') }} · {{ fetchIntervalLabel(row.fetch_interval) }}
                 <template v-if="autoFetchTasksLabel(row)">（{{ autoFetchTasksLabel(row) }}）</template>
-                <template v-if="pauseWindowLabel(row)"> · 暂停 {{ pauseWindowLabel(row) }}</template>
+                <template v-if="pauseWindowLabel(row)"> · {{ t('mercariAccounts.pauseShort') }} {{ pauseWindowLabel(row) }}</template>
               </template>
-              <template v-else>关闭</template>
+              <template v-else>{{ t('mercariAccounts.autoFetchOff') }}</template>
             </div>
-            <div class="card-item"><span>备注：</span>{{ row.remark || '-' }}</div>
+            <div class="card-item"><span>{{ t('mercariAccounts.remarkLabel') }}</span>{{ row.remark || '-' }}</div>
             <div class="card-actions">
               <el-button
                 size="small"
@@ -37,14 +37,14 @@
                 plain
                 :loading="browserLoadingKeys.has(browserKeyFor(row.id))"
                 @click="openBrowserForSavedAccount(row)"
-              >打开浏览器</el-button>
+              >{{ t('mercariAccounts.openBrowser') }}</el-button>
               <el-button
                 size="small"
                 type="success"
                 :loading="syncingIds.has(row.id)"
                 @click="fetchHistory(row)"
-              >获取历史数据</el-button>
-              <el-button size="small" @click="openEdit(row)">编辑</el-button>
+              >{{ t('mercariAccounts.fetchHistory') }}</el-button>
+              <el-button size="small" @click="openEdit(row)">{{ t('common.edit') }}</el-button>
             </div>
           </el-card>
         </el-col>
@@ -66,109 +66,108 @@
 
     <el-dialog
       v-model="dialogVisible"
-      :title="form.id ? '编辑煤炉账号' : '新增煤炉账号'"
+      :title="form.id ? t('mercariAccounts.editDialogTitle') : t('mercariAccounts.addDialogTitle')"
       width="620px"
       top="6vh"
       destroy-on-close
       class="mercari-dialog"
     >
       <p v-if="!form.id" class="form-intro-tip">
-        打开本弹窗时会自动请求启动「新增前登录」浏览器（会话键 mercari_prepare），请在 Edge 中登录
-        jp.mercari.com。账号状态默认为「停用」，填写账号名称等信息后保存即可入库。登录完成后可使用「获取用户信息」完善资料（实现待定）。
+        {{ t('mercariAccounts.formIntroTip') }}
       </p>
       <el-form :model="form" :rules="formRules" ref="formRef" label-width="120px" class="mercari-form">
-        <el-divider content-position="left">基础信息</el-divider>
-        <el-form-item label="账号名称" prop="account_name">
+        <el-divider content-position="left">{{ t('mercariAccounts.sectionBasicInfo') }}</el-divider>
+        <el-form-item :label="t('mercariAccounts.accountNameLabel')" prop="account_name">
           <el-input v-model="form.account_name" maxlength="60" clearable />
         </el-form-item>
-        <el-form-item label="卖家ID" prop="seller_id">
+        <el-form-item :label="t('mercariAccounts.sellerId')" prop="seller_id">
           <el-input
             v-model="form.seller_id"
             maxlength="30"
             clearable
-            placeholder="纯数字，可留空"
+            :placeholder="t('mercariAccounts.sellerIdPlaceholder')"
           >
             <template #append>
               <el-button
                 :loading="fetchSellerIdLoading"
                 @click="fetchSellerIdViaMitm"
-              >获取</el-button>
+              >{{ t('mercariAccounts.fetch') }}</el-button>
             </template>
           </el-input>
           <p class="seller-id-hint">
-            点击「获取」将经 MITM 打开
-            <a href="https://jp.mercari.com/mypage/listings" target="_blank" rel="noopener">出品した商品</a>
-            页，从
+            {{ t('mercariAccounts.sellerIdHintPrefix') }}
+            <a href="https://jp.mercari.com/mypage/listings" target="_blank" rel="noopener">{{ t('mercariAccounts.sellerIdHintLink') }}</a>
+            {{ t('mercariAccounts.sellerIdHintMiddle') }}
             <code>api.mercari.jp/items/get_items</code>
-            （on_sale,stop）请求中解析 seller_id；请先登录对应 Edge 会话。
+            {{ t('mercariAccounts.sellerIdHintSuffix') }}
           </p>
         </el-form-item>
-        <el-form-item label="账号状态" prop="status">
+        <el-form-item :label="t('mercariAccounts.accountStatus')" prop="status">
           <el-select v-model="form.status" style="width: 100%">
             <el-option v-for="item in statusOptions" :key="item.value" :label="item.label" :value="item.value" />
           </el-select>
         </el-form-item>
-        <el-form-item label="备注">
+        <el-form-item :label="t('common.remark')">
           <el-input v-model="form.remark" type="textarea" :rows="2" maxlength="200" show-word-limit />
         </el-form-item>
 
-        <el-divider content-position="left">自动数据获取</el-divider>
+        <el-divider content-position="left">{{ t('mercariAccounts.sectionAutoFetch') }}</el-divider>
         <p class="form-section-hint">
-          开启后由服务端按间隔执行所选任务（与订单页 / 在售页对应按钮同源）。须已配置卖家 ID 且 MITM / 鉴权可用。
+          {{ t('mercariAccounts.autoFetchSectionHint') }}
         </p>
-        <el-form-item label="自动获取" prop="is_open">
+        <el-form-item :label="t('mercariAccounts.autoFetch')" prop="is_open">
           <el-select v-model="form.is_open" style="width: 100%" @change="onAutoFetchToggle">
             <el-option v-for="opt in autoFetchSwitchOptions" :key="opt.value" :label="opt.label" :value="opt.value" />
           </el-select>
         </el-form-item>
         <template v-if="form.is_open === 1">
-          <el-form-item label="同步项">
+          <el-form-item :label="t('mercariAccounts.syncItems')">
             <div class="af-task-checks">
               <el-checkbox
                 v-model="form.auto_fetch_order_list"
                 :true-value="1"
                 :false-value="0"
                 @change="onAutoFetchTaskChange"
-              >订单：更新列表</el-checkbox>
+              >{{ t('mercariAccounts.taskOrderList') }}</el-checkbox>
               <el-checkbox
                 v-model="form.auto_fetch_on_sale"
                 :true-value="1"
                 :false-value="0"
                 @change="onAutoFetchTaskChange"
-              >在售：从煤炉同步</el-checkbox>
+              >{{ t('mercariAccounts.taskOnSale') }}</el-checkbox>
               <el-checkbox
                 v-model="form.auto_fetch_todos"
                 :true-value="1"
                 :false-value="0"
                 @change="onAutoFetchTaskChange"
-              >待办：从煤炉同步</el-checkbox>
+              >{{ t('mercariAccounts.taskTodos') }}</el-checkbox>
               <el-checkbox
                 v-model="form.auto_fetch_notifications"
                 :true-value="1"
                 :false-value="0"
                 @change="onAutoFetchTaskChange"
-              >通知：从煤炉同步</el-checkbox>
+              >{{ t('mercariAccounts.taskNotifications') }}</el-checkbox>
             </div>
           </el-form-item>
-          <el-form-item label="间隔" prop="fetch_interval">
-            <el-select v-model="form.fetch_interval" style="width: 100%" placeholder="请选择间隔" @change="onAutoFetchTaskChange">
+          <el-form-item :label="t('mercariAccounts.interval')" prop="fetch_interval">
+            <el-select v-model="form.fetch_interval" style="width: 100%" :placeholder="t('mercariAccounts.intervalPlaceholder')" @change="onAutoFetchTaskChange">
               <el-option v-for="opt in fetchIntervalOptions" :key="opt.value" :label="opt.label" :value="opt.value" />
             </el-select>
           </el-form-item>
-          <el-form-item label="暂停时间段" prop="pause_window">
+          <el-form-item :label="t('mercariAccounts.pauseRange')" prop="pause_window">
             <div class="af-pause-row">
               <el-time-picker
                 v-model="form.pause_start_time"
-                placeholder="开始（HH:MM）"
+                :placeholder="t('mercariAccounts.pauseStartPlaceholder')"
                 format="HH:mm"
                 value-format="HH:mm"
                 :clearable="true"
                 class="af-pause-picker"
               />
-              <span class="af-pause-sep">至</span>
+              <span class="af-pause-sep">{{ t('common.to') }}</span>
               <el-time-picker
                 v-model="form.pause_end_time"
-                placeholder="结束（HH:MM）"
+                :placeholder="t('mercariAccounts.pauseEndPlaceholder')"
                 format="HH:mm"
                 value-format="HH:mm"
                 :clearable="true"
@@ -176,16 +175,16 @@
               />
             </div>
             <p class="af-pause-hint">
-              24 小时制，该时间段内暂停自动获取；两端均留空则全天执行；结束时间小于开始时间表示跨日（如 22:00 - 08:00）。
+              {{ t('mercariAccounts.pauseHint') }}
             </p>
           </el-form-item>
         </template>
       </el-form>
       <template #footer>
         <div class="mercari-dialog-footer">
-          <el-popconfirm v-if="form.id" title="确认删除该账号？" @confirm="removeFromDialog">
+          <el-popconfirm v-if="form.id" :title="t('mercariAccounts.deleteConfirm')" @confirm="removeFromDialog">
             <template #reference>
-              <el-button type="danger" plain>删除</el-button>
+              <el-button type="danger" plain>{{ t('common.delete') }}</el-button>
             </template>
           </el-popconfirm>
           <div class="mercari-dialog-footer__actions">
@@ -194,10 +193,10 @@
               plain
               :loading="browserLoadingKeys.has(MERCARI_PREPARE_KEY)"
               @click="openPrepareLoginBrowser"
-            >打开登录浏览器</el-button>
-            <el-button v-if="!form.id" plain @click="onFetchUserInfoPlaceholder">获取用户信息</el-button>
-            <el-button @click="dialogVisible = false">取消</el-button>
-            <el-button type="primary" :loading="submitting" @click="submit">保存</el-button>
+            >{{ t('mercariAccounts.openLoginBrowser') }}</el-button>
+            <el-button v-if="!form.id" plain @click="onFetchUserInfoPlaceholder">{{ t('mercariAccounts.fetchUserInfo') }}</el-button>
+            <el-button @click="dialogVisible = false">{{ t('common.cancel') }}</el-button>
+            <el-button type="primary" :loading="submitting" @click="submit">{{ t('common.save') }}</el-button>
           </div>
         </div>
       </template>
@@ -207,9 +206,12 @@
 
 <script setup>
 import { ref, onMounted, nextTick } from 'vue'
+import { useI18n } from 'vue-i18n'
 import { Plus } from '@element-plus/icons-vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { mercariAccountApi, mercariApi, webDriveApi } from '@/api/index.js'
+
+const { t } = useI18n()
 
 const MERCARI_HOME = 'https://jp.mercari.com/'
 
@@ -230,27 +232,27 @@ const dialogVisible = ref(false)
 const formRef = ref()
 
 const statusOptions = [
-  { label: '启用', value: 'active' },
-  { label: '停用', value: 'disabled' },
+  { label: t('mercariAccounts.enabled'), value: 'active' },
+  { label: t('mercariAccounts.disabled'), value: 'disabled' },
 ]
 
 const autoFetchSwitchOptions = [
-  { label: '关闭', value: 0 },
-  { label: '开启', value: 1 },
+  { label: t('mercariAccounts.autoFetchOff'), value: 0 },
+  { label: t('mercariAccounts.autoFetchOn'), value: 1 },
 ]
 
 const fetchIntervalOptions = [
-  { label: '15 分钟', value: '15' },
-  { label: '30 分钟', value: '30' },
-  { label: '1 小时', value: '60' },
-  { label: '3 小时', value: '3h' },
-  { label: '6 小时', value: '6h' },
+  { label: t('mercariAccounts.interval15min'), value: '15' },
+  { label: t('mercariAccounts.interval30min'), value: '30' },
+  { label: t('mercariAccounts.interval1h'), value: '60' },
+  { label: t('mercariAccounts.interval3h'), value: '3h' },
+  { label: t('mercariAccounts.interval6h'), value: '6h' },
 ]
 
 const legacyFetchIntervalLabels = {
-  '10': '10 分钟',
-  '12h': '12 小时',
-  '24h': '24 小时',
+  '10': t('mercariAccounts.interval10min'),
+  '12h': t('mercariAccounts.interval12h'),
+  '24h': t('mercariAccounts.interval24h'),
 }
 
 function fetchIntervalLabel(v) {
@@ -272,11 +274,11 @@ function pauseWindowLabel(row) {
 function autoFetchTasksLabel(row) {
   if (!row || row.is_open !== 1) return ''
   const parts = []
-  if (row.auto_fetch_order_list === 1) parts.push('订单列表')
-  if (row.auto_fetch_on_sale === 1) parts.push('在售同步')
-  if (row.auto_fetch_todos === 1) parts.push('待办同步')
-  if (row.auto_fetch_notifications === 1) parts.push('通知同步')
-  return parts.join('、')
+  if (row.auto_fetch_order_list === 1) parts.push(t('mercariAccounts.taskShortOrderList'))
+  if (row.auto_fetch_on_sale === 1) parts.push(t('mercariAccounts.taskShortOnSale'))
+  if (row.auto_fetch_todos === 1) parts.push(t('mercariAccounts.taskShortTodos'))
+  if (row.auto_fetch_notifications === 1) parts.push(t('mercariAccounts.taskShortNotifications'))
+  return parts.join(t('mercariAccounts.taskJoiner'))
 }
 
 function onAutoFetchToggle() {
@@ -319,7 +321,7 @@ const sellerIdRules = [
     validator(_rule, val, cb) {
       const text = String(val || '').trim()
       if (!text) return cb()
-      if (!/^\d+$/.test(text)) return cb(new Error('卖家ID必须为纯数字'))
+      if (!/^\d+$/.test(text)) return cb(new Error(t('mercariAccounts.errSellerIdDigits')))
       cb()
     },
     trigger: 'blur',
@@ -327,16 +329,16 @@ const sellerIdRules = [
 ]
 
 const formRules = {
-  account_name: [{ required: true, message: '请输入账号名称', trigger: 'blur' }],
+  account_name: [{ required: true, message: t('mercariAccounts.errAccountNameRequired'), trigger: 'blur' }],
   seller_id: sellerIdRules,
-  status: [{ required: true, message: '请选择账号状态', trigger: 'change' }],
-  is_open: [{ required: true, message: '请选择', trigger: 'change' }],
+  status: [{ required: true, message: t('mercariAccounts.errStatusRequired'), trigger: 'change' }],
+  is_open: [{ required: true, message: t('common.selectPlaceholder'), trigger: 'change' }],
   fetch_interval: [
     {
       validator(_rule, val, cb) {
         if (form.value.is_open === 1) {
           if (!val || !String(val).trim()) {
-            cb(new Error('请选择间隔'))
+            cb(new Error(t('mercariAccounts.errIntervalRequired')))
             return
           }
           const anyTask =
@@ -345,7 +347,7 @@ const formRules = {
             form.value.auto_fetch_todos === 1 ||
             form.value.auto_fetch_notifications === 1
           if (!anyTask) {
-            cb(new Error('请至少选择一项同步任务'))
+            cb(new Error(t('mercariAccounts.errPickOneTask')))
             return
           }
         }
@@ -362,11 +364,11 @@ const formRules = {
         const e = String(form.value.pause_end_time || '').trim()
         if (!s && !e) return cb()
         if (!s || !e) {
-          cb(new Error('暂停时间段须同时填写开始与结束时间'))
+          cb(new Error(t('mercariAccounts.errPauseBothRequired')))
           return
         }
         if (s === e) {
-          cb(new Error('暂停开始时间与结束时间不能相同'))
+          cb(new Error(t('mercariAccounts.errPauseSameTime')))
           return
         }
         cb()
@@ -387,7 +389,7 @@ async function load() {
 }
 
 function openPrepareLoginBrowser() {
-  openBrowserByKey(MERCARI_PREPARE_KEY, '新增煤炉账号 · 登录浏览器')
+  openBrowserByKey(MERCARI_PREPARE_KEY, t('mercariAccounts.prepareLoginBrowserLabel'))
 }
 
 function openCreate() {
@@ -410,11 +412,11 @@ async function fetchSellerIdViaMitm() {
   if (fetchSellerIdLoading.value) return
   const accountKey = sellerIdCaptureAccountKey()
   const label = form.value.id
-    ? (form.value.account_name || `账号 #${form.value.id}`)
-    : '新增前登录'
+    ? (form.value.account_name || t('mercariAccounts.accountFallbackLabel', { id: form.value.id }))
+    : t('mercariAccounts.preLoginLabel')
   fetchSellerIdLoading.value = true
   try {
-    ElMessage.info(`正在打开 Edge（${label}）并监听在售列表 API，请稍候…`)
+    ElMessage.info(t('mercariAccounts.tipOpeningEdge', { label }))
     const res = await mercariAccountApi.fetchSellerIdViaMitm({
       account_key: accountKey,
       headless: false,
@@ -422,13 +424,13 @@ async function fetchSellerIdViaMitm() {
     })
     const sid = String(res?.data?.seller_id || '').trim()
     if (!sid) {
-      ElMessage.warning('未解析到卖家 ID')
+      ElMessage.warning(t('mercariAccounts.warnNoSellerIdParsed'))
       return
     }
     form.value.seller_id = sid
     await nextTick()
     formRef.value?.validateField('seller_id').catch(() => {})
-    ElMessage.success(`已填入卖家 ID：${sid}`)
+    ElMessage.success(t('mercariAccounts.msgSellerIdFilled', { sid }))
   } catch {
     /* 错误由 axios 拦截器提示 */
   } finally {
@@ -488,12 +490,12 @@ async function submit() {
   try {
     if (form.value.id) {
       await mercariAccountApi.update(form.value.id, payload)
-      ElMessage.success('更新成功')
+      ElMessage.success(t('mercariAccounts.msgUpdateSuccess'))
       dialogVisible.value = false
       load()
     } else {
       await mercariAccountApi.create(payload)
-      ElMessage.success('新增成功，可在卡片上打开该账号专用浏览器或继续完善资料')
+      ElMessage.success(t('mercariAccounts.msgCreateSuccess'))
       dialogVisible.value = false
       await load()
     }
@@ -504,7 +506,7 @@ async function submit() {
 
 async function remove(id) {
   await mercariAccountApi.remove(id)
-  ElMessage.success('删除成功')
+  ElMessage.success(t('mercariAccounts.msgDeleteSuccess'))
   if (list.value.length === 1 && page.value > 1) page.value -= 1
   load()
 }
@@ -535,12 +537,14 @@ async function openBrowserByKey(accountKey, label) {
     const tr = d.tab_restore || {}
     const tabHint =
       tr.restored && tr.tab_count
-        ? `，已恢复 ${tr.tab_count} 个标签页`
+        ? t('mercariAccounts.tabRestoredHint', { count: tr.tab_count })
         : tr.tab_count
-          ? `，已打开 ${tr.tab_count} 个标签页`
+          ? t('mercariAccounts.tabOpenedHint', { count: tr.tab_count })
           : ''
-    const tip = d.already_running ? `（已在运行${tabHint}）` : `已启动 Edge${tabHint}`
-    ElMessage.success(`${label || accountKey}：${tip}`)
+    const tip = d.already_running
+      ? t('mercariAccounts.browserAlreadyRunning', { tabHint })
+      : t('mercariAccounts.browserStarted', { tabHint })
+    ElMessage.success(`${label || accountKey}${t('mercariAccounts.colon')}${tip}`)
   } catch {
     /* 错误由 axios 拦截器提示 */
   } finally {
@@ -551,14 +555,14 @@ async function openBrowserByKey(accountKey, label) {
 }
 
 function openBrowserForSavedAccount(row) {
-  openBrowserByKey(browserKeyFor(row.id), row.account_name || `账号 #${row.id}`)
+  openBrowserByKey(browserKeyFor(row.id), row.account_name || t('mercariAccounts.accountFallbackLabel', { id: row.id }))
 }
 
 async function fetchHistory(row) {
   if (syncingIds.value.has(row.id)) return
   const sid = String(row.seller_id || '').trim()
   if (!sid) {
-    ElMessage.warning('请先为该账号配置卖家 ID')
+    ElMessage.warning(t('mercariAccounts.warnConfigureSellerIdFirst'))
     return
   }
 
@@ -570,18 +574,18 @@ async function fetchHistory(row) {
   }
   const pre = preRes?.data || {}
   if (!pre.allowed) {
-    ElMessage.warning(pre.message || '该卖家在订单表中已有数据，无法重复获取历史数据')
+    ElMessage.warning(pre.message || t('mercariAccounts.warnHistoryAlreadyExists'))
     return
   }
 
   try {
     await ElMessageBox.confirm(
-      '本地订单库中尚无该卖家的记录。确认从煤炉全量拉取出售中与历史订单？耗时可能较长，请勿关闭页面。',
-      '获取历史数据',
+      t('mercariAccounts.confirmFetchHistoryBody'),
+      t('mercariAccounts.fetchHistory'),
       {
         type: 'warning',
-        confirmButtonText: '确认拉取',
-        cancelButtonText: '取消',
+        confirmButtonText: t('mercariAccounts.confirmFetchBtn'),
+        cancelButtonText: t('common.cancel'),
         distinguishCancelAndClose: true,
       }
     )
@@ -594,7 +598,12 @@ async function fetchHistory(row) {
     const res = await mercariApi.syncOrders({ account_id: row.id })
     const d = res.data || {}
     ElMessage.success(
-      `「${row.account_name}」同步完成：新增 ${d.inserted ?? 0} 条，更新 ${d.updated ?? 0} 条，共 ${d.total_item_count ?? d.total ?? 0} 条`
+      t('mercariAccounts.msgSyncResult', {
+        name: row.account_name,
+        inserted: d.inserted ?? 0,
+        updated: d.updated ?? 0,
+        total: d.total_item_count ?? d.total ?? 0,
+      })
     )
   } finally {
     const next = new Set(syncingIds.value)

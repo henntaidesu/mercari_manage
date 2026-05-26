@@ -391,6 +391,21 @@ class DBManager:
         if self.db.table_exists("products") and not self.db.table_exists("inventory"):
             print("检测到旧表 products，正在迁移为 inventory ...")
             self.db.execute_update("ALTER TABLE [products] RENAME TO [inventory]")
+        # 表重命名迁移：meilu_accounts -> mercari_accounts
+        # 必须在 to_drop 阶段之前执行，否则 meilu_accounts 会被当成"废弃表"删除而丢失数据
+        if self.db.table_exists("meilu_accounts") and not self.db.table_exists("mercari_accounts"):
+            print("检测到旧表 meilu_accounts，正在迁移为 mercari_accounts ...")
+            self.db.execute_update("ALTER TABLE [meilu_accounts] RENAME TO [mercari_accounts]")
+            for legacy_idx in (
+                "idx_meilu_accounts_name",
+                "idx_meilu_accounts_login",
+                "idx_meilu_accounts_seller_id",
+                "idx_meilu_accounts_status",
+            ):
+                try:
+                    self.db.execute_update(f"DROP INDEX IF EXISTS [{legacy_idx}]")
+                except Exception:
+                    pass
         if not self._migrate_transactions_product_id_to_inventory_id():
             return False
         if not self._migrate_ptcm_to_independent_module():

@@ -3,29 +3,29 @@
     <el-card shadow="never" class="search-card">
       <el-row justify="end">
         <el-button type="primary" @click="openDialog()">
-          <el-icon><Plus /></el-icon> 新增映射
+          <el-icon><Plus /></el-icon> {{ t('system.addMapping') }}
         </el-button>
       </el-row>
     </el-card>
 
     <el-card shadow="never" class="table-card">
       <el-table :data="list" v-loading="loading" stripe>
-        <el-table-column label="映射ID" prop="mapping_id" width="100" />
-        <el-table-column label="一级分类" prop="category_level1" min-width="140" />
-        <el-table-column label="一级位置" prop="category_level1_position" width="100" />
-        <el-table-column label="二级分类" prop="category_level2" min-width="140" />
-        <el-table-column label="二级位置" prop="category_level2_position" width="100" />
-        <el-table-column label="三级分类" prop="category_level3" min-width="140" />
-        <el-table-column label="三级位置" prop="category_level3_position" width="100" />
-        <el-table-column label="商品类型" prop="product_type" min-width="180" />
-        <el-table-column label="类型位置" prop="product_type_position" width="100" />
-        <el-table-column label="说明" prop="description" show-overflow-tooltip />
-        <el-table-column label="操作" width="140" fixed="right">
+        <el-table-column :label="t('system.mappingId')" prop="mapping_id" width="100" />
+        <el-table-column :label="t('system.categoryLevel1')" prop="category_level1" min-width="140" />
+        <el-table-column :label="t('system.categoryLevel1Position')" prop="category_level1_position" width="100" />
+        <el-table-column :label="t('system.categoryLevel2')" prop="category_level2" min-width="140" />
+        <el-table-column :label="t('system.categoryLevel2Position')" prop="category_level2_position" width="100" />
+        <el-table-column :label="t('system.categoryLevel3')" prop="category_level3" min-width="140" />
+        <el-table-column :label="t('system.categoryLevel3Position')" prop="category_level3_position" width="100" />
+        <el-table-column :label="t('system.productType')" prop="product_type" min-width="180" />
+        <el-table-column :label="t('system.productTypePosition')" prop="product_type_position" width="100" />
+        <el-table-column :label="t('system.mappingDescription')" prop="description" show-overflow-tooltip />
+        <el-table-column :label="t('common.actions')" width="140" fixed="right">
           <template #default="{ row }">
-            <el-button size="small" @click="openDialog(row)">编辑</el-button>
-            <el-popconfirm title="确认删除该映射？" @confirm="remove(row.mapping_id)">
+            <el-button size="small" @click="openDialog(row)">{{ t('common.edit') }}</el-button>
+            <el-popconfirm :title="t('system.mappingDeleteConfirm')" @confirm="remove(row.mapping_id)">
               <template #reference>
-                <el-button size="small" type="danger">删除</el-button>
+                <el-button size="small" type="danger">{{ t('common.delete') }}</el-button>
               </template>
             </el-popconfirm>
           </template>
@@ -33,66 +33,66 @@
       </el-table>
     </el-card>
 
-    <el-dialog v-model="dialogVisible" :title="form.original_mapping_id ? '编辑映射' : '新增映射'" width="460px" destroy-on-close>
+    <el-dialog v-model="dialogVisible" :title="form.original_mapping_id ? t('system.editMapping') : t('system.addMapping')" width="460px" destroy-on-close>
       <el-form :model="form" :rules="rules" ref="formRef" label-width="90px">
-        <el-form-item label="一级分类" prop="category_level1">
+        <el-form-item :label="t('system.categoryLevel1')" prop="category_level1">
           <div class="inline-fields">
-            <el-input v-model="form.category_level1" placeholder="请输入一级分类（可选）" class="field-main" />
+            <el-input v-model="form.category_level1" :placeholder="t('system.categoryLevel1Placeholder')" class="field-main" />
             <el-input
               :model-value="form.category_level1_position"
               inputmode="numeric"
-              placeholder="位置"
+              :placeholder="t('system.positionPlaceholder')"
               class="field-pos"
               @update:model-value="(v) => { form.category_level1_position = normalizePositionField(v) }"
             />
           </div>
         </el-form-item>
-        <el-form-item label="二级分类" prop="category_level2">
+        <el-form-item :label="t('system.categoryLevel2')" prop="category_level2">
           <div class="inline-fields">
-            <el-input v-model="form.category_level2" placeholder="请输入二级分类（可选）" class="field-main" />
+            <el-input v-model="form.category_level2" :placeholder="t('system.categoryLevel2Placeholder')" class="field-main" />
             <el-input
               :model-value="form.category_level2_position"
               inputmode="numeric"
-              placeholder="位置"
+              :placeholder="t('system.positionPlaceholder')"
               class="field-pos"
               @update:model-value="(v) => { form.category_level2_position = normalizePositionField(v) }"
             />
           </div>
         </el-form-item>
-        <el-form-item label="三级分类" prop="category_level3">
+        <el-form-item :label="t('system.categoryLevel3')" prop="category_level3">
           <div class="inline-fields">
-            <el-input v-model="form.category_level3" placeholder="请输入三级分类（可选）" class="field-main" />
+            <el-input v-model="form.category_level3" :placeholder="t('system.categoryLevel3Placeholder')" class="field-main" />
             <el-input
               :model-value="form.category_level3_position"
               inputmode="numeric"
-              placeholder="位置"
+              :placeholder="t('system.positionPlaceholder')"
               class="field-pos"
               @update:model-value="(v) => { form.category_level3_position = normalizePositionField(v) }"
             />
           </div>
         </el-form-item>
-        <el-form-item label="商品类型" prop="product_type">
+        <el-form-item :label="t('system.productType')" prop="product_type">
           <div class="inline-fields">
-            <el-input v-model="form.product_type" placeholder="请输入商品类型（如：手办、卡牌）" class="field-main" />
+            <el-input v-model="form.product_type" :placeholder="t('system.productTypePlaceholder')" class="field-main" />
             <el-input
               :model-value="form.product_type_position"
               inputmode="numeric"
-              placeholder="位置"
+              :placeholder="t('system.positionPlaceholder')"
               class="field-pos"
               @update:model-value="(v) => { form.product_type_position = normalizePositionField(v) }"
             />
           </div>
         </el-form-item>
-        <el-form-item label="映射ID" prop="mapping_id">
-          <el-input v-model="form.mapping_id" placeholder="请输入映射ID" />
+        <el-form-item :label="t('system.mappingId')" prop="mapping_id">
+          <el-input v-model="form.mapping_id" :placeholder="t('system.mappingIdPlaceholder')" />
         </el-form-item>
-        <el-form-item label="说明">
-          <el-input v-model="form.description" type="textarea" :rows="3" placeholder="可选说明" />
+        <el-form-item :label="t('system.mappingDescription')">
+          <el-input v-model="form.description" type="textarea" :rows="3" :placeholder="t('system.descriptionPlaceholder')" />
         </el-form-item>
       </el-form>
       <template #footer>
-        <el-button @click="dialogVisible = false">取消</el-button>
-        <el-button type="primary" @click="submit" :loading="submitting">保存</el-button>
+        <el-button @click="dialogVisible = false">{{ t('common.cancel') }}</el-button>
+        <el-button type="primary" @click="submit" :loading="submitting">{{ t('common.save') }}</el-button>
       </template>
     </el-dialog>
   </div>
@@ -100,8 +100,11 @@
 
 <script setup>
 import { ref, onMounted } from 'vue'
+import { useI18n } from 'vue-i18n'
 import { ElMessage } from 'element-plus'
 import { productTypeCategoryMappingApi } from '@/api/index.js'
+
+const { t } = useI18n()
 
 const list = ref([])
 const loading = ref(false)
@@ -122,8 +125,8 @@ const form = ref({
   description: ''
 })
 const rules = {
-  product_type: [{ required: true, message: '请输入商品类型', trigger: 'blur' }],
-  mapping_id: [{ required: true, message: '请输入映射ID', trigger: 'blur' }],
+  product_type: [{ required: true, message: t('system.productTypeRequired'), trigger: 'blur' }],
+  mapping_id: [{ required: true, message: t('system.mappingIdRequired'), trigger: 'blur' }],
 }
 
 const POSITION_MIN = 1
@@ -207,7 +210,7 @@ async function submit() {
     }
     if (form.value.original_mapping_id) await productTypeCategoryMappingApi.update(form.value.original_mapping_id, payload)
     else await productTypeCategoryMappingApi.create(payload)
-    ElMessage.success('保存成功')
+    ElMessage.success(t('inventory.saveSuccess'))
     dialogVisible.value = false
     load()
   } finally {
@@ -217,7 +220,7 @@ async function submit() {
 
 async function remove(id) {
   await productTypeCategoryMappingApi.remove(id)
-  ElMessage.success('删除成功')
+  ElMessage.success(t('inventory.deleteSuccess'))
   load()
 }
 

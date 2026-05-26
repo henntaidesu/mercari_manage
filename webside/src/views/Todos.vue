@@ -5,13 +5,13 @@
         <el-col :xs="24" :md="16" class="search-left-group">
           <el-input
             v-model="filters.keyword"
-            placeholder="搜索标题 / 消息 / 商品 ID / 商品名"
+            :placeholder="t('todos.searchPlaceholder')"
             clearable
             @change="onFilterChange"
           />
           <el-select
             v-model="filters.account_id"
-            placeholder="账号"
+            :placeholder="t('todos.accountPlaceholder')"
             clearable
             filterable
             style="min-width: 200px"
@@ -26,7 +26,7 @@
           </el-select>
           <el-select
             v-model="filters.kind"
-            placeholder="类型"
+            :placeholder="t('todos.todoType')"
             clearable
             filterable
             style="min-width: 200px"
@@ -40,13 +40,13 @@
             />
           </el-select>
           <el-checkbox v-model="filters.include_deleted" @change="onFilterChange">
-            含已完成
+            {{ t('todos.includeDone') }}
           </el-checkbox>
         </el-col>
         <el-col :xs="24" :md="8" class="search-actions">
           <el-select
             v-model="globalAccountId"
-            placeholder="选择煤炉账号"
+            :placeholder="t('todos.selectMercariAccount')"
             filterable
             class="sync-account-select"
             :loading="mercariAccountStore.loading"
@@ -59,7 +59,7 @@
             />
           </el-select>
           <el-button type="primary" :icon="Download" :loading="syncLoading" @click="runSync">
-            从煤炉同步
+            {{ t('todos.syncFromMercari') }}
           </el-button>
         </el-col>
       </el-row>
@@ -67,7 +67,7 @@
 
     <el-card shadow="never" class="table-card">
       <el-table :data="list" v-loading="loading" stripe row-key="id">
-        <el-table-column label="图" width="80" align="center" header-align="center">
+        <el-table-column :label="t('todos.colImage')" width="80" align="center" header-align="center">
           <template #default="{ row }">
             <el-image
               v-if="row.photo_url"
@@ -87,16 +87,16 @@
           </template>
         </el-table-column>
 
-        <el-table-column label="类型" width="140" align="center" header-align="center">
+        <el-table-column :label="t('todos.todoType')" width="140" align="center" header-align="center">
           <template #default="{ row }">
             <el-tag :type="kindTagType(row.kind)" size="small" effect="light">
               {{ kindLabel(row.kind) }}
             </el-tag>
-            <div v-if="row.is_delete" class="row-tag-done">已完成</div>
+            <div v-if="row.is_delete" class="row-tag-done">{{ t('todos.done') }}</div>
           </template>
         </el-table-column>
 
-        <el-table-column label="标题 / 消息" min-width="320" align="left" header-align="center">
+        <el-table-column :label="t('todos.colTitleMessage')" min-width="320" align="left" header-align="center">
           <template #default="{ row }">
             <div v-if="row.title" class="cell-title">{{ row.title }}</div>
             <div class="cell-message">{{ row.message || '-' }}</div>
@@ -109,7 +109,7 @@
           </template>
         </el-table-column>
 
-        <el-table-column label="买家" width="160" align="center" header-align="center">
+        <el-table-column :label="t('orders.buyer')" width="160" align="center" header-align="center">
           <template #default="{ row }">
             <div v-if="buyerNameFromMessage(row.message)" class="cell-buyer">{{ buyerNameFromMessage(row.message) }}</div>
             <div v-if="row.sender_id" class="cell-sender-id">ID: {{ row.sender_id }}</div>
@@ -117,22 +117,22 @@
           </template>
         </el-table-column>
 
-        <el-table-column label="时间" width="170" align="center" header-align="center">
+        <el-table-column :label="t('common.time')" width="170" align="center" header-align="center">
           <template #default="{ row }">
             <div>{{ displayTs(row.mercari_updated || row.mercari_created) }}</div>
-            <div v-if="row.synced_at" class="cell-muted-sm">同步: {{ displayTs(row.synced_at) }}</div>
+            <div v-if="row.synced_at" class="cell-muted-sm">{{ t('common.sync') }}: {{ displayTs(row.synced_at) }}</div>
           </template>
         </el-table-column>
 
-        <el-table-column label="账号" width="140" align="center" header-align="center">
+        <el-table-column :label="t('onSaleItems.account')" width="140" align="center" header-align="center">
           <template #default="{ row }">
             <span>{{ row.account_name || `#${row.account_id}` }}</span>
           </template>
         </el-table-column>
 
-        <el-table-column label="操作" width="90" align="center" header-align="center" fixed="right">
+        <el-table-column :label="t('common.operate')" width="90" align="center" header-align="center" fixed="right">
           <template #default="{ row }">
-            <el-button type="primary" link size="small" @click="onProcess(row)">处理</el-button>
+            <el-button type="primary" link size="small" @click="onProcess(row)">{{ t('todos.process') }}</el-button>
           </template>
         </el-table-column>
       </el-table>
@@ -153,7 +153,7 @@
 <!-- 交易详情面板：通用的「煤炉数据 → 管理软件」表单 -->
     <el-dialog
       v-model="detailDialogVisible"
-      :title="`交易详情  ${detail.item_id || ''}`"
+      :title="`${t('todos.transactionDetail')}  ${detail.item_id || ''}`"
       width="1080px"
       :close-on-click-modal="false"
       destroy-on-close
@@ -161,10 +161,10 @@
     >
       <template #header="{ titleId, titleClass }">
         <div class="detail-header">
-          <span :id="titleId" :class="titleClass">交易详情 <code>{{ detail.item_id || '-' }}</code></span>
+          <span :id="titleId" :class="titleClass">{{ t('todos.transactionDetail') }} <code>{{ detail.item_id || '-' }}</code></span>
           <div class="detail-header-actions">
-            <el-button size="small" :loading="detailLoading" @click="onDetailRefresh">刷新抓取</el-button>
-            <el-button size="small" type="primary" link @click="onOpenMercariPage">打开煤炉页 ↗</el-button>
+            <el-button size="small" :loading="detailLoading" @click="onDetailRefresh">{{ t('todos.refreshFetch') }}</el-button>
+            <el-button size="small" type="primary" link @click="onOpenMercariPage">{{ t('todos.openMercariPage') }}</el-button>
           </div>
         </div>
       </template>
@@ -173,20 +173,20 @@
         <!-- 左栏：商品 / 发送元 / 买家 / 发货 -->
         <div class="detail-col detail-col-left">
           <section class="detail-section">
-            <div class="detail-section-title">商品</div>
+            <div class="detail-section-title">{{ t('todos.section.product') }}</div>
             <div class="detail-row">
-              <div class="detail-label">商品名</div>
+              <div class="detail-label">{{ t('orders.itemName') }}</div>
               <div class="detail-value">
                 <el-input
                   v-model="detail.product_name"
                   size="default"
-                  placeholder="（待抓取或输入商品名）"
+                  :placeholder="t('todos.productNamePlaceholder')"
                   clearable
                 />
               </div>
             </div>
             <div class="detail-row">
-              <div class="detail-label">商品 ID</div>
+              <div class="detail-label">{{ t('todos.productId') }}</div>
               <div class="detail-value">
                 <el-link :href="mercariItemUrl(detail.item_id)" target="_blank" type="primary" :underline="false">
                   {{ detail.item_id || dash }}
@@ -206,13 +206,13 @@
           </section>
 
           <section class="detail-section">
-            <div class="detail-section-title">发送元</div>
+            <div class="detail-section-title">{{ t('todos.section.sender') }}</div>
             <div v-if="detail.sender_address" class="detail-block">{{ detail.sender_address }}</div>
-            <div v-else class="detail-empty">待抓取</div>
+            <div v-else class="detail-empty">{{ t('todos.toFetch') }}</div>
           </section>
 
           <section class="detail-section">
-            <div class="detail-section-title">买家</div>
+            <div class="detail-section-title">{{ t('orders.buyer') }}</div>
             <div class="detail-buyer">
               <div class="detail-buyer-name">{{ detail.buyer_name || dash }}</div>
               <el-tag v-if="detail.buyer_verified" type="success" size="small" effect="light">本人確認済</el-tag>
@@ -221,9 +221,9 @@
           </section>
 
           <section v-if="!isReviewedSeller" class="detail-section">
-            <div class="detail-section-title">发货</div>
+            <div class="detail-section-title">{{ t('todos.section.shipping') }}</div>
             <div class="detail-shipping-status">
-              <span class="detail-label">当前状态</span>
+              <span class="detail-label">{{ t('todos.currentStatus') }}</span>
               <span class="detail-value">{{ detail.current_shipping_status || dash }}</span>
             </div>
             <div class="detail-shipping-actions">
@@ -232,17 +232,17 @@
                 :disabled="!detail.has_size_location_btn"
                 @click="onClickShippingSizeLocation"
               >
-                选择商品尺寸与发货地
+                {{ t('todos.pickSizeAndLocation') }}
               </el-button>
               <el-button
                 size="default"
                 :disabled="!detail.has_change_method_btn"
                 @click="onClickShippingChangeMethod"
               >
-                修改发货方式
+                {{ t('todos.changeShippingMethod') }}
               </el-button>
             </div>
-            <div class="detail-empty-hint">两个按钮根据煤炉页面实际可见状态启用；抓取前默认禁用。</div>
+            <div class="detail-empty-hint">{{ t('todos.shippingButtonsHint') }}</div>
           </section>
         </div>
 
@@ -252,7 +252,7 @@
           <section v-if="isReviewedSeller" class="detail-section detail-section-grow">
             <div class="detail-section-title">取引評価</div>
             <div class="detail-empty-hint" style="margin-bottom: 10px">
-              煤炉页面 ｢良かった｣ 默认已选中；填写评价后点提交即可（自动点 ｢購入者を評価して取引完了する｣）。
+              {{ t('todos.reviewHint') }}
             </div>
             <el-input
               v-model="detail.review_draft"
@@ -263,7 +263,7 @@
               show-word-limit
             />
             <div class="detail-reply-actions">
-              <el-button size="small" @click="onResetReviewDefault">默认评价</el-button>
+              <el-button size="small" @click="onResetReviewDefault">{{ t('todos.defaultReview') }}</el-button>
               <el-button
                 size="small"
                 type="primary"
@@ -271,21 +271,21 @@
                 :disabled="!detail.review_draft || !detail.review_draft.trim()"
                 @click="onSubmitReview"
               >
-                提交评价并完成取引
+                {{ t('todos.submitReviewFinish') }}
               </el-button>
             </div>
           </section>
 
           <!-- 消息 / 交流（默认） -->
           <section v-else class="detail-section detail-section-grow">
-            <div class="detail-section-title">消息 / 交流</div>
+            <div class="detail-section-title">{{ t('todos.section.messages') }}</div>
             <div v-if="detail.messages && detail.messages.length" class="detail-messages">
               <div
                 v-for="(m, i) in detail.messages"
                 :key="m.id || `idx-${i}`"
                 :class="['detail-msg', m.is_buyer ? 'detail-msg-buyer' : 'detail-msg-self']"
               >
-                <div v-if="m.from" class="detail-msg-from">{{ m.from }}<span v-if="!m.is_buyer" class="detail-msg-tag-self">（卖家）</span></div>
+                <div v-if="m.from" class="detail-msg-from">{{ m.from }}<span v-if="!m.is_buyer" class="detail-msg-tag-self">{{ t('todos.sellerTag') }}</span></div>
                 <div class="detail-msg-text">{{ m.text }}</div>
                 <div class="detail-msg-footer">
                   <span v-if="m.at" class="detail-msg-at">{{ m.at }}</span>
@@ -334,7 +334,7 @@
                 </div>
               </div>
             </div>
-            <div v-else class="detail-empty">待抓取</div>
+            <div v-else class="detail-empty">{{ t('todos.toFetch') }}</div>
 
             <div class="detail-reply">
               <el-input
@@ -344,7 +344,7 @@
                 placeholder="なにか分からないことがあれば質問してみましょう。"
               />
               <div class="detail-reply-actions">
-                <el-button size="small" @click="onResetReplyDefault">默认回复</el-button>
+                <el-button size="small" @click="onResetReplyDefault">{{ t('todos.defaultReply') }}</el-button>
                 <el-button
                   size="small"
                   type="primary"
@@ -352,7 +352,7 @@
                   :disabled="!detail.reply_draft || !detail.reply_draft.trim()"
                   @click="onSendReply"
                 >
-                  发送回复
+                  {{ t('todos.sendReply') }}
                 </el-button>
               </div>
             </div>
@@ -361,22 +361,22 @@
       </div>
 
       <template #footer>
-        <el-button @click="detailDialogVisible = false">关闭</el-button>
-        <el-button type="primary" :disabled="detailLoading" @click="onDetailSubmit">完成处理</el-button>
+        <el-button @click="detailDialogVisible = false">{{ t('common.close') }}</el-button>
+        <el-button type="primary" :disabled="detailLoading" @click="onDetailSubmit">{{ t('todos.finishProcess') }}</el-button>
       </template>
     </el-dialog>
 
     <!-- 选择商品尺寸：纯前端硬编码列表，按当前配送方式区分 -->
     <el-dialog
       v-model="shippingDialogVisible"
-      title="选择商品尺寸"
+      :title="t('todos.pickShippingSize')"
       width="780px"
       :close-on-click-modal="false"
       destroy-on-close
     >
       <div class="shipping-dialog-hint">
-        当前配送方式：<strong>{{ detail.shipping_method_name || '未识别' }}</strong>
-        ；选择尺寸后我们会在浏览器内自动点击对应项 + 「選択して次へ」，发货地请在浏览器内继续选。
+        {{ t('todos.currentShippingMethod') }}<strong>{{ detail.shipping_method_name || t('todos.unidentified') }}</strong>
+        {{ t('todos.shippingPickHint') }}
       </div>
       <el-radio-group v-if="shippingOptions.length" v-model="shippingPickedIdx" class="ship-radio-group">
         <div
@@ -402,11 +402,11 @@
               :key="`cv-${ci}`"
               class="ship-card-caveat"
             >{{ c }}</div>
-            <div v-if="opt.auto_finish_no_facility" class="ship-card-note">無需選擇発送地（直接完了）</div>
+            <div v-if="opt.auto_finish_no_facility" class="ship-card-note">{{ t('todos.noFacilityNeeded') }}</div>
           </div>
         </div>
       </el-radio-group>
-      <div v-else class="detail-empty">无可用尺寸列表</div>
+      <div v-else class="detail-empty">{{ t('todos.noSizeList') }}</div>
 
       <div v-if="shippingNeedsFacility" class="ship-facility-section">
         <div class="ship-facility-title">発送地</div>
@@ -416,14 +416,14 @@
         </el-radio-group>
       </div>
       <template #footer>
-        <el-button @click="shippingDialogVisible = false">取消</el-button>
+        <el-button @click="shippingDialogVisible = false">{{ t('common.cancel') }}</el-button>
         <el-button
           type="primary"
           :disabled="shippingPickedIdx == null"
           :loading="shippingConfirmLoading"
           @click="onConfirmShippingSelection"
         >
-          确认并发送
+          {{ t('todos.confirmAndSend') }}
         </el-button>
       </template>
     </el-dialog>
@@ -439,7 +439,7 @@
         <div class="todos-sync-overlay__box">
           <el-icon class="is-loading todos-sync-overlay__icon" :size="40"><Loading /></el-icon>
           <div class="todos-sync-overlay__title">{{ syncOverlayTitle }}</div>
-          <div class="todos-sync-overlay__step">{{ syncProgressLabel || '请稍候…' }}</div>
+          <div class="todos-sync-overlay__step">{{ syncProgressLabel || t('todos.pleaseWait') }}</div>
         </div>
       </div>
     </teleport>
@@ -450,12 +450,15 @@
 
 <script setup>
 import { computed, onBeforeUnmount, onMounted, reactive, ref } from 'vue'
+import { useI18n } from 'vue-i18n'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { Download, Loading } from '@element-plus/icons-vue'
 import { todosApi, mercariAccountApi } from '@/api'
 import { useMercariAccountStore } from '@/stores/mercariAccount.js'
 import { useSyncOverlay } from '@/composables/useSyncOverlay'
 import SyncOverlay from '@/components/SyncOverlay.vue'
+
+const { t } = useI18n()
 
 // 交易详情类「浏览器自动化」操作的等待覆盖（与 syncOverlay*（从煤炉同步）独立）
 const txOverlay = useSyncOverlay()
@@ -467,13 +470,13 @@ const globalAccountId = computed({
   set: (v) => mercariAccountStore.setSelected(v),
 })
 
-const KIND_LABELS = {
-  WaitShippingCard: '待发货',
-  WaitShippingPoint: '待发货',
-  TransactionWaitShippingFunds: '待发货',
-  MerpayRealcardWaitActivation: 'Merpay 卡激活',
-  ReviewedSeller: '待评价',
-  IncomingMessage: '待回复',
+const KIND_LABEL_KEYS = {
+  WaitShippingCard: 'todos.kind.waitShipping',
+  WaitShippingPoint: 'todos.kind.waitShipping',
+  TransactionWaitShippingFunds: 'todos.kind.waitShipping',
+  MerpayRealcardWaitActivation: 'todos.kind.merpayActivation',
+  ReviewedSeller: 'todos.kind.waitReview',
+  IncomingMessage: 'todos.kind.waitReply',
 }
 
 const DEFAULT_REPLY = 'ご購入いただきありがとうございます。これから発送の準備をさせていただきます。設定した期日内に発送予定ですので今しばらくお待ちください。取引終了までよろしくお願いいたします。'
@@ -601,7 +604,7 @@ const syncLoading = ref(false)
 
 /** 「从煤炉同步」全屏等待与步骤文案（与后端 progress_job_id 轮询同步） */
 const syncOverlayVisible = ref(false)
-const syncOverlayTitle = ref('正在从煤炉同步')
+const syncOverlayTitle = ref(t('todos.syncingFromMercari'))
 const syncOverlayFailed = ref(false)
 const syncProgressLabel = ref('')
 let syncProgressTimer = null
@@ -707,7 +710,7 @@ async function load() {
     list.value = res?.items || []
     total.value = Number(res?.total || 0)
   } catch (e) {
-    ElMessage.error(e?.message || '加载失败')
+    ElMessage.error(e?.message || t('todos.loadFailed'))
   } finally {
     loading.value = false
   }
@@ -755,15 +758,15 @@ async function runSync() {
   if (syncLoading.value) return
   const aid = mercariAccountStore.selectedId
   if (!aid) {
-    ElMessage.warning('请先在右上角选择煤炉账号')
+    ElMessage.warning(t('todos.pleasePickAccountFirst'))
     return
   }
   const name = mercariAccountStore.selectedAccountName || `#${aid}`
   try {
     await ElMessageBox.confirm(
-      `将使用账号「${name}」从煤炉同步待办事项，是否继续？`,
-      '确认同步',
-      { type: 'info', confirmButtonText: '开始', cancelButtonText: '取消' },
+      t('todos.syncConfirmMessage', { name }),
+      t('todos.syncConfirmTitle'),
+      { type: 'info', confirmButtonText: t('todos.start'), cancelButtonText: t('common.cancel') },
     )
   } catch {
     return
@@ -792,9 +795,9 @@ async function runSync() {
     }
   }
 
-  syncOverlayTitle.value = '正在从煤炉同步'
+  syncOverlayTitle.value = t('todos.syncingFromMercari')
   syncOverlayFailed.value = false
-  syncProgressLabel.value = '正在连接服务器…'
+  syncProgressLabel.value = t('todos.connectingServer')
   syncOverlayVisible.value = true
   syncLoading.value = true
   await pollSyncProgress()
@@ -804,18 +807,22 @@ async function runSync() {
   try {
     const d = (await todosApi.sync({ account_id: aid, progress_job_id: progressJobId })) || {}
     ElMessageBox.alert(
-      `账号 #${d.account_id ?? '-'} 同步完成：` +
-        `新增 ${d.inserted ?? 0} 条，更新 ${d.updated ?? 0} 条，` +
-        `标记完成 ${d.marked_deleted ?? 0} 条，共抓取 ${d.total ?? 0} 条。`,
-      '同步结果',
-      { type: 'success', confirmButtonText: '确定' },
+      t('todos.syncResultMessage', {
+        accountId: d.account_id ?? '-',
+        inserted: d.inserted ?? 0,
+        updated: d.updated ?? 0,
+        markedDone: d.marked_deleted ?? 0,
+        total: d.total ?? 0,
+      }),
+      t('todos.syncResultTitle'),
+      { type: 'success', confirmButtonText: t('dialog.confirmBtn') },
     )
     await Promise.all([load(), loadKindOptions()])
   } catch (e) {
     syncHadError = true
-    syncOverlayTitle.value = '同步失败'
+    syncOverlayTitle.value = t('todos.syncFailed')
     syncOverlayFailed.value = true
-    const msg = e?.response?.data?.detail || e?.message || '同步失败'
+    const msg = e?.response?.data?.detail || e?.message || t('todos.syncFailed')
     syncProgressLabel.value = String(msg)
     ElMessage.error(msg)
   } finally {
@@ -827,7 +834,7 @@ async function runSync() {
       await new Promise((r) => setTimeout(r, 1200))
     }
     syncOverlayVisible.value = false
-    syncOverlayTitle.value = '正在从煤炉同步'
+    syncOverlayTitle.value = t('todos.syncingFromMercari')
     syncOverlayFailed.value = false
     syncProgressLabel.value = ''
     syncLoading.value = false
@@ -836,7 +843,8 @@ async function runSync() {
 
 function kindLabel(kind) {
   if (!kind) return '-'
-  return KIND_LABELS[kind] || kind
+  const key = KIND_LABEL_KEYS[kind]
+  return key ? t(key) : kind
 }
 
 function kindTagType(kind) {
@@ -875,20 +883,20 @@ function onProcess(row) {
 async function onDetailRefresh() {
   if (!currentRow.value?.id) return
   if (!currentRow.value?.item_id) {
-    ElMessage.warning('该待办无关联 item_id，无法打开交易页')
+    ElMessage.warning(t('todos.noItemIdInTodo'))
     return
   }
   detailLoading.value = true
   try {
     const d = await txOverlay.run({
-      title: '正在拉取交易详情',
+      title: t('todos.fetchingDetail'),
       consoleTag: '[交易详情]',
       pollFn: (jobId) => todosApi.getSyncProgress(jobId),
       actionFn: (jobId) =>
         todosApi.fetchTransactionDetail(currentRow.value.id, { progress_job_id: jobId }),
     })
     if (!d || typeof d !== 'object') {
-      ElMessage.warning('未拿到交易页数据')
+      ElMessage.warning(t('todos.noDetailData'))
       return
     }
     // 合并抓取结果；本地预填的字段（item_id/photo_url 等）保留
@@ -896,10 +904,10 @@ async function onDetailRefresh() {
     // 部分字段可能为 null，避免覆盖本地预填值
     if (merged.buyer_name == null) delete merged.buyer_name
     Object.assign(detail, merged)
-    ElMessage.success('交易页数据已抓取')
+    ElMessage.success(t('todos.detailFetched'))
   } catch (e) {
     // axios 拦截器已弹错误；此处保留兜底
-    if (!e?.response) ElMessage.error(e?.message || '抓取失败')
+    if (!e?.response) ElMessage.error(e?.message || t('todos.fetchFailed'))
   } finally {
     detailLoading.value = false
   }
@@ -908,7 +916,7 @@ async function onDetailRefresh() {
 function onOpenMercariPage() {
   const iid = String(detail.item_id || '').trim()
   if (!iid) {
-    ElMessage.warning('无 item_id，无法打开')
+    ElMessage.warning(t('todos.noItemIdCannotOpen'))
     return
   }
   window.open(`https://jp.mercari.com/transaction/${iid}`, '_blank', 'noopener')
@@ -919,14 +927,14 @@ async function onClickShippingSizeLocation() {
   // 先点开页面上的「商品サイズと発送場所を選択する」让浏览器跳到尺寸选择页
   try {
     await txOverlay.run({
-      title: '正在打开「商品サイズと発送場所」选择',
+      title: t('todos.openingSizeSelection'),
       consoleTag: '[尺寸选择]',
       pollFn: (jobId) => todosApi.getSyncProgress(jobId),
       actionFn: (jobId) =>
         todosApi.startShippingClass(currentRow.value.id, { progress_job_id: jobId }),
     })
   } catch (e) {
-    if (!e?.response) ElMessage.error(e?.message || '打开尺寸选择页失败')
+    if (!e?.response) ElMessage.error(e?.message || t('todos.openSizePageFailed'))
     return
   }
   shippingPickedIdx.value = null
@@ -943,13 +951,13 @@ async function onConfirmShippingSelection() {
   const classText = opt.name
   const needsFacility = !opt.auto_finish_no_facility
   if (needsFacility && !shippingFacility.value) {
-    ElMessage.warning('请选择发货地（郵便局 / ローソン）')
+    ElMessage.warning(t('todos.pickFacility'))
     return
   }
   shippingConfirmLoading.value = true
   try {
     await txOverlay.run({
-      title: '正在确认发货尺寸与发货地',
+      title: t('todos.confirmingShipping'),
       consoleTag: '[发货确认]',
       pollFn: (jobId) => todosApi.getSyncProgress(jobId),
       actionFn: (jobId) =>
@@ -959,11 +967,11 @@ async function onConfirmShippingSelection() {
           progress_job_id: jobId,
         }),
     })
-    ElMessage.success(`「${classText}」 已完成发货设定`)
+    ElMessage.success(t('todos.shippingDone', { classText }))
     shippingDialogVisible.value = false
     onDetailRefresh()
   } catch (e) {
-    if (!e?.response) ElMessage.error(e?.message || '提交失败')
+    if (!e?.response) ElMessage.error(e?.message || t('todos.submitFailed'))
   } finally {
     shippingConfirmLoading.value = false
   }
@@ -973,22 +981,22 @@ async function onClickShippingChangeMethod() {
   if (!currentRow.value?.id) return
   try {
     await txOverlay.run({
-      title: '正在点击「発送方法を変更する」',
+      title: t('todos.clickingChangeMethod'),
       consoleTag: '[修改发送方式]',
       pollFn: (jobId) => todosApi.getSyncProgress(jobId),
       actionFn: (jobId) =>
         todosApi.changeShippingMethod(currentRow.value.id, { progress_job_id: jobId }),
     })
-    ElMessage.success('已在浏览器内点击「発送方法を変更する」，请在浏览器页面继续操作')
+    ElMessage.success(t('todos.changeMethodClicked'))
   } catch (e) {
-    if (!e?.response) ElMessage.error(e?.message || '点击失败')
+    if (!e?.response) ElMessage.error(e?.message || t('todos.clickFailed'))
   }
 }
 
 
 function onDetailSubmit() {
   // TODO: 完成处理 → 本地标完成 + 关闭面板（具体动作待定）
-  ElMessage.info('完成处理动作待定')
+  ElMessage.info(t('todos.finishActionPending'))
 }
 
 function onResetReplyDefault() {
@@ -999,13 +1007,13 @@ async function onSendReply() {
   if (!currentRow.value?.id) return
   const text = (detail.reply_draft || '').trim()
   if (!text) {
-    ElMessage.warning('回复内容不能为空')
+    ElMessage.warning(t('todos.replyEmpty'))
     return
   }
   replyLoading.value = true
   try {
     const result = await txOverlay.run({
-      title: '正在发送取引消息',
+      title: t('todos.sendingMessage'),
       consoleTag: '[发送回复]',
       pollFn: (jobId) => todosApi.getSyncProgress(jobId),
       actionFn: (jobId) =>
@@ -1013,16 +1021,16 @@ async function onSendReply() {
     })
     if (result?.completed) {
       // 待回复（IncomingMessage）：后端已软删 + 关浏览器，前端关 dialog + 刷列表
-      ElMessage.success('已回复，浏览器已关闭，待办已完成')
+      ElMessage.success(t('todos.repliedDone'))
       detailDialogVisible.value = false
       load()
     } else {
-      ElMessage.success('已点击煤炉发送按钮')
+      ElMessage.success(t('todos.sendButtonClicked'))
       // 普通发送：刷新一次抓取让消息流更新
       onDetailRefresh()
     }
   } catch (e) {
-    if (!e?.response) ElMessage.error(e?.message || '发送失败')
+    if (!e?.response) ElMessage.error(e?.message || t('todos.sendFailed'))
   } finally {
     replyLoading.value = false
   }
@@ -1036,13 +1044,13 @@ async function onSubmitReview() {
   if (!currentRow.value?.id) return
   const text = (detail.review_draft || '').trim()
   if (!text) {
-    ElMessage.warning('评价内容不能为空')
+    ElMessage.warning(t('todos.reviewEmpty'))
     return
   }
   reviewLoading.value = true
   try {
     const result = await txOverlay.run({
-      title: '正在提交取引评价',
+      title: t('todos.submittingReview'),
       consoleTag: '[提交评价]',
       pollFn: (jobId) => todosApi.getSyncProgress(jobId),
       actionFn: (jobId) =>
@@ -1050,17 +1058,17 @@ async function onSubmitReview() {
     })
     if (result?.completed) {
       const note = result.order_refresh_error
-        ? `（订单信息刷新失败：${result.order_refresh_error}）`
+        ? t('todos.orderRefreshErrorNote', { error: result.order_refresh_error })
         : ''
-      ElMessage.success(`检测到「取引が完了しました」，已关闭浏览器并刷新订单状态${note}`)
+      ElMessage.success(`${t('todos.transactionCompletedDetected')}${note}`)
       // 浏览器已由后端关闭；这里关 dialog（onDetailDialogClose 里的 closeBrowser 是幂等的）
       detailDialogVisible.value = false
       load() // 刷新待办列表（todo 已软删，列表中应消失）
     } else {
-      ElMessage.warning('已提交但未检测到「取引が完了しました」，请在浏览器内手动确认')
+      ElMessage.warning(t('todos.submittedNoComplete'))
     }
   } catch (e) {
-    if (!e?.response) ElMessage.error(e?.message || '提交失败')
+    if (!e?.response) ElMessage.error(e?.message || t('todos.submitFailed'))
   } finally {
     reviewLoading.value = false
   }
@@ -1077,13 +1085,13 @@ async function onSendReaction(message, reactionKey) {
     return m === message
   })
   if (reactionIndex < 0) {
-    ElMessage.error('未能定位目标消息')
+    ElMessage.error(t('todos.locateMsgFailed'))
     return
   }
   reactionLoading.value = true
   try {
     await txOverlay.run({
-      title: '正在发送反应表情',
+      title: t('todos.sendingReaction'),
       consoleTag: '[发送反应]',
       pollFn: (jobId) => todosApi.getSyncProgress(jobId),
       actionFn: (jobId) =>
@@ -1096,9 +1104,9 @@ async function onSendReaction(message, reactionKey) {
     })
     // 本地立即把反应贴到对应消息上,避免再抓一次煤炉
     message.reaction = reactionKey
-    ElMessage.success(`已发送反应 ${REACTION_EMOJI_BY_KEY[reactionKey] || reactionKey}`)
+    ElMessage.success(t('todos.reactionSent', { emoji: REACTION_EMOJI_BY_KEY[reactionKey] || reactionKey }))
   } catch (e) {
-    if (!e?.response) ElMessage.error(e?.message || '反应发送失败')
+    if (!e?.response) ElMessage.error(e?.message || t('todos.reactionFailed'))
   } finally {
     reactionLoading.value = false
   }

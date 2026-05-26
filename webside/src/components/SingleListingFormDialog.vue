@@ -1,7 +1,7 @@
 <template>
   <el-dialog
     :model-value="modelValue"
-    title="出品"
+    :title="t('dialogs.singleListing.title')"
     :width="isMobile ? '94vw' : '680px'"
     class="listing-dialog"
     destroy-on-close
@@ -16,16 +16,16 @@
       class="listing-dialog-form"
       scroll-to-error
     >
-      <el-form-item label="关联库存" prop="inventory_ids" required>
+      <el-form-item :label="t('dialogs.singleListing.linkedInventory')" prop="inventory_ids" required>
         <span v-if="form.inventory_ids?.length" class="listing-inv-count"
-          >已选 {{ form.inventory_ids.length }} 条库存（出品）</span
+          >{{ t('dialogs.singleListing.selectedInventoryCount', { count: form.inventory_ids.length }) }}</span
         >
-        <span v-else class="listing-inv-count listing-inv-count--warn">未关联库存条目</span>
+        <span v-else class="listing-inv-count listing-inv-count--warn">{{ t('dialogs.singleListing.noLinkedInventory') }}</span>
       </el-form-item>
-      <el-form-item label="商品图片" prop="image" class="listing-form-item--images" required>
+      <el-form-item :label="t('dialogs.singleListing.productImage')" prop="image" class="listing-form-item--images" required>
         <div class="listing-image-box">
           <div v-if="form.listing_image_urls?.length > 1" class="listing-image-reorder-hint">
-            拖动缩略图调整顺序（上架顺序与此一致）
+            {{ t('dialogs.singleListing.dragReorderHint') }}
           </div>
           <div class="listing-images-thumbs">
             <template v-if="form.listing_image_urls?.length">
@@ -40,7 +40,7 @@
                     listingImageDropHoverIndex === idx && listingImageDragFrom >= 0 && listingImageDragFrom !== idx
                 }"
                 :draggable="form.listing_image_urls.length > 1"
-                title="拖动调整顺序"
+                :title="t('dialogs.singleListing.dragReorderTitle')"
                 @dragstart="onListingImageDragStart(idx, $event)"
                 @dragend="onListingImageDragEnd"
                 @dragover.prevent="onListingImageDragOver(idx, $event)"
@@ -49,7 +49,7 @@
               >
                 <div class="listing-thumb-head">
                   <el-icon class="listing-thumb-drag-icon"><Rank /></el-icon>
-                  <span class="listing-thumb-label">图{{ idx + 1 }}</span>
+                  <span class="listing-thumb-label">{{ t('dialogs.singleListing.imageIndex', { index: idx + 1 }) }}</span>
                 </div>
                 <el-image
                   :src="imgUrl"
@@ -63,23 +63,23 @@
               </div>
             </template>
             <div v-else class="listing-thumb-block">
-              <span class="listing-thumb-label">商品图</span>
-              <div class="listing-image-empty">暂无图片</div>
+              <span class="listing-thumb-label">{{ t('dialogs.singleListing.productImageLabel') }}</span>
+              <div class="listing-image-empty">{{ t('dialogs.singleListing.noImage') }}</div>
             </div>
           </div>
         </div>
       </el-form-item>
-      <el-form-item label="出品标题" prop="listing_title" class="listing-form-item--name" required>
+      <el-form-item :label="t('dialogs.singleListing.listingTitle')" prop="listing_title" class="listing-form-item--name" required>
         <div class="listing-field-full">
           <el-input
             v-model="form.listing_title"
             class="listing-name-input"
-            placeholder="请输入出品标题（必填）"
+            :placeholder="t('dialogs.singleListing.listingTitlePlaceholder')"
             clearable
           />
         </div>
       </el-form-item>
-      <el-form-item label="商品说明" prop="description" class="listing-form-item--desc" required>
+      <el-form-item :label="t('dialogs.singleListing.productDescription')" prop="description" class="listing-form-item--desc" required>
         <div class="listing-field-full listing-desc-with-footer">
           <el-input
             v-model="form.description"
@@ -93,39 +93,39 @@
                 : 1000
             "
             show-word-limit
-            placeholder="请输入商品说明（必填）"
+            :placeholder="t('dialogs.singleListing.productDescriptionPlaceholder')"
           />
           <div
             v-if="managementNumberLine"
             class="listing-mgmt-footer"
-            title="由所选库存自动生成的末行暗号（-=~<>），不可在此删除"
+            :title="t('dialogs.singleListing.mgmtFooterTitle')"
           >
             {{ managementNumberLine }}
           </div>
         </div>
       </el-form-item>
-      <el-form-item label="商品类型" prop="category_mapping_id" required>
+      <el-form-item :label="t('dialogs.singleListing.productType')" prop="category_mapping_id" required>
         <el-cascader
           v-model="form.category_mapping_path"
           :options="categoryTypeCascaderOptions"
           :props="categoryTypeCascaderProps"
           :show-all-levels="false"
           filterable
-          placeholder="请选择商品类型（必选）"
+          :placeholder="t('dialogs.singleListing.productTypePlaceholder')"
           style="width: 100%"
           popper-class="product-type-cascader-popper"
           @change="handleCategoryTypeChange"
         />
       </el-form-item>
-      <el-form-item label="商品状态" prop="status" required>
-        <el-select v-model="form.status" placeholder="请选择商品状态" style="width: 100%">
+      <el-form-item :label="t('dialogs.singleListing.productStatus')" prop="status" required>
+        <el-select v-model="form.status" :placeholder="t('dialogs.singleListing.productStatusPlaceholder')" style="width: 100%">
           <el-option v-for="s in listingStatusOptions" :key="s.value" :label="s.label" :value="s.value" />
         </el-select>
       </el-form-item>
-      <el-form-item label="出品账号" prop="mercari_account_id" required>
+      <el-form-item :label="t('dialogs.singleListing.listingAccount')" prop="mercari_account_id" required>
         <el-select
           v-model="form.mercari_account_id"
-          placeholder="请选择煤炉账号"
+          :placeholder="t('dialogs.singleListing.listingAccountPlaceholder')"
           style="width: 100%"
           filterable
           :loading="mercariAccountsLoading"
@@ -138,39 +138,39 @@
           />
         </el-select>
       </el-form-item>
-      <el-form-item label="快递费负担" prop="shipping_payer" required>
-        <el-select v-model="form.shipping_payer" placeholder="请选择快递费负担" style="width: 100%">
+      <el-form-item :label="t('dialogs.singleListing.shippingPayer')" prop="shipping_payer" required>
+        <el-select v-model="form.shipping_payer" :placeholder="t('dialogs.singleListing.shippingPayerPlaceholder')" style="width: 100%">
           <el-option v-for="s in shippingPayerOptions" :key="s.value" :label="s.label" :value="s.value" />
         </el-select>
       </el-form-item>
-      <el-form-item label="配送方法" prop="shipping_method" required>
-        <el-select v-model="form.shipping_method" placeholder="请选择配送方法" style="width: 100%">
+      <el-form-item :label="t('dialogs.singleListing.shippingMethod')" prop="shipping_method" required>
+        <el-select v-model="form.shipping_method" :placeholder="t('dialogs.singleListing.shippingMethodPlaceholder')" style="width: 100%">
           <el-option v-for="s in shippingMethodOptions" :key="s.value" :label="s.label" :value="s.value" />
         </el-select>
       </el-form-item>
-      <el-form-item label="发货地址" prop="shipping_from" required>
+      <el-form-item :label="t('dialogs.singleListing.shippingFrom')" prop="shipping_from" required>
         <el-cascader
           v-model="form.shipping_from_path"
           :options="shippingFromCascaderOptions"
           :props="shippingFromCascaderProps"
           :show-all-levels="false"
           filterable
-          placeholder="请选择发货地（必选）"
+          :placeholder="t('dialogs.singleListing.shippingFromPlaceholder')"
           style="width: 100%"
           popper-class="product-type-cascader-popper"
           @change="handleShippingFromChange"
         />
       </el-form-item>
-      <el-form-item label="最大发货天数" prop="shipping_days" required>
-        <el-select v-model="form.shipping_days" placeholder="请选择最大发货天数" style="width: 100%">
+      <el-form-item :label="t('dialogs.singleListing.shippingDays')" prop="shipping_days" required>
+        <el-select v-model="form.shipping_days" :placeholder="t('dialogs.singleListing.shippingDaysPlaceholder')" style="width: 100%">
           <el-option v-for="s in shippingDaysOptions" :key="s.value" :label="s.label" :value="s.value" />
         </el-select>
       </el-form-item>
-      <el-form-item label="出售方法" prop="sale_type" required>
+      <el-form-item :label="t('dialogs.singleListing.saleType')" prop="sale_type" required>
         <div class="listing-compact-row">
           <el-select
             v-model="form.sale_type"
-            placeholder="请选择出售方法"
+            :placeholder="t('dialogs.singleListing.saleTypePlaceholder')"
             class="listing-compact-control"
             @change="onSaleTypeChange"
           >
@@ -180,20 +180,20 @@
       </el-form-item>
       <el-form-item
         v-if="form.sale_type === 'auction'"
-        label="拍卖时长"
+        :label="t('dialogs.singleListing.auctionDuration')"
         prop="auction_duration"
         required
       >
-        <el-select v-model="form.auction_duration" placeholder="请选择拍卖时长" style="width: 100%">
-          <el-option label="通常" value="normal" />
-          <el-option label="三小时" value="3hours" />
+        <el-select v-model="form.auction_duration" :placeholder="t('dialogs.singleListing.auctionDurationPlaceholder')" style="width: 100%">
+          <el-option :label="t('dialogs.singleListing.auctionDurationNormal')" value="normal" />
+          <el-option :label="t('dialogs.singleListing.auctionDuration3Hours')" value="3hours" />
         </el-select>
       </el-form-item>
-      <el-form-item label="商品单价" prop="price" class="listing-form-item--price" required>
+      <el-form-item :label="t('dialogs.singleListing.unitPrice')" prop="price" class="listing-form-item--price" required>
         <div class="listing-compact-row">
           <el-input
             v-model="listingPriceEdit"
-            placeholder="必填，日元整数且大于 0"
+            :placeholder="t('dialogs.singleListing.unitPricePlaceholder')"
             class="listing-price-input listing-compact-control"
             inputmode="numeric"
             @blur="applyListingPriceToForm"
@@ -203,8 +203,8 @@
     </el-form>
     <template #footer>
       <div class="dialog-footer">
-        <el-button @click="onVisibleChange(false)">取消</el-button>
-        <el-button type="primary" @click="submitStub">提交</el-button>
+        <el-button @click="onVisibleChange(false)">{{ t('common.cancel') }}</el-button>
+        <el-button type="primary" @click="submitStub">{{ t('common.submit') }}</el-button>
       </div>
     </template>
   </el-dialog>
@@ -212,6 +212,7 @@
 
 <script setup>
 import { ref, watch, computed, nextTick } from 'vue'
+import { useI18n } from 'vue-i18n'
 import { Rank } from '@element-plus/icons-vue'
 import { mercariAccountApi } from '@/api/index.js'
 import { encodeMgmtIds, stripTrailingMgmtBlock } from '@/utils/mgmtIdCipher.js'
@@ -236,18 +237,20 @@ const props = defineProps({
 
 const emit = defineEmits(['update:modelValue', 'saved'])
 
+const { t } = useI18n()
+
 const listingFormRef = ref()
 const form = ref(getDefaultForm())
 /** 商品单价：纯文本整数，blur / 提交前写回 form.price */
 const listingPriceEdit = ref('0')
 
-const listingFormRules = {
+const listingFormRules = computed(() => ({
   inventory_ids: [
     {
       type: 'array',
       required: true,
       min: 1,
-      message: '请至少关联一条库存',
+      message: t('dialogs.singleListing.ruleInventoryRequired'),
       trigger: 'change'
     }
   ],
@@ -263,7 +266,7 @@ const listingFormRules = {
           cb()
           return
         }
-        cb(new Error('请关联或展示至少一张商品图片'))
+        cb(new Error(t('dialogs.singleListing.ruleImageRequired')))
       },
       trigger: 'change'
     }
@@ -271,7 +274,7 @@ const listingFormRules = {
   listing_title: [
     {
       validator: (_, val, cb) => {
-        if (!String(val ?? '').trim()) cb(new Error('请输入出品标题'))
+        if (!String(val ?? '').trim()) cb(new Error(t('dialogs.singleListing.ruleTitleRequired')))
         else cb()
       },
       trigger: 'blur'
@@ -282,7 +285,7 @@ const listingFormRules = {
       validator: (_, val, cb) => {
         const n = Number(val)
         if (!Number.isFinite(n) || n <= 0 || !Number.isInteger(n)) {
-          cb(new Error('请输入商品单价（须为大于 0 的整数）'))
+          cb(new Error(t('dialogs.singleListing.rulePriceRequired')))
           return
         }
         cb()
@@ -298,7 +301,7 @@ const listingFormRules = {
           return
         }
         if (val !== 'normal' && val !== '3hours') {
-          cb(new Error('请选择拍卖时长'))
+          cb(new Error(t('dialogs.singleListing.ruleAuctionDurationRequired')))
           return
         }
         cb()
@@ -309,7 +312,7 @@ const listingFormRules = {
   description: [
     {
       validator: (_, val, cb) => {
-        if (!String(val ?? '').trim()) cb(new Error('请输入商品说明'))
+        if (!String(val ?? '').trim()) cb(new Error(t('dialogs.singleListing.ruleDescriptionRequired')))
         else cb()
       },
       trigger: 'blur'
@@ -318,34 +321,34 @@ const listingFormRules = {
   category_mapping_id: [
     {
       validator: (_, val, cb) => {
-        if (val == null || String(val).trim() === '') cb(new Error('请选择商品类型'))
+        if (val == null || String(val).trim() === '') cb(new Error(t('dialogs.singleListing.ruleProductTypeRequired')))
         else cb()
       },
       trigger: 'change'
     }
   ],
-  status: [{ required: true, message: '请选择商品状态', trigger: 'change' }],
+  status: [{ required: true, message: t('dialogs.singleListing.ruleStatusRequired'), trigger: 'change' }],
   mercari_account_id: [
     {
       required: true,
-      message: '请选择出品账号',
+      message: t('dialogs.singleListing.ruleAccountRequired'),
       trigger: 'change'
     }
   ],
-  shipping_payer: [{ required: true, message: '请选择快递费负担', trigger: 'change' }],
-  shipping_method: [{ required: true, message: '请选择配送方法', trigger: 'change' }],
+  shipping_payer: [{ required: true, message: t('dialogs.singleListing.ruleShippingPayerRequired'), trigger: 'change' }],
+  shipping_method: [{ required: true, message: t('dialogs.singleListing.ruleShippingMethodRequired'), trigger: 'change' }],
   shipping_from: [
     {
       validator: (_, val, cb) => {
-        if (val == null || String(val).trim() === '') cb(new Error('请选择发货地址'))
+        if (val == null || String(val).trim() === '') cb(new Error(t('dialogs.singleListing.ruleShippingFromRequired')))
         else cb()
       },
       trigger: 'change'
     }
   ],
-  shipping_days: [{ required: true, message: '请选择最大发货天数', trigger: 'change' }],
-  sale_type: [{ required: true, message: '请选择出售方法', trigger: 'change' }]
-}
+  shipping_days: [{ required: true, message: t('dialogs.singleListing.ruleShippingDaysRequired'), trigger: 'change' }],
+  sale_type: [{ required: true, message: t('dialogs.singleListing.ruleSaleTypeRequired'), trigger: 'change' }]
+}))
 
 function onSaleTypeChange() {
   if (form.value.sale_type !== 'auction') {
@@ -517,7 +520,7 @@ const categoryTypeTreeMeta = computed(() => {
     const mappingId = String(m?.mapping_id ?? '').trim()
     const typeName = String(m?.product_type ?? '').trim()
     if (!mappingId || !typeName) continue
-    const l1 = String(m?.category_level1 ?? '').trim() || '未分类'
+    const l1 = String(m?.category_level1 ?? '').trim() || t('dialogs.singleListing.uncategorized')
     const l2 = String(m?.category_level2 ?? '').trim()
     const l3 = String(m?.category_level3 ?? '').trim()
     const l1Val = `L1:${l1}`
@@ -548,38 +551,38 @@ const categoryTypeTreeMeta = computed(() => {
 
 const categoryTypeCascaderOptions = computed(() => categoryTypeTreeMeta.value.roots)
 
-const listingStatusOptions = [
-  { label: '新品、未使用', value: 'new_unused' },
-  { label: '未使用に近い', value: 'almost_unused' },
-  { label: '目立った傷や汚れなし', value: 'good' },
-  { label: 'やや傷や汚れあり', value: 'fair' },
-  { label: '傷や汚れあり', value: 'used' }
-]
-const shippingPayerOptions = [
-  { label: '送料込み(出品者负担)', value: 'seller' },
-  { label: '着払い(购买者负担)', value: 'buyer' }
-]
-const shippingMethodOptions = [
-  { label: '未定', value: 'undecided' },
-  { label: 'らくらくメルカリ便', value: 'rakuraku' },
-  { label: 'ゆうゆうメルカリ便', value: 'yuuyu' },
-  { label: '普通邮便(定形、定形外)', value: 'regular_mail' }
-]
-const shippingDaysOptions = [
-  { label: '1~2天', value: '1_2_days' },
-  { label: '2~3天', value: '2_3_days' },
-  { label: '4~7天', value: '4_7_days' }
-]
-const saleTypeOptions = [
-  { label: '即购', value: 'instant_buy' },
-  { label: '拍卖', value: 'auction' }
-]
+const listingStatusOptions = computed(() => [
+  { label: t('dialogs.singleListing.statusNewUnused'), value: 'new_unused' },
+  { label: t('dialogs.singleListing.statusAlmostUnused'), value: 'almost_unused' },
+  { label: t('dialogs.singleListing.statusGood'), value: 'good' },
+  { label: t('dialogs.singleListing.statusFair'), value: 'fair' },
+  { label: t('dialogs.singleListing.statusUsed'), value: 'used' }
+])
+const shippingPayerOptions = computed(() => [
+  { label: t('dialogs.singleListing.shippingPayerSeller'), value: 'seller' },
+  { label: t('dialogs.singleListing.shippingPayerBuyer'), value: 'buyer' }
+])
+const shippingMethodOptions = computed(() => [
+  { label: t('dialogs.singleListing.shippingMethodUndecided'), value: 'undecided' },
+  { label: t('dialogs.singleListing.shippingMethodRakuraku'), value: 'rakuraku' },
+  { label: t('dialogs.singleListing.shippingMethodYuuyu'), value: 'yuuyu' },
+  { label: t('dialogs.singleListing.shippingMethodRegularMail'), value: 'regular_mail' }
+])
+const shippingDaysOptions = computed(() => [
+  { label: t('dialogs.singleListing.shippingDays1_2'), value: '1_2_days' },
+  { label: t('dialogs.singleListing.shippingDays2_3'), value: '2_3_days' },
+  { label: t('dialogs.singleListing.shippingDays4_7'), value: '4_7_days' }
+])
+const saleTypeOptions = computed(() => [
+  { label: t('dialogs.singleListing.saleTypeInstantBuy'), value: 'instant_buy' },
+  { label: t('dialogs.singleListing.saleTypeAuction'), value: 'auction' }
+])
 
 function mercariAccountOptionLabel(a) {
   const name = (a?.account_name || '').trim() || `ID ${a?.id}`
   const sid = String(a?.seller_id || '').trim()
-  const tail = sid ? ` · 卖家 ${sid}` : ''
-  const inactive = a?.status === 'disabled' ? '（停用）' : ''
+  const tail = sid ? ` · ${t('dialogs.singleListing.sellerLabel')} ${sid}` : ''
+  const inactive = a?.status === 'disabled' ? t('dialogs.singleListing.inactiveSuffix') : ''
   return `${name}${tail}${inactive}`
 }
 

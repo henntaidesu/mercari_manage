@@ -3,64 +3,64 @@
     <el-card shadow="never" class="search-card">
       <el-row :gutter="12" align="middle">
         <el-col :xs="24" :md="16" class="search-left-group">
-          <el-select v-model="filters.type" placeholder="使用类型" clearable @change="onFilterChange">
-            <el-option v-for="item in typeOptions" :key="item" :label="item" :value="item" />
+          <el-select v-model="filters.type" :placeholder="t('system.costExpenseUsageType')" clearable @change="onFilterChange">
+            <el-option v-for="item in typeOptions" :key="item.value" :label="item.label" :value="item.value" />
           </el-select>
           <el-input
             v-model="filters.order_no"
             clearable
-            placeholder="订单号"
+            :placeholder="t('system.costExpenseOrderNo')"
             @change="onFilterChange"
           />
-          <el-select v-model="filters.owner" placeholder="归属人" clearable @change="onFilterChange">
+          <el-select v-model="filters.owner" :placeholder="t('system.costExpenseOwner')" clearable @change="onFilterChange">
             <el-option v-for="u in users" :key="u.id" :label="u.display_name || u.username" :value="u.username" />
           </el-select>
           <el-date-picker
             v-model="dateRange"
             type="daterange"
-            range-separator="至"
-            start-placeholder="开始时间"
-            end-placeholder="结束时间"
+            :range-separator="t('common.to')"
+            :start-placeholder="t('common.startDate')"
+            :end-placeholder="t('common.endDate')"
             value-format="x"
             @change="onFilterChange"
           />
         </el-col>
         <el-col :xs="24" :md="8" class="search-actions">
-          <el-button type="primary" @click="openCreate">新增包材使用记录</el-button>
+          <el-button type="primary" @click="openCreate">{{ t('system.costExpenseAdd') }}</el-button>
         </el-col>
       </el-row>
     </el-card>
 
     <el-card shadow="never" class="table-card">
       <el-table :data="list" v-loading="loading" stripe>
-        <el-table-column label="类型" prop="type" min-width="120" />
-        <el-table-column label="订单号" prop="order_no" min-width="150">
+        <el-table-column :label="t('common.type')" prop="type" min-width="120" />
+        <el-table-column :label="t('system.costExpenseOrderNo')" prop="order_no" min-width="150">
           <template #default="{ row }">{{ row.order_no || '-' }}</template>
         </el-table-column>
-        <el-table-column label="物品名称" prop="item_name" min-width="160" />
-        <el-table-column label="数量" prop="quantity" width="100" align="center" />
-        <el-table-column label="单价" width="120" align="right">
+        <el-table-column :label="t('system.costExpenseItemName')" prop="item_name" min-width="160" />
+        <el-table-column :label="t('common.quantity')" prop="quantity" width="100" align="center" />
+        <el-table-column :label="t('system.costRecordPrice')" width="120" align="right">
           <template #default="{ row }">
             ¥{{ Number(row.unit_price || 0) }}
           </template>
         </el-table-column>
-        <el-table-column label="总价" width="120" align="right">
+        <el-table-column :label="t('system.costExpenseTotalPrice')" width="120" align="right">
           <template #default="{ row }">
             ¥{{ Number(row.quantity || 0) * Number(row.unit_price || 0) }}
           </template>
         </el-table-column>
-        <el-table-column label="归属人" prop="owner" width="120">
+        <el-table-column :label="t('system.costExpenseOwner')" prop="owner" width="120">
           <template #default="{ row }">{{ row.owner || '-' }}</template>
         </el-table-column>
-        <el-table-column label="记录时间" width="190">
+        <el-table-column :label="t('system.costExpenseRecordTime')" width="190">
           <template #default="{ row }">{{ formatTs(row.record_time) }}</template>
         </el-table-column>
-        <el-table-column label="操作" width="150" fixed="right">
+        <el-table-column :label="t('common.actions')" width="150" fixed="right">
           <template #default="{ row }">
-            <el-button size="small" @click="openEdit(row)">编辑</el-button>
-            <el-popconfirm title="确认删除该记录？" @confirm="remove(row.id)">
+            <el-button size="small" @click="openEdit(row)">{{ t('common.edit') }}</el-button>
+            <el-popconfirm :title="t('system.costExpenseDeleteConfirm')" @confirm="remove(row.id)">
               <template #reference>
-                <el-button size="small" type="danger">删除</el-button>
+                <el-button size="small" type="danger">{{ t('common.delete') }}</el-button>
               </template>
             </el-popconfirm>
           </template>
@@ -81,15 +81,15 @@
       </div>
     </el-card>
 
-    <el-dialog v-model="dialogVisible" :title="form.id ? '编辑包材使用记录' : '新增包材使用记录'" width="520px" destroy-on-close>
+    <el-dialog v-model="dialogVisible" :title="form.id ? t('system.costExpenseEdit') : t('system.costExpenseAdd')" width="520px" destroy-on-close>
       <el-form :model="form" :rules="rules" ref="formRef" label-width="88px">
-        <el-form-item label="订单号">
-          <el-input v-model="form.order_no" clearable placeholder="可选：填写后会关联订单" />
+        <el-form-item :label="t('system.costExpenseOrderNo')">
+          <el-input v-model="form.order_no" clearable :placeholder="t('system.costExpenseOrderNoPlaceholder')" />
         </el-form-item>
-        <el-form-item label="物品名称" prop="item_name">
+        <el-form-item :label="t('system.costExpenseItemName')" prop="item_name">
           <el-select
             v-model="form.item_name"
-            placeholder="请选择物品名称"
+            :placeholder="t('system.costExpenseItemNamePlaceholder')"
             filterable
             clearable
             @change="onItemNameChange"
@@ -105,43 +105,46 @@
         </el-form-item>
         <el-row :gutter="12">
           <el-col :span="12">
-            <el-form-item label="数量" prop="quantity">
+            <el-form-item :label="t('common.quantity')" prop="quantity">
               <el-input-number v-model="form.quantity" :min="1" :precision="0" :controls="false" style="width: 100%" />
             </el-form-item>
           </el-col>
           <el-col :span="12">
-            <el-form-item label="单价" prop="unit_price">
+            <el-form-item :label="t('system.costRecordPrice')" prop="unit_price">
               <el-input-number v-model="form.unit_price" :min="1" :precision="0" :controls="false" style="width: 100%" />
             </el-form-item>
           </el-col>
         </el-row>
-        <el-form-item label="归属人">
-          <el-select v-model="form.owner" clearable placeholder="请选择归属人（可选）" style="width: 100%">
+        <el-form-item :label="t('system.costExpenseOwner')">
+          <el-select v-model="form.owner" clearable :placeholder="t('system.costExpenseOwnerPlaceholder')" style="width: 100%">
             <el-option v-for="u in users" :key="u.id" :label="u.display_name || u.username" :value="u.username" />
           </el-select>
         </el-form-item>
-        <el-form-item label="记录时间" prop="record_time">
+        <el-form-item :label="t('system.costExpenseRecordTime')" prop="record_time">
           <el-date-picker
             v-model="form.record_time"
             type="datetime"
             value-format="x"
-            placeholder="请选择记录时间"
+            :placeholder="t('system.costExpenseRecordTimePlaceholder')"
             style="width: 100%"
           />
         </el-form-item>
       </el-form>
       <template #footer>
-        <el-button @click="dialogVisible = false">取消</el-button>
-        <el-button type="primary" :loading="submitting" @click="submit">保存</el-button>
+        <el-button @click="dialogVisible = false">{{ t('common.cancel') }}</el-button>
+        <el-button type="primary" :loading="submitting" @click="submit">{{ t('common.save') }}</el-button>
       </template>
     </el-dialog>
   </div>
 </template>
 
 <script setup>
-import { onMounted, ref } from 'vue'
+import { onMounted, ref, computed } from 'vue'
 import { ElMessage } from 'element-plus'
+import { useI18n } from 'vue-i18n'
 import { authApi, costExpenseApi, costRecordApi } from '@/api/index.js'
+
+const { t } = useI18n()
 
 const loading = ref(false)
 const submitting = ref(false)
@@ -154,7 +157,10 @@ const formRef = ref()
 const dateRange = ref([])
 const users = ref([])
 const costRecordItemOptions = ref([])
-const typeOptions = ['快递费', '包装材料']
+const typeOptions = computed(() => [
+  { value: '快递费', label: t('system.costExpenseTypeShipping') },
+  { value: '包装材料', label: t('system.costExpenseTypePackaging') },
+])
 
 const filters = ref({
   type: '',
@@ -175,12 +181,12 @@ const createDefaultForm = () => ({
 
 const form = ref(createDefaultForm())
 
-const rules = {
-  item_name: [{ required: true, message: '请输入物品名称', trigger: 'blur' }],
-  quantity: [{ required: true, message: '请输入数量', trigger: 'blur' }],
-  unit_price: [{ required: true, message: '请输入单价', trigger: 'blur' }],
-  record_time: [{ required: true, message: '请选择记录时间', trigger: 'change' }],
-}
+const rules = computed(() => ({
+  item_name: [{ required: true, message: t('system.costExpenseItemNameRequired'), trigger: 'blur' }],
+  quantity: [{ required: true, message: t('system.costExpenseQuantityRequired'), trigger: 'blur' }],
+  unit_price: [{ required: true, message: t('system.costExpenseUnitPriceRequired'), trigger: 'blur' }],
+  record_time: [{ required: true, message: t('system.costExpenseRecordTimeRequired'), trigger: 'change' }],
+}))
 
 function formatTs(ts) {
   if (!ts) return '-'
@@ -269,10 +275,10 @@ async function submit() {
     }
     if (form.value.id) {
       await costExpenseApi.update(form.value.id, payload)
-      ElMessage.success('更新成功')
+      ElMessage.success(t('system.costExpenseUpdateSuccess'))
     } else {
       await costExpenseApi.create(payload)
-      ElMessage.success('新增成功')
+      ElMessage.success(t('system.costExpenseAddSuccess'))
     }
     dialogVisible.value = false
     load()
@@ -283,7 +289,7 @@ async function submit() {
 
 async function remove(id) {
   await costExpenseApi.remove(id)
-  ElMessage.success('删除成功')
+  ElMessage.success(t('system.costExpenseDeleteSuccess'))
   if (list.value.length === 1 && page.value > 1) page.value -= 1
   load()
 }

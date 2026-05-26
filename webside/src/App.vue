@@ -1,8 +1,12 @@
 <template>
-  <router-view />
+  <el-config-provider :locale="elementLocale">
+    <router-view />
+  </el-config-provider>
 </template>
 
 <script setup>
+import { ElConfigProvider } from 'element-plus'
+import { elementLocale } from '@/i18n'
 </script>
 
 <style>

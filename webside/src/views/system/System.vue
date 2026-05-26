@@ -3,10 +3,10 @@
     <el-card shadow="never" class="search-card">
       <div class="sys-top-actions">
         <el-button type="danger" :loading="restarting" @click="confirmRestartSystem">
-          <el-icon><RefreshRight /></el-icon> 重启系统
+          <el-icon><RefreshRight /></el-icon> {{ t('system.restartSystem') }}
         </el-button>
         <el-button type="primary" @click="openUserDialog">
-          <el-icon><Plus /></el-icon> 新增用户
+          <el-icon><Plus /></el-icon> {{ t('system.addUser') }}
         </el-button>
       </div>
     </el-card>
@@ -15,21 +15,21 @@
       <el-col :xs="24" :lg="14">
         <el-card shadow="never" class="table-card">
           <template #header>
-            <div class="card-title">用户列表</div>
+            <div class="card-title">{{ t('system.userList') }}</div>
           </template>
           <el-table :data="users" v-loading="loading" stripe>
             <el-table-column prop="id" label="ID" width="70" />
-            <el-table-column prop="username" label="用户名" min-width="120" />
-            <el-table-column prop="display_name" label="显示名" min-width="140" />
-            <el-table-column label="状态" width="90" align="center">
+            <el-table-column prop="username" :label="t('system.username')" min-width="120" />
+            <el-table-column prop="display_name" :label="t('system.displayName')" min-width="140" />
+            <el-table-column :label="t('common.status')" width="90" align="center">
               <template #default="{ row }">
                 <el-tag :type="row.is_active ? 'success' : 'danger'" size="small">
-                  {{ row.is_active ? '启用' : '禁用' }}
+                  {{ row.is_active ? t('common.enabled') : t('common.disabled') }}
                 </el-tag>
               </template>
             </el-table-column>
-            <el-table-column prop="last_login_at" label="最近登录" min-width="160" />
-            <el-table-column prop="created_at" label="创建时间" min-width="160" />
+            <el-table-column prop="last_login_at" :label="t('system.lastLoginAt')" min-width="160" />
+            <el-table-column prop="created_at" :label="t('common.createdAt')" min-width="160" />
           </el-table>
         </el-card>
       </el-col>
@@ -37,33 +37,33 @@
       <el-col :xs="24" :lg="10">
         <el-card shadow="never" class="table-card">
           <template #header>
-            <div class="card-title">修改我的密码</div>
+            <div class="card-title">{{ t('system.changeMyPassword') }}</div>
           </template>
           <el-form ref="pwdFormRef" :model="pwdForm" :rules="pwdRules" label-width="90px">
-            <el-form-item label="原密码" prop="old_password">
+            <el-form-item :label="t('system.oldPassword')" prop="old_password">
               <el-input v-model="pwdForm.old_password" type="password" show-password />
             </el-form-item>
-            <el-form-item label="新密码" prop="new_password">
+            <el-form-item :label="t('system.newPassword')" prop="new_password">
               <el-input v-model="pwdForm.new_password" type="password" show-password />
             </el-form-item>
-            <el-form-item label="确认密码" prop="confirm_password">
+            <el-form-item :label="t('system.confirmPassword')" prop="confirm_password">
               <el-input v-model="pwdForm.confirm_password" type="password" show-password />
             </el-form-item>
             <el-form-item>
-              <el-button type="primary" :loading="pwdSubmitting" @click="submitPassword">修改密码</el-button>
+              <el-button type="primary" :loading="pwdSubmitting" @click="submitPassword">{{ t('system.changePassword') }}</el-button>
             </el-form-item>
           </el-form>
-          <div class="pwd-tip">仅支持修改当前登录用户自己的密码。</div>
+          <div class="pwd-tip">{{ t('system.pwdTip') }}</div>
         </el-card>
       </el-col>
     </el-row>
 
     <el-card shadow="never" class="search-card">
       <template #header>
-        <div class="card-title">出品默认值</div>
+        <div class="card-title">{{ t('system.listingDefaults') }}</div>
       </template>
       <el-form label-width="132px" class="listing-def-form">
-        <el-form-item label="默认发货地址">
+        <el-form-item :label="t('system.defaultShippingFrom')">
           <el-cascader
             v-model="listingDefForm.shipping_from_path"
             :options="shippingFromCascaderOptions"
@@ -71,38 +71,38 @@
             :show-all-levels="false"
             filterable
             clearable
-            placeholder="不设置则出品表单内使用内置默认"
+            :placeholder="t('system.shippingFromPlaceholder')"
             style="width: 100%; max-width: 520px"
             popper-class="product-type-cascader-popper"
             @change="onShippingFromChange"
           />
         </el-form-item>
-        <el-form-item label="默认配送方法">
+        <el-form-item :label="t('system.defaultShippingMethod')">
           <el-select
             v-model="listingDefForm.shipping_method"
             clearable
-            placeholder="未设置时出品表单为「未定」"
+            :placeholder="t('system.shippingMethodPlaceholder')"
             style="width: 100%; max-width: 360px"
           >
             <el-option v-for="s in shippingMethodOptions" :key="s.value" :label="s.label" :value="s.value" />
           </el-select>
         </el-form-item>
-        <el-form-item label="默认快递费负担">
+        <el-form-item :label="t('system.defaultShippingPayer')">
           <el-select v-model="listingDefForm.shipping_payer" clearable style="width: 100%; max-width: 360px">
             <el-option v-for="s in shippingPayerOptions" :key="s.value" :label="s.label" :value="s.value" />
           </el-select>
         </el-form-item>
-        <el-form-item label="默认最大发货天数">
+        <el-form-item :label="t('system.defaultShippingDays')">
           <el-select v-model="listingDefForm.shipping_days" clearable style="width: 100%; max-width: 280px">
             <el-option v-for="s in shippingDaysOptions" :key="s.value" :label="s.label" :value="s.value" />
           </el-select>
         </el-form-item>
-        <el-form-item label="默认出品账号">
+        <el-form-item :label="t('system.defaultListingAccount')">
           <el-select
             v-model="listingDefForm.mercari_account_id"
             clearable
             filterable
-            placeholder="不设置则出品时需手动选择煤炉账号"
+            :placeholder="t('system.listingAccountPlaceholder')"
             style="width: 100%; max-width: 420px"
             :loading="mercariAccountsLoading"
           >
@@ -115,27 +115,27 @@
           </el-select>
         </el-form-item>
         <el-form-item>
-          <el-button type="primary" :loading="listingDefSaving" @click="saveListingDefaults">保存出品默认值</el-button>
-          <el-button :loading="listingDefLoading" @click="loadListingDefaults">重新加载</el-button>
+          <el-button type="primary" :loading="listingDefSaving" @click="saveListingDefaults">{{ t('system.saveListingDefaults') }}</el-button>
+          <el-button :loading="listingDefLoading" @click="loadListingDefaults">{{ t('system.reload') }}</el-button>
         </el-form-item>
       </el-form>
     </el-card>
 
-    <el-dialog v-model="userDialogVisible" title="新增用户" width="420px" destroy-on-close>
+    <el-dialog v-model="userDialogVisible" :title="t('system.addUser')" width="420px" destroy-on-close>
       <el-form ref="userFormRef" :model="userForm" :rules="userRules" label-width="90px">
-        <el-form-item label="用户名" prop="username">
+        <el-form-item :label="t('system.username')" prop="username">
           <el-input v-model="userForm.username" />
         </el-form-item>
-        <el-form-item label="显示名">
+        <el-form-item :label="t('system.displayName')">
           <el-input v-model="userForm.display_name" />
         </el-form-item>
-        <el-form-item label="密码" prop="password">
+        <el-form-item :label="t('system.password')" prop="password">
           <el-input v-model="userForm.password" type="password" show-password />
         </el-form-item>
       </el-form>
       <template #footer>
-        <el-button @click="userDialogVisible = false">取消</el-button>
-        <el-button type="primary" :loading="userSubmitting" @click="submitUser">创建</el-button>
+        <el-button @click="userDialogVisible = false">{{ t('common.cancel') }}</el-button>
+        <el-button type="primary" :loading="userSubmitting" @click="submitUser">{{ t('common.create') }}</el-button>
       </template>
     </el-dialog>
   </div>
@@ -143,6 +143,7 @@
 
 <script setup>
 import { reactive, ref, onMounted, computed } from 'vue'
+import { useI18n } from 'vue-i18n'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { Plus, RefreshRight } from '@element-plus/icons-vue'
 import { authApi, configApi, mercariAccountApi, systemApi } from '@/api/index.js'
@@ -152,6 +153,8 @@ import {
   getRegionIdForAreaId,
   normalizeShippingFromSeed
 } from '@/constants/mercariJapanAreas.js'
+
+const { t } = useI18n()
 
 const SHIPPING_FROM_AREA_PREFIX = 'AREA:'
 const SHIPPING_FROM_REGION_PREFIX = 'REGION:'
@@ -177,21 +180,21 @@ const shippingFromCascaderOptions = computed(() =>
   }))
 )
 
-const shippingPayerOptions = [
-  { label: '送料込み(出品者负担)', value: 'seller' },
-  { label: '着払い(购买者负担)', value: 'buyer' }
-]
-const shippingMethodOptions = [
-  { label: '未定', value: 'undecided' },
+const shippingPayerOptions = computed(() => [
+  { label: t('system.shippingPayerSeller'), value: 'seller' },
+  { label: t('system.shippingPayerBuyer'), value: 'buyer' }
+])
+const shippingMethodOptions = computed(() => [
+  { label: t('system.shippingMethodUndecided'), value: 'undecided' },
   { label: 'らくらくメルカリ便', value: 'rakuraku' },
   { label: 'ゆうゆうメルカリ便', value: 'yuuyu' },
-  { label: '普通邮便(定形、定形外)', value: 'regular_mail' }
-]
-const shippingDaysOptions = [
-  { label: '1~2天', value: '1_2_days' },
-  { label: '2~3天', value: '2_3_days' },
-  { label: '4~7天', value: '4_7_days' }
-]
+  { label: t('system.shippingMethodRegularMail'), value: 'regular_mail' }
+])
+const shippingDaysOptions = computed(() => [
+  { label: t('system.shippingDays12'), value: '1_2_days' },
+  { label: t('system.shippingDays23'), value: '2_3_days' },
+  { label: t('system.shippingDays47'), value: '4_7_days' }
+])
 
 function buildShippingFromPath(areaId) {
   if (!areaId) return []
@@ -203,8 +206,8 @@ function buildShippingFromPath(areaId) {
 function mercariAccountOptionLabel(a) {
   const name = (a?.account_name || '').trim() || `ID ${a?.id}`
   const sid = String(a?.seller_id || '').trim()
-  const tail = sid ? ` · 卖家 ${sid}` : ''
-  const inactive = a?.status === 'disabled' ? '（停用）' : ''
+  const tail = sid ? ` · ${t('system.seller')} ${sid}` : ''
+  const inactive = a?.status === 'disabled' ? `（${t('system.inactive')}）` : ''
   return `${name}${tail}${inactive}`
 }
 
@@ -279,7 +282,7 @@ async function saveListingDefaults() {
       shipping_days: listingDefForm.shipping_days,
       mercari_account_id: listingDefForm.mercari_account_id
     })
-    ElMessage.success('出品默认值已保存')
+    ElMessage.success(t('system.listingDefaultsSaved'))
     await loadListingDefaults()
   } catch {
     /* 拦截器 */
@@ -295,9 +298,9 @@ const restarting = ref(false)
 async function confirmRestartSystem() {
   try {
     await ElMessageBox.confirm(
-      '将通过 restart.bat 重启 mercari 服务（会关闭当前后端与浏览器进程）。约 10 秒后请刷新页面。是否继续？',
-      '重启系统',
-      { type: 'warning', confirmButtonText: '确认重启', cancelButtonText: '取消' }
+      t('system.restartConfirmMsg'),
+      t('system.restartSystem'),
+      { type: 'warning', confirmButtonText: t('system.confirmRestart'), cancelButtonText: t('common.cancel') }
     )
   } catch {
     return
@@ -305,7 +308,7 @@ async function confirmRestartSystem() {
   restarting.value = true
   try {
     const res = await systemApi.restart()
-    ElMessage.success(res?.message || '系统正在重启，请稍后刷新页面')
+    ElMessage.success(res?.message || t('system.restartingMsg'))
   } catch {
     /* 拦截器已提示；进程退出时也可能出现网络错误，仍提示用户稍后刷新 */
   } finally {
@@ -322,8 +325,8 @@ const userForm = reactive({
   password: ''
 })
 const userRules = {
-  username: [{ required: true, message: '请输入用户名', trigger: 'blur' }],
-  password: [{ required: true, message: '请输入密码', trigger: 'blur' }, { min: 6, message: '密码至少6位', trigger: 'blur' }]
+  username: [{ required: true, message: t('login.usernameRequired'), trigger: 'blur' }],
+  password: [{ required: true, message: t('login.passwordRequired'), trigger: 'blur' }, { min: 6, message: t('system.passwordMin6'), trigger: 'blur' }]
 }
 
 const pwdSubmitting = ref(false)
@@ -334,13 +337,13 @@ const pwdForm = reactive({
   confirm_password: ''
 })
 const pwdRules = {
-  old_password: [{ required: true, message: '请输入原密码', trigger: 'blur' }],
-  new_password: [{ required: true, message: '请输入新密码', trigger: 'blur' }, { min: 6, message: '新密码至少6位', trigger: 'blur' }],
+  old_password: [{ required: true, message: t('system.oldPasswordRequired'), trigger: 'blur' }],
+  new_password: [{ required: true, message: t('system.newPasswordRequired'), trigger: 'blur' }, { min: 6, message: t('system.newPasswordMin6'), trigger: 'blur' }],
   confirm_password: [
-    { required: true, message: '请确认新密码', trigger: 'blur' },
+    { required: true, message: t('system.confirmPasswordRequired'), trigger: 'blur' },
     {
       validator: (rule, value, callback) => {
-        if (value !== pwdForm.new_password) callback(new Error('两次输入的新密码不一致'))
+        if (value !== pwdForm.new_password) callback(new Error(t('validation.passwordMismatch')))
         else callback()
       },
       trigger: 'blur'
@@ -369,7 +372,7 @@ async function submitUser() {
   userSubmitting.value = true
   try {
     await authApi.createUser(userForm)
-    ElMessage.success('用户创建成功')
+    ElMessage.success(t('system.userCreatedSuccess'))
     userDialogVisible.value = false
     await loadUsers()
   } finally {
@@ -385,7 +388,7 @@ async function submitPassword() {
       old_password: pwdForm.old_password,
       new_password: pwdForm.new_password
     })
-    ElMessage.success('密码修改成功，请重新登录')
+    ElMessage.success(t('system.passwordChangedSuccess'))
     localStorage.removeItem('auth_token')
     localStorage.removeItem('auth_user')
     window.location.hash = '#/login'

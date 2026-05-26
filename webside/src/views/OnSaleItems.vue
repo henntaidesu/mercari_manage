@@ -5,13 +5,13 @@
         <el-col :xs="24" :md="14" class="search-left-group">
           <el-input
             v-model="filters.keyword"
-            placeholder="搜索商品 ID、标题、商品说明"
+            :placeholder="t('onSaleItems.searchPlaceholderFull')"
             clearable
             @change="onFilterChange"
           />
           <el-select
             v-model="filters.seller_id"
-            placeholder="卖家（煤炉ID）"
+            :placeholder="t('onSaleItems.sellerPlaceholder')"
             clearable
             filterable
             style="min-width: 200px; width: 100%"
@@ -28,7 +28,7 @@
         <el-col :xs="24" :md="10" class="search-actions">
           <el-select
             v-model="globalAccountId"
-            placeholder="选择煤炉账号"
+            :placeholder="t('onSaleItems.selectMercariAccount')"
             filterable
             class="sync-account-select"
             :loading="mercariAccountStore.loading"
@@ -41,7 +41,7 @@
             />
           </el-select>
           <el-button type="primary" :icon="Download" :loading="syncLoading" @click="runSync">
-            从煤炉同步
+            {{ t('onSaleItems.syncFromMercari') }}
           </el-button>
         </el-col>
       </el-row>
@@ -64,9 +64,9 @@
                 border
                 size="small"
                 class="os-expand-table"
-                empty-text="暂无数据，展开后自动加载"
+                :empty-text="t('onSaleItems.expandEmpty')"
               >
-                <el-table-column label="管理ID" width="120" align="center">
+                <el-table-column :label="t('onSaleItems.mgmtId')" width="120" align="center">
                   <template #default="{ row: r }">
                     <div v-if="resolvedMgmtIdsForRow(r).length" class="multi-line-cell">
                       <div v-for="(mid, idx) in resolvedMgmtIdsForRow(r)" :key="`mgmt-${idx}`">{{ mid }}</div>
@@ -74,7 +74,7 @@
                     <span v-else class="cell-muted">-</span>
                   </template>
                 </el-table-column>
-                <el-table-column label="条码" min-width="180" show-overflow-tooltip>
+                <el-table-column :label="t('onSaleItems.barcode')" min-width="180" show-overflow-tooltip>
                   <template #default="{ row: r }">
                     <div v-if="inventoryLines(r).length" class="multi-line-cell">
                       <div v-for="(ln, idx) in inventoryLines(r)" :key="`bc-${idx}`">{{ ln.barcode || '-' }}</div>
@@ -82,7 +82,7 @@
                     <span v-else class="cell-muted">-</span>
                   </template>
                 </el-table-column>
-                <el-table-column label="商品名称" min-width="180" show-overflow-tooltip>
+                <el-table-column :label="t('onSaleItems.productName')" min-width="180" show-overflow-tooltip>
                   <template #default="{ row: r }">
                     <div v-if="inventoryLines(r).length" class="multi-line-cell">
                       <div v-for="(ln, idx) in inventoryLines(r)" :key="`name-${idx}`">{{ ln.inventory_name || '-' }}</div>
@@ -90,7 +90,7 @@
                     <span v-else class="cell-muted">-</span>
                   </template>
                 </el-table-column>
-                <el-table-column label="存储位置" min-width="180" show-overflow-tooltip>
+                <el-table-column :label="t('onSaleItems.location')" min-width="180" show-overflow-tooltip>
                   <template #default="{ row: r }">
                     <div v-if="inventoryLines(r).length" class="multi-line-cell">
                       <div v-for="(ln, idx) in inventoryLines(r)" :key="`loc-${idx}`">{{ ln.location || '-' }}</div>
@@ -98,7 +98,7 @@
                     <span v-else class="cell-muted">-</span>
                   </template>
                 </el-table-column>
-                <el-table-column label="在售数" width="90" align="center">
+                <el-table-column :label="t('onSaleItems.onSaleQuantity')" width="90" align="center">
                   <template #default="{ row: r }">
                     <div v-if="inventoryLines(r).length" class="multi-line-cell">
                       <div v-for="(ln, idx) in inventoryLines(r)" :key="`qty-${idx}`">{{ ln.on_sale_quantity ?? 0 }}</div>
@@ -106,14 +106,14 @@
                     <span v-else class="cell-muted">-</span>
                   </template>
                 </el-table-column>
-                <el-table-column label="更新" width="140" align="center">
+                <el-table-column :label="t('onSaleItems.updated')" width="140" align="center">
                   <template #default="{ row: r }">{{ displayTs(r.updated) }}</template>
                 </el-table-column>
               </el-table>
             </div>
           </template>
         </el-table-column>
-        <el-table-column label="图" width="72" align="center" header-align="center" fixed>
+        <el-table-column :label="t('onSaleItems.image')" width="72" align="center" header-align="center" fixed>
           <template #default="{ row }">
             <el-image
               v-if="firstThumb(row)"
@@ -132,53 +132,53 @@
             <span v-else class="thumb-fallback">-</span>
           </template>
         </el-table-column>
-        <el-table-column label="商品ID" prop="item_id" width="128" show-overflow-tooltip align="center" header-align="center" />
-        <el-table-column label="卖家" prop="seller_name" width="120" show-overflow-tooltip align="center" header-align="center">
+        <el-table-column :label="t('onSaleItems.itemId')" prop="item_id" width="128" show-overflow-tooltip align="center" header-align="center" />
+        <el-table-column :label="t('onSaleItems.seller')" prop="seller_name" width="120" show-overflow-tooltip align="center" header-align="center">
           <template #default="{ row }">
             <span>{{ row.seller_name || '-' }}</span>
           </template>
         </el-table-column>
-        <el-table-column label="标题" prop="name" min-width="200" show-overflow-tooltip align="left" header-align="center" />
-        <el-table-column label="价格¥" width="88" align="center" header-align="center">
+        <el-table-column :label="t('onSaleItems.titleColumn')" prop="name" min-width="200" show-overflow-tooltip align="left" header-align="center" />
+        <el-table-column :label="t('onSaleItems.priceYen')" width="88" align="center" header-align="center">
           <template #default="{ row }">{{ Number(row.price || 0) }}</template>
         </el-table-column>
-        <el-table-column label="状态" width="112" align="center" header-align="center">
+        <el-table-column :label="t('onSaleItems.statusColumn')" width="112" align="center" header-align="center">
           <template #default="{ row }">
             <el-tag :type="onSaleStatusTagType(row.status)" size="small" effect="light">
               {{ onSaleStatusLabel(row.status) }}
             </el-tag>
           </template>
         </el-table-column>
-        <el-table-column label="赞/评" width="76" align="center" header-align="center">
+        <el-table-column :label="t('onSaleItems.likesComments')" width="76" align="center" header-align="center">
           <template #default="{ row }">{{ row.num_likes ?? 0 }}/{{ row.num_comments ?? 0 }}</template>
         </el-table-column>
-        <el-table-column label="PV/近7日" width="100" align="center" header-align="center">
+        <el-table-column :label="t('onSaleItems.pvRecent')" width="100" align="center" header-align="center">
           <template #default="{ row }">{{ row.item_pv ?? 0 }}/{{ row.recent_item_pv ?? 0 }}</template>
         </el-table-column>
-        <el-table-column label="搜索曝光" width="108" align="center" header-align="center">
+        <el-table-column :label="t('onSaleItems.searchImpression')" width="108" align="center" header-align="center">
           <template #default="{ row }">
             <span v-if="row.search_impression != null">{{ row.search_impression }}/{{ row.recent_search_impression ?? '-' }}</span>
             <span v-else class="cell-muted">-</span>
           </template>
         </el-table-column>
-        <el-table-column label="拍卖" width="72" align="center" header-align="center">
+        <el-table-column :label="t('onSaleItems.auction')" width="72" align="center" header-align="center">
           <template #default="{ row }">
             <el-popover v-if="row.auction_info_json" placement="left" :width="280" trigger="click">
               <template #reference>
-                <el-button link type="primary" size="small">查看</el-button>
+                <el-button link type="primary" size="small">{{ t('onSaleItems.viewBtn') }}</el-button>
               </template>
               <pre class="auction-pre">{{ formatJsonPretty(row.auction_info_json) }}</pre>
             </el-popover>
             <span v-else class="cell-muted">-</span>
           </template>
         </el-table-column>
-        <el-table-column label="创建" width="160" align="center" header-align="center">
+        <el-table-column :label="t('onSaleItems.created')" width="160" align="center" header-align="center">
           <template #default="{ row }">{{ displayTs(row.created) }}</template>
         </el-table-column>
-        <el-table-column label="更新" width="160" align="center" header-align="center">
+        <el-table-column :label="t('onSaleItems.updated')" width="160" align="center" header-align="center">
           <template #default="{ row }">{{ displayTs(row.updated) }}</template>
         </el-table-column>
-        <el-table-column label="操作" width="120" fixed="right" align="center" header-align="center">
+        <el-table-column :label="t('common.operate')" width="120" fixed="right" align="center" header-align="center">
           <template #default="{ row }">
             <el-button
               :type="hasDetailViewable(row) ? 'success' : 'warning'"
@@ -187,7 +187,7 @@
               :loading="detailLoadingIds.has(String(row.item_id || '').trim())"
               @click="onDetailActionClick(row)"
             >
-              {{ hasDetailViewable(row) ? '查看详情' : '获取详情' }}
+              {{ hasDetailViewable(row) ? t('onSaleItems.viewDetail') : t('onSaleItems.fetchDetail') }}
             </el-button>
           </template>
         </el-table-column>
@@ -209,7 +209,7 @@
 
     <el-dialog
       v-model="detailViewVisible"
-      title="在售商品详情"
+      :title="t('onSaleItems.detailTitle')"
       width="760px"
       class="on-sale-detail-dialog"
       destroy-on-close
@@ -217,25 +217,25 @@
     >
       <div v-loading="detailViewLoading" class="detail-view-body">
         <template v-if="detailViewBase">
-          <div class="detail-section-title">煤炉侧信息</div>
+          <div class="detail-section-title">{{ t('onSaleItems.mercariSideInfo') }}</div>
           <el-descriptions :column="2" border size="small" class="detail-desc">
-            <el-descriptions-item label="商品 ID" :span="1">{{ detailViewBase.item_id || '-' }}</el-descriptions-item>
-            <el-descriptions-item label="状态" :span="1">
+            <el-descriptions-item :label="t('onSaleItems.itemIdLabel')" :span="1">{{ detailViewBase.item_id || '-' }}</el-descriptions-item>
+            <el-descriptions-item :label="t('onSaleItems.statusColumn')" :span="1">
               <el-tag :type="onSaleStatusTagType(detailViewBase.status)" size="small" effect="light">
                 {{ onSaleStatusLabel(detailViewBase.status) }}
               </el-tag>
             </el-descriptions-item>
-            <el-descriptions-item label="标题" :span="2">{{ detailViewBase.name || '-' }}</el-descriptions-item>
-            <el-descriptions-item label="价格（日元）" :span="1">{{ Number(detailViewBase.price || 0) }}</el-descriptions-item>
-            <el-descriptions-item label="卖家" :span="1">
+            <el-descriptions-item :label="t('onSaleItems.titleColumn')" :span="2">{{ detailViewBase.name || '-' }}</el-descriptions-item>
+            <el-descriptions-item :label="t('onSaleItems.priceJpy')" :span="1">{{ Number(detailViewBase.price || 0) }}</el-descriptions-item>
+            <el-descriptions-item :label="t('onSaleItems.seller')" :span="1">
               {{ detailViewBase.seller_name || '-' }}
               <span v-if="detailViewBase.seller_id" class="cell-muted">（{{ detailViewBase.seller_id }}）</span>
             </el-descriptions-item>
-            <el-descriptions-item label="煤炉更新" :span="1">{{ displayTs(detailViewBase.updated) }}</el-descriptions-item>
-            <el-descriptions-item label="本地同步" :span="1">{{ displayTs(detailViewBase.synced_at) }}</el-descriptions-item>
+            <el-descriptions-item :label="t('onSaleItems.mercariUpdated')" :span="1">{{ displayTs(detailViewBase.updated) }}</el-descriptions-item>
+            <el-descriptions-item :label="t('onSaleItems.localSynced')" :span="1">{{ displayTs(detailViewBase.synced_at) }}</el-descriptions-item>
           </el-descriptions>
 
-          <div class="detail-section-title">商品说明（煤炉）</div>
+          <div class="detail-section-title">{{ t('onSaleItems.listingDescription') }}</div>
           <div v-if="detailListingBodyText" class="detail-listing-body-wrap">
             <el-input
               type="textarea"
@@ -244,25 +244,25 @@
               :autosize="{ minRows: 10, maxRows: 22 }"
             />
           </div>
-          <el-empty v-else description="暂无已保存的商品说明，请使用「获取详情」或下方「重新从煤炉获取」" :image-size="48" />
+          <el-empty v-else :description="t('onSaleItems.descEmpty')" :image-size="48" />
 
-          <div class="detail-section-title">库存关联摘要</div>
+          <div class="detail-section-title">{{ t('onSaleItems.inventorySummary') }}</div>
           <el-descriptions :column="1" border size="small" class="detail-desc">
-            <el-descriptions-item label="匹配条数">{{ Number(detailViewBase.inventory_match_count || 0) }}</el-descriptions-item>
-            <el-descriptions-item label="管理 ID（汇总）">
+            <el-descriptions-item :label="t('onSaleItems.matchCount')">{{ Number(detailViewBase.inventory_match_count || 0) }}</el-descriptions-item>
+            <el-descriptions-item :label="t('onSaleItems.mgmtIdSummary')">
               <span v-if="detailMgmtIdsText">{{ detailMgmtIdsText }}</span>
               <span v-else class="cell-muted">-</span>
             </el-descriptions-item>
-            <el-descriptions-item label="条码（汇总）">
+            <el-descriptions-item :label="t('onSaleItems.barcodeSummary')">
               <span v-if="(detailViewBase.inventory_barcodes_text || '').trim()">{{ detailViewBase.inventory_barcodes_text }}</span>
               <span v-else class="cell-muted">-</span>
             </el-descriptions-item>
-            <el-descriptions-item v-if="(detailViewBase.inventory_locations_text || '').trim()" label="位置（汇总）">
+            <el-descriptions-item v-if="(detailViewBase.inventory_locations_text || '').trim()" :label="t('onSaleItems.locationSummary')">
               {{ detailViewBase.inventory_locations_text }}
             </el-descriptions-item>
           </el-descriptions>
 
-          <div class="detail-section-title">关联库存明细</div>
+          <div class="detail-section-title">{{ t('onSaleItems.linkedInventoryDetail') }}</div>
           <el-table
             v-if="detailInventoryLines.length"
             :data="detailInventoryLines"
@@ -272,17 +272,17 @@
             max-height="320"
             class="detail-inv-table"
           >
-            <el-table-column prop="management_id" label="管理 ID" width="100" align="center" />
-            <el-table-column prop="barcode" label="条码" min-width="140" show-overflow-tooltip />
-            <el-table-column prop="inventory_name" label="库存名称" min-width="160" show-overflow-tooltip />
-            <el-table-column prop="location" label="存储位置" min-width="140" show-overflow-tooltip />
-            <el-table-column prop="on_sale_quantity" label="在售数" width="88" align="center" />
+            <el-table-column prop="management_id" :label="t('onSaleItems.mgmtIdLabel')" width="100" align="center" />
+            <el-table-column prop="barcode" :label="t('onSaleItems.barcode')" min-width="140" show-overflow-tooltip />
+            <el-table-column prop="inventory_name" :label="t('onSaleItems.inventoryName')" min-width="160" show-overflow-tooltip />
+            <el-table-column prop="location" :label="t('onSaleItems.location')" min-width="140" show-overflow-tooltip />
+            <el-table-column prop="on_sale_quantity" :label="t('onSaleItems.onSaleQuantity')" width="88" align="center" />
           </el-table>
-          <el-empty v-else description="暂无解析出的库存行（可尝试重新从煤炉获取）" :image-size="56" />
+          <el-empty v-else :description="t('onSaleItems.invLinesEmpty')" :image-size="56" />
         </template>
       </div>
       <template #footer>
-        <el-button @click="detailViewVisible = false">关闭</el-button>
+        <el-button @click="detailViewVisible = false">{{ t('common.close') }}</el-button>
         <el-button
           v-if="detailViewBase"
           type="danger"
@@ -290,7 +290,7 @@
           :loading="deleteItemLoading"
           @click="deleteMercariItemFromDetail"
         >
-          删除物品
+          {{ t('onSaleItems.deleteItem') }}
         </el-button>
         <el-button
           v-if="detailViewBase"
@@ -299,7 +299,7 @@
           :loading="detailLoadingIds.has(String(detailViewBase.item_id || '').trim())"
           @click="detailViewRefreshFromMercari"
         >
-          重新从煤炉获取
+          {{ t('onSaleItems.refetchFromMercari') }}
         </el-button>
       </template>
     </el-dialog>
@@ -315,7 +315,7 @@
         <div class="on-sale-sync-overlay__box">
           <el-icon class="is-loading on-sale-sync-overlay__icon" :size="40"><Loading /></el-icon>
           <div class="on-sale-sync-overlay__title">{{ syncOverlayTitle }}</div>
-          <div class="on-sale-sync-overlay__step">{{ syncProgressLabel || '请稍候…' }}</div>
+          <div class="on-sale-sync-overlay__step">{{ syncProgressLabel || t('onSaleItems.pleaseWait') }}</div>
         </div>
       </div>
     </teleport>
@@ -326,11 +326,13 @@
 import { ref, computed, onBeforeUnmount, onMounted, reactive } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { Download, Loading } from '@element-plus/icons-vue'
+import { useI18n } from 'vue-i18n'
 import { onSaleItemApi, mercariAccountApi, webDriveApi } from '@/api/index.js'
 import { parseMgmtIdsFromDescription } from '@/utils/mgmtIdCipher.js'
 import { mercariImageUrlList } from '@/utils/mercariImage.js'
 import { useMercariAccountStore } from '@/stores/mercariAccount.js'
 
+const { t } = useI18n()
 const mercariAccountStore = useMercariAccountStore()
 const globalAccountId = computed({
   get: () => mercariAccountStore.selectedId,
@@ -339,25 +341,26 @@ const globalAccountId = computed({
 
 /** 煤炉商品 item.status → 中文（与 API 原始值对应） */
 const onSaleStatusMap = {
-  on_sale: { label: '出售中', tag: 'success' },
-  stop: { label: '暂停出售', tag: 'warning' },
-  trading: { label: '交易中', tag: 'primary' },
-  wait_payment: { label: '待支付', tag: 'warning' },
-  wait_shipping: { label: '待发货', tag: 'warning' },
-  wait_review: { label: '待评价', tag: 'primary' },
-  sold_out: { label: '已售完', tag: 'info' },
-  done: { label: '已完成', tag: 'success' },
-  cancelled: { label: '已取消', tag: 'info' },
-  cancel_request: { label: '取消申请中', tag: 'danger' },
-  deleted: { label: '已删除', tag: 'danger' },
-  private: { label: '非公开', tag: 'info' },
-  pending: { label: '待处理', tag: 'info' },
+  on_sale: { labelKey: 'onSaleItems.status.on_sale', tag: 'success' },
+  stop: { labelKey: 'onSaleItems.status.stop', tag: 'warning' },
+  trading: { labelKey: 'onSaleItems.status.trading', tag: 'primary' },
+  wait_payment: { labelKey: 'onSaleItems.status.wait_payment', tag: 'warning' },
+  wait_shipping: { labelKey: 'onSaleItems.status.wait_shipping', tag: 'warning' },
+  wait_review: { labelKey: 'onSaleItems.status.wait_review', tag: 'primary' },
+  sold_out: { labelKey: 'onSaleItems.status.sold_out', tag: 'info' },
+  done: { labelKey: 'onSaleItems.status.done', tag: 'success' },
+  cancelled: { labelKey: 'onSaleItems.status.cancelled', tag: 'info' },
+  cancel_request: { labelKey: 'onSaleItems.status.cancel_request', tag: 'danger' },
+  deleted: { labelKey: 'onSaleItems.status.deleted', tag: 'danger' },
+  private: { labelKey: 'onSaleItems.status.private', tag: 'info' },
+  pending: { labelKey: 'onSaleItems.status.pending', tag: 'info' },
 }
 
 function onSaleStatusLabel(status) {
   if (status == null || status === '') return '-'
   const s = String(status).trim()
-  return onSaleStatusMap[s]?.label ?? s
+  const key = onSaleStatusMap[s]?.labelKey
+  return key ? t(key) : s
 }
 
 function onSaleStatusTagType(status) {
@@ -372,7 +375,7 @@ const syncLoading = ref(false)
 
 /** 「从煤炉同步」全屏等待与步骤文案（与后端 progress_job_id 轮询同步） */
 const syncOverlayVisible = ref(false)
-const syncOverlayTitle = ref('正在从煤炉同步')
+const syncOverlayTitle = ref('')
 const syncOverlayFailed = ref(false)
 const syncProgressLabel = ref('')
 let syncProgressTimer = null
@@ -455,7 +458,7 @@ const sellerOptions = computed(() => {
     const sid = row.seller_id
     if (sid != null && String(sid).trim()) {
       const k = String(sid).trim()
-      if (!m.has(k)) m.set(k, { value: k, label: `卖家 ${k}` })
+      if (!m.has(k)) m.set(k, { value: k, label: `${t('onSaleItems.seller')} ${k}` })
     }
   }
   return Array.from(m.values())
@@ -670,20 +673,20 @@ function resolveAccountKeyForRow(row) {
 async function deleteMercariItemFromDetail() {
   const base = detailViewBase.value
   if (!base?.item_id) {
-    ElMessage.warning('缺少商品 ID')
+    ElMessage.warning(t('onSaleItems.missingItemId'))
     return
   }
   const iid = String(base.item_id || '').trim()
   const resolved = resolveAccountKeyForRow(base)
   if (!resolved) {
-    ElMessage.warning(`未找到卖家 ${String(base.seller_id || '').trim() || '-'} 对应的 active 账号`)
+    ElMessage.warning(t('onSaleItems.noActiveAccountForSeller', { sid: String(base.seller_id || '').trim() || '-' }))
     return
   }
   try {
     await ElMessageBox.confirm(
-      `将使用无头浏览器在煤炉删除商品 ${iid} 并自动同步列表，此操作不可撤销。请确保该账号 Cookie 有效。`,
-      '删除物品',
-      { type: 'warning', confirmButtonText: '确认删除', cancelButtonText: '取消' }
+      t('onSaleItems.deleteConfirmMsg', { iid }),
+      t('onSaleItems.deleteItem'),
+      { type: 'warning', confirmButtonText: t('onSaleItems.confirmDelete'), cancelButtonText: t('common.cancel') }
     )
   } catch {
     return
@@ -713,9 +716,9 @@ async function deleteMercariItemFromDetail() {
     }
   }
 
-  syncOverlayTitle.value = '正在删除煤炉商品'
+  syncOverlayTitle.value = t('onSaleItems.deletingMercariItem')
   syncOverlayFailed.value = false
-  syncProgressLabel.value = '正在连接服务器…'
+  syncProgressLabel.value = t('onSaleItems.connectingServer')
   syncOverlayVisible.value = true
   deleteItemLoading.value = true
   await poll()
@@ -733,20 +736,25 @@ async function deleteMercariItemFromDetail() {
     const sync = d.sync || {}
     if (d.delete_confirmed && sync && typeof sync === 'object') {
       ElMessage.success(
-        `已删除商品 ${iid}，列表已同步：煤炉 ${sync.api_item_count ?? 0} 条，更新 ${sync.updated ?? 0}，标记删除 ${sync.marked_deleted ?? 0}`
+        t('onSaleItems.deleteSuccessFull', {
+          iid,
+          apiCount: sync.api_item_count ?? 0,
+          updated: sync.updated ?? 0,
+          marked: sync.marked_deleted ?? 0,
+        })
       )
     } else if (d.delete_confirmed) {
-      ElMessage.success(`已在煤炉删除商品 ${iid}`)
+      ElMessage.success(t('onSaleItems.deletedOnMercari', { iid }))
     } else {
-      ElMessage.warning('删除流程已执行，请检查浏览器中的煤炉页面')
+      ElMessage.warning(t('onSaleItems.deleteFlowExecuted'))
     }
     detailViewVisible.value = false
     await load()
   } catch (e) {
     hadError = true
-    syncOverlayTitle.value = '删除失败'
+    syncOverlayTitle.value = t('onSaleItems.deleteFailed')
     syncOverlayFailed.value = true
-    const msg = e?.response?.data?.detail || e?.message || '删除失败'
+    const msg = e?.response?.data?.detail || e?.message || t('onSaleItems.deleteFailed')
     syncProgressLabel.value = String(msg)
   } finally {
     if (pollTimer != null) {
@@ -756,7 +764,7 @@ async function deleteMercariItemFromDetail() {
       await new Promise((r) => setTimeout(r, 1200))
     }
     syncOverlayVisible.value = false
-    syncOverlayTitle.value = '正在从煤炉同步'
+    syncOverlayTitle.value = t('onSaleItems.syncingFromMercari')
     syncOverlayFailed.value = false
     syncProgressLabel.value = ''
     deleteItemLoading.value = false
@@ -787,7 +795,7 @@ async function fetchItemDetailForItemId(itemId, options = {}) {
   const { accountId = null, silent = false, reloadAfter = true } = options
   const iid = String(itemId || '').trim()
   if (!iid) {
-    if (!silent) ElMessage.warning('缺少商品 ID')
+    if (!silent) ElMessage.warning(t('onSaleItems.missingItemId'))
     return { ok: false }
   }
   if (detailLoadingIds.value.has(iid)) return { ok: false, skipped: true }
@@ -805,9 +813,9 @@ async function fetchItemDetailForItemId(itemId, options = {}) {
   let pollTimer = null
   let lastConsoleStep = ''
   if (showOverlay) {
-    syncOverlayTitle.value = '正在从煤炉获取详情'
+    syncOverlayTitle.value = t('onSaleItems.fetchingDetailFromMercari')
     syncOverlayFailed.value = false
-    syncProgressLabel.value = '正在连接服务器…'
+    syncProgressLabel.value = t('onSaleItems.connectingServer')
     syncOverlayVisible.value = true
     const poll = async () => {
       try {
@@ -841,10 +849,10 @@ async function fetchItemDetailForItemId(itemId, options = {}) {
       if (ok) {
         ElMessage.success(
           sync.message ||
-            `已关联 ${sync.inventory_ids?.length ?? 0} 条库存，煤炉 ID ${sync.mercari_item_id}`
+            t('onSaleItems.fetchDetailSuccess', { count: sync.inventory_ids?.length ?? 0, mid: sync.mercari_item_id })
         )
       } else {
-        ElMessage.warning(sync.message || '未写入库存（请检查说明中的管理番号/条码与账号 DPoP_ItemGet-Info）')
+        ElMessage.warning(sync.message || t('onSaleItems.fetchDetailNoWrite'))
       }
     }
     if (reloadAfter) await load()
@@ -852,9 +860,9 @@ async function fetchItemDetailForItemId(itemId, options = {}) {
   } catch (e) {
     hadError = true
     if (showOverlay) {
-      syncOverlayTitle.value = '获取详情失败'
+      syncOverlayTitle.value = t('onSaleItems.fetchDetailFailed')
       syncOverlayFailed.value = true
-      const msg = e?.response?.data?.detail || e?.message || '获取失败'
+      const msg = e?.response?.data?.detail || e?.message || t('onSaleItems.fetchFailed')
       syncProgressLabel.value = String(msg)
     }
     result = { ok: false, error: e }
@@ -867,7 +875,7 @@ async function fetchItemDetailForItemId(itemId, options = {}) {
     }
     if (showOverlay) {
       syncOverlayVisible.value = false
-      syncOverlayTitle.value = '正在从煤炉同步'
+      syncOverlayTitle.value = t('onSaleItems.syncingFromMercari')
       syncOverlayFailed.value = false
       syncProgressLabel.value = ''
     }
@@ -886,15 +894,15 @@ async function runSync() {
   if (syncLoading.value) return
   const aid = mercariAccountStore.selectedId
   if (!aid) {
-    ElMessage.warning('请先在右上角选择煤炉账号')
+    ElMessage.warning(t('onSaleItems.pleaseSelectAccount'))
     return
   }
   const name = mercariAccountStore.selectedAccountName || `#${aid}`
   try {
     await ElMessageBox.confirm(
-      `将使用账号「${name}」从煤炉同步在售列表，是否继续？`,
-      '确认同步',
-      { type: 'info', confirmButtonText: '开始', cancelButtonText: '取消' },
+      t('onSaleItems.runSyncConfirmMsg', { name }),
+      t('onSaleItems.runSyncConfirmTitle'),
+      { type: 'info', confirmButtonText: t('onSaleItems.start'), cancelButtonText: t('common.cancel') },
     )
   } catch {
     return
@@ -923,9 +931,9 @@ async function runSync() {
     }
   }
 
-  syncOverlayTitle.value = '正在从煤炉同步'
+  syncOverlayTitle.value = t('onSaleItems.syncingFromMercari')
   syncOverlayFailed.value = false
-  syncProgressLabel.value = '正在连接服务器…'
+  syncProgressLabel.value = t('onSaleItems.connectingServer')
   syncOverlayVisible.value = true
   syncLoading.value = true
   await pollSyncProgress()
@@ -939,14 +947,19 @@ async function runSync() {
     )
     const d = res.data || {}
     ElMessage.success(
-      `同步完成：煤炉 ${d.api_item_count ?? 0} 条，新增 ${d.inserted ?? 0}，更新 ${d.updated ?? 0}，标记删除 ${d.marked_deleted ?? 0}`
+      t('onSaleItems.syncSuccessFull', {
+        apiCount: d.api_item_count ?? 0,
+        inserted: d.inserted ?? 0,
+        updated: d.updated ?? 0,
+        marked: d.marked_deleted ?? 0,
+      })
     )
     await load()
 
     const rawNewIds = Array.isArray(d.inserted_item_ids) ? d.inserted_item_ids : []
     const newIds = rawNewIds.map((x) => String(x ?? '').trim()).filter(Boolean)
     if (newIds.length > 0) {
-      syncProgressLabel.value = `正在批量回写库存（${newIds.length} 件新增商品）…`
+      syncProgressLabel.value = t('onSaleItems.batchWritingInventory', { count: newIds.length })
       const batchRes = await onSaleItemApi.fetchDetailsBatch(
         { account_id: aid, item_ids: newIds },
         { timeout: 0 }
@@ -956,14 +969,14 @@ async function runSync() {
       const failN = Number(bd.not_ok ?? 0) || 0
       await load()
       ElMessage.info(
-        `新增商品已自动获取详情：成功关联库存 ${okN} 条，未写入 ${failN} 条（请核对商品说明与 DPoP_ItemGet-Info）`
+        t('onSaleItems.batchDetailResult', { ok: okN, fail: failN })
       )
     }
   } catch (exc) {
     syncHadError = true
-    syncOverlayTitle.value = '同步失败'
+    syncOverlayTitle.value = t('onSaleItems.syncFailed')
     syncOverlayFailed.value = true
-    const msg = exc?.response?.data?.detail || exc?.message || '未知错误'
+    const msg = exc?.response?.data?.detail || exc?.message || t('onSaleItems.unknownError')
     syncProgressLabel.value = String(msg)
   } finally {
     if (syncProgressTimer != null) {
@@ -974,7 +987,7 @@ async function runSync() {
       await new Promise((r) => setTimeout(r, 1200))
     }
     syncOverlayVisible.value = false
-    syncOverlayTitle.value = '正在从煤炉同步'
+    syncOverlayTitle.value = t('onSaleItems.syncingFromMercari')
     syncOverlayFailed.value = false
     syncProgressLabel.value = ''
     syncLoading.value = false

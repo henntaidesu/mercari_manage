@@ -1,37 +1,49 @@
 <template>
   <div class="login-page">
+    <div class="login-lang-switcher">
+      <el-select v-model="locale" size="small" @change="onLocaleChange">
+        <el-option
+          v-for="lang in localeOptions"
+          :key="lang.value"
+          :label="lang.label"
+          :value="lang.value"
+        />
+      </el-select>
+    </div>
     <el-card class="login-card" shadow="hover">
       <template #header>
         <div class="title-wrap">
           <el-icon size="26"><UserFilled /></el-icon>
-          <span>mercari 订单管理登录</span>
+          <span>{{ t('login.title') }}</span>
         </div>
       </template>
 
       <el-form ref="formRef" :model="form" :rules="rules" @keyup.enter="handleLogin">
         <el-form-item prop="username">
-          <el-input v-model="form.username" placeholder="请输入用户名" size="large" clearable />
+          <el-input v-model="form.username" :placeholder="t('login.usernamePlaceholder')" size="large" clearable />
         </el-form-item>
         <el-form-item prop="password">
-          <el-input v-model="form.password" type="password" placeholder="请输入密码" size="large" show-password />
+          <el-input v-model="form.password" type="password" :placeholder="t('login.passwordPlaceholder')" size="large" show-password />
         </el-form-item>
         <el-form-item>
           <el-button type="primary" size="large" :loading="loading" style="width: 100%" @click="handleLogin">
-            登录
+            {{ t('login.login') }}
           </el-button>
         </el-form-item>
       </el-form>
 
-      <div class="tip">默认账号：admin / admin</div>
+      <div class="tip">{{ t('login.defaultAccount') }}</div>
     </el-card>
   </div>
 </template>
 
 <script setup>
-import { reactive, ref } from 'vue'
+import { reactive, ref, computed } from 'vue'
 import { useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
+import { useI18n } from 'vue-i18n'
 import { authApi } from '@/api'
+import { setLocale, SUPPORTED_LOCALES } from '@/i18n'
 
 const router = useRouter()
 const formRef = ref()
@@ -40,11 +52,21 @@ const form = reactive({
   username: '',
   password: ''
 })
+const { t, locale } = useI18n()
 
-const rules = {
-  username: [{ required: true, message: '请输入用户名', trigger: 'blur' }],
-  password: [{ required: true, message: '请输入密码', trigger: 'blur' }]
+const localeOptions = computed(() => SUPPORTED_LOCALES.map(code => ({
+  value: code,
+  label: t(`lang.${code}`),
+})))
+
+function onLocaleChange(val) {
+  setLocale(val)
 }
+
+const rules = computed(() => ({
+  username: [{ required: true, message: t('login.usernameRequired'), trigger: 'blur' }],
+  password: [{ required: true, message: t('login.passwordRequired'), trigger: 'blur' }]
+}))
 
 const handleLogin = async () => {
   await formRef.value?.validate()
@@ -53,7 +75,7 @@ const handleLogin = async () => {
     const res = await authApi.login(form)
     localStorage.setItem('auth_token', res.token)
     localStorage.setItem('auth_user', JSON.stringify(res.user))
-    ElMessage.success('登录成功')
+    ElMessage.success(t('login.success'))
     router.replace('/dashboard')
   } finally {
     loading.value = false
@@ -69,6 +91,14 @@ const handleLogin = async () => {
   justify-content: center;
   background: radial-gradient(circle at top, #1f2a44 0%, #0b1220 55%);
   padding: 16px;
+  position: relative;
+}
+
+.login-lang-switcher {
+  position: absolute;
+  top: 16px;
+  right: 16px;
+  width: 140px;
 }
 
 .login-card {

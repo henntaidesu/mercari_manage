@@ -1,7 +1,7 @@
 <template>
   <el-dialog
     :model-value="modelValue"
-    title="组合出品"
+    :title="t('dialogs.combinedListing.title')"
     :width="isMobile ? '94vw' : '680px'"
     class="listing-dialog"
     destroy-on-close
@@ -16,25 +16,25 @@
       class="listing-dialog-form"
       scroll-to-error
     >
-      <el-form-item label="关联库存" prop="inventory_ids" required>
+      <el-form-item :label="t('dialogs.combinedListing.linkedInventory')" prop="inventory_ids" required>
         <span v-if="form.inventory_ids?.length" class="listing-inv-count"
-          >已选 {{ form.inventory_ids.length }} 条库存条目（组合出品）</span
+          >{{ t('dialogs.combinedListing.selectedInventoryCount', { count: form.inventory_ids.length }) }}</span
         >
-        <span v-else class="listing-inv-count listing-inv-count--warn">未关联库存条目</span>
+        <span v-else class="listing-inv-count listing-inv-count--warn">{{ t('dialogs.combinedListing.noLinkedInventory') }}</span>
       </el-form-item>
-      <el-form-item label="商品图片" prop="combined_listing_images" class="listing-form-item--images" required>
+      <el-form-item :label="t('dialogs.combinedListing.productImages')" prop="combined_listing_images" class="listing-form-item--images" required>
         <div class="listing-field-full listing-combined-images-wrap">
-          <div v-if="!combinedPreviewImages.length" class="listing-combined-empty">暂无商品图片数据</div>
+          <div v-if="!combinedPreviewImages.length" class="listing-combined-empty">{{ t('dialogs.combinedListing.noImageData') }}</div>
           <div v-else class="listing-combined-gallery">
             <div
               v-for="(block, idx) in combinedPreviewImages"
               :key="`${block.inventory_id ?? idx}-${idx}`"
               class="listing-combined-card"
             >
-              <div class="listing-combined-card-title">商品 {{ idx + 1 }} · 管理 {{ block.inventory_id ?? '—' }}</div>
+              <div class="listing-combined-card-title">{{ t('dialogs.combinedListing.itemCardTitle', { index: idx + 1, mgmtId: block.inventory_id ?? '—' }) }}</div>
               <div class="listing-images-thumbs listing-images-thumbs--combined">
                 <div class="listing-thumb-block">
-                  <span class="listing-thumb-label">正面</span>
+                  <span class="listing-thumb-label">{{ t('dialogs.combinedListing.front') }}</span>
                   <el-image
                     v-if="block.front"
                     :src="block.front"
@@ -45,10 +45,10 @@
                     :preview-teleported="true"
                     :initial-index="0"
                   />
-                  <div v-else class="listing-image-empty listing-image-empty--combined">无</div>
+                  <div v-else class="listing-image-empty listing-image-empty--combined">{{ t('dialogs.combinedListing.none') }}</div>
                 </div>
                 <div v-if="block.back" class="listing-thumb-block">
-                  <span class="listing-thumb-label">背面</span>
+                  <span class="listing-thumb-label">{{ t('dialogs.combinedListing.back') }}</span>
                   <el-image
                     :src="block.back"
                     fit="cover"
@@ -64,17 +64,17 @@
           </div>
         </div>
       </el-form-item>
-      <el-form-item label="出品标题" prop="listing_title" class="listing-form-item--name" required>
+      <el-form-item :label="t('dialogs.combinedListing.listingTitle')" prop="listing_title" class="listing-form-item--name" required>
         <div class="listing-field-full">
           <el-input
             v-model="form.listing_title"
             class="listing-name-input"
-            placeholder="请输入出品标题（必填）"
+            :placeholder="t('dialogs.combinedListing.listingTitlePlaceholder')"
             clearable
           />
         </div>
       </el-form-item>
-      <el-form-item label="商品说明" prop="description" class="listing-form-item--desc" required>
+      <el-form-item :label="t('dialogs.combinedListing.descriptionLabel')" prop="description" class="listing-form-item--desc" required>
         <div class="listing-field-full listing-desc-with-footer">
           <el-input
             v-model="form.description"
@@ -88,39 +88,39 @@
                 : 1000
             "
             show-word-limit
-            placeholder="请输入商品说明（必填）"
+            :placeholder="t('dialogs.combinedListing.descriptionPlaceholder')"
           />
           <div
             v-if="managementNumberLine"
             class="listing-mgmt-footer"
-            title="由所选库存自动生成的末行暗号（-=~<>），不可在此删除"
+            :title="t('dialogs.combinedListing.mgmtFooterTooltip')"
           >
             {{ managementNumberLine }}
           </div>
         </div>
       </el-form-item>
-      <el-form-item label="商品类型" prop="category_mapping_id" required>
+      <el-form-item :label="t('dialogs.combinedListing.productType')" prop="category_mapping_id" required>
         <el-cascader
           v-model="form.category_mapping_path"
           :options="categoryTypeCascaderOptions"
           :props="categoryTypeCascaderProps"
           :show-all-levels="false"
           filterable
-          placeholder="请选择商品类型（必选）"
+          :placeholder="t('dialogs.combinedListing.productTypePlaceholder')"
           style="width: 100%"
           popper-class="product-type-cascader-popper"
           @change="handleCategoryTypeChange"
         />
       </el-form-item>
-      <el-form-item label="商品状态" prop="status" required>
-        <el-select v-model="form.status" placeholder="请选择商品状态" style="width: 100%">
+      <el-form-item :label="t('dialogs.combinedListing.productStatus')" prop="status" required>
+        <el-select v-model="form.status" :placeholder="t('dialogs.combinedListing.productStatusPlaceholder')" style="width: 100%">
           <el-option v-for="s in listingStatusOptions" :key="s.value" :label="s.label" :value="s.value" />
         </el-select>
       </el-form-item>
-      <el-form-item label="出品账号" prop="mercari_account_id" required>
+      <el-form-item :label="t('dialogs.combinedListing.listingAccount')" prop="mercari_account_id" required>
         <el-select
           v-model="form.mercari_account_id"
-          placeholder="请选择煤炉账号"
+          :placeholder="t('dialogs.combinedListing.listingAccountPlaceholder')"
           style="width: 100%"
           filterable
           :loading="mercariAccountsLoading"
@@ -133,39 +133,39 @@
           />
         </el-select>
       </el-form-item>
-      <el-form-item label="快递费负担" prop="shipping_payer" required>
-        <el-select v-model="form.shipping_payer" placeholder="请选择快递费负担" style="width: 100%">
+      <el-form-item :label="t('dialogs.combinedListing.shippingPayer')" prop="shipping_payer" required>
+        <el-select v-model="form.shipping_payer" :placeholder="t('dialogs.combinedListing.shippingPayerPlaceholder')" style="width: 100%">
           <el-option v-for="s in shippingPayerOptions" :key="s.value" :label="s.label" :value="s.value" />
         </el-select>
       </el-form-item>
-      <el-form-item label="配送方法" prop="shipping_method" required>
-        <el-select v-model="form.shipping_method" placeholder="请选择配送方法" style="width: 100%">
+      <el-form-item :label="t('dialogs.combinedListing.shippingMethod')" prop="shipping_method" required>
+        <el-select v-model="form.shipping_method" :placeholder="t('dialogs.combinedListing.shippingMethodPlaceholder')" style="width: 100%">
           <el-option v-for="s in shippingMethodOptions" :key="s.value" :label="s.label" :value="s.value" />
         </el-select>
       </el-form-item>
-      <el-form-item label="发货地址" prop="shipping_from" required>
+      <el-form-item :label="t('dialogs.combinedListing.shippingFrom')" prop="shipping_from" required>
         <el-cascader
           v-model="form.shipping_from_path"
           :options="shippingFromCascaderOptions"
           :props="shippingFromCascaderProps"
           :show-all-levels="false"
           filterable
-          placeholder="请选择发货地（必选）"
+          :placeholder="t('dialogs.combinedListing.shippingFromPlaceholder')"
           style="width: 100%"
           popper-class="product-type-cascader-popper"
           @change="handleShippingFromChange"
         />
       </el-form-item>
-      <el-form-item label="最大发货天数" prop="shipping_days" required>
-        <el-select v-model="form.shipping_days" placeholder="请选择最大发货天数" style="width: 100%">
+      <el-form-item :label="t('dialogs.combinedListing.shippingDays')" prop="shipping_days" required>
+        <el-select v-model="form.shipping_days" :placeholder="t('dialogs.combinedListing.shippingDaysPlaceholder')" style="width: 100%">
           <el-option v-for="s in shippingDaysOptions" :key="s.value" :label="s.label" :value="s.value" />
         </el-select>
       </el-form-item>
-      <el-form-item label="出售方法" prop="sale_type" required>
+      <el-form-item :label="t('dialogs.combinedListing.saleType')" prop="sale_type" required>
         <div class="listing-compact-row">
           <el-select
             v-model="form.sale_type"
-            placeholder="请选择出售方法"
+            :placeholder="t('dialogs.combinedListing.saleTypePlaceholder')"
             class="listing-compact-control"
             @change="onSaleTypeChange"
           >
@@ -175,20 +175,20 @@
       </el-form-item>
       <el-form-item
         v-if="form.sale_type === 'auction'"
-        label="拍卖时长"
+        :label="t('dialogs.combinedListing.auctionDuration')"
         prop="auction_duration"
         required
       >
-        <el-select v-model="form.auction_duration" placeholder="请选择拍卖时长" style="width: 100%">
-          <el-option label="通常" value="normal" />
-          <el-option label="三小时" value="3hours" />
+        <el-select v-model="form.auction_duration" :placeholder="t('dialogs.combinedListing.auctionDurationPlaceholder')" style="width: 100%">
+          <el-option :label="t('dialogs.combinedListing.auctionDurationNormal')" value="normal" />
+          <el-option :label="t('dialogs.combinedListing.auctionDuration3hours')" value="3hours" />
         </el-select>
       </el-form-item>
-      <el-form-item label="商品单价" prop="price" class="listing-form-item--price" required>
+      <el-form-item :label="t('dialogs.combinedListing.unitPrice')" prop="price" class="listing-form-item--price" required>
         <div class="listing-compact-row">
           <el-input
             v-model="listingPriceEdit"
-            placeholder="必填，日元整数且大于 0（同步到所选库存）"
+            :placeholder="t('dialogs.combinedListing.unitPricePlaceholder')"
             class="listing-price-input listing-compact-control"
             inputmode="numeric"
             @blur="applyListingPriceToForm"
@@ -198,8 +198,8 @@
     </el-form>
     <template #footer>
       <div class="dialog-footer">
-        <el-button @click="onVisibleChange(false)">取消</el-button>
-        <el-button type="primary" @click="submitStub">保存</el-button>
+        <el-button @click="onVisibleChange(false)">{{ t('common.cancel') }}</el-button>
+        <el-button type="primary" @click="submitStub">{{ t('common.save') }}</el-button>
       </div>
     </template>
   </el-dialog>
@@ -207,6 +207,7 @@
 
 <script setup>
 import { ref, watch, computed, nextTick } from 'vue'
+import { useI18n } from 'vue-i18n'
 import { mercariAccountApi } from '@/api/index.js'
 import { encodeMgmtIds, stripTrailingMgmtBlock } from '@/utils/mgmtIdCipher.js'
 import {
@@ -215,6 +216,8 @@ import {
   getRegionIdForAreaId,
   normalizeShippingFromSeed
 } from '@/constants/mercariJapanAreas.js'
+
+const { t } = useI18n()
 
 const SHIPPING_FROM_AREA_PREFIX = 'AREA:'
 const SHIPPING_FROM_REGION_PREFIX = 'REGION:'
@@ -236,13 +239,13 @@ const combinedPreviewImages = ref([])
 /** 商品单价：纯文本整数，blur / 提交前写回 form.price */
 const listingPriceEdit = ref('0')
 
-const listingFormRules = {
+const listingFormRules = computed(() => ({
   inventory_ids: [
     {
       type: 'array',
       required: true,
       min: 1,
-      message: '请至少关联一条库存',
+      message: t('dialogs.combinedListing.ruleInventoryRequired'),
       trigger: 'change'
     }
   ],
@@ -251,11 +254,11 @@ const listingFormRules = {
       validator: (_, __, cb) => {
         const imgs = combinedPreviewImages.value
         if (!imgs.length) {
-          cb(new Error('所选库存无商品图片数据'))
+          cb(new Error(t('dialogs.combinedListing.ruleNoImages')))
           return
         }
         if (imgs.some((b) => !String(b?.front || '').trim())) {
-          cb(new Error('每条库存须有正面商品图'))
+          cb(new Error(t('dialogs.combinedListing.ruleEachNeedsFront')))
           return
         }
         cb()
@@ -266,7 +269,7 @@ const listingFormRules = {
   listing_title: [
     {
       validator: (_, val, cb) => {
-        if (!String(val ?? '').trim()) cb(new Error('请输入出品标题'))
+        if (!String(val ?? '').trim()) cb(new Error(t('dialogs.combinedListing.ruleListingTitleRequired')))
         else cb()
       },
       trigger: 'blur'
@@ -277,7 +280,7 @@ const listingFormRules = {
       validator: (_, val, cb) => {
         const n = Number(val)
         if (!Number.isFinite(n) || n <= 0 || !Number.isInteger(n)) {
-          cb(new Error('请输入商品单价（须为大于 0 的整数）'))
+          cb(new Error(t('dialogs.combinedListing.rulePriceInvalid')))
           return
         }
         cb()
@@ -293,7 +296,7 @@ const listingFormRules = {
           return
         }
         if (val !== 'normal' && val !== '3hours') {
-          cb(new Error('请选择拍卖时长'))
+          cb(new Error(t('dialogs.combinedListing.ruleAuctionDurationRequired')))
           return
         }
         cb()
@@ -304,7 +307,7 @@ const listingFormRules = {
   description: [
     {
       validator: (_, val, cb) => {
-        if (!String(val ?? '').trim()) cb(new Error('请输入商品说明'))
+        if (!String(val ?? '').trim()) cb(new Error(t('dialogs.combinedListing.ruleDescriptionRequired')))
         else cb()
       },
       trigger: 'blur'
@@ -313,34 +316,34 @@ const listingFormRules = {
   category_mapping_id: [
     {
       validator: (_, val, cb) => {
-        if (val == null || String(val).trim() === '') cb(new Error('请选择商品类型'))
+        if (val == null || String(val).trim() === '') cb(new Error(t('dialogs.combinedListing.ruleProductTypeRequired')))
         else cb()
       },
       trigger: 'change'
     }
   ],
-  status: [{ required: true, message: '请选择商品状态', trigger: 'change' }],
+  status: [{ required: true, message: t('dialogs.combinedListing.ruleStatusRequired'), trigger: 'change' }],
   mercari_account_id: [
     {
       required: true,
-      message: '请选择出品账号',
+      message: t('dialogs.combinedListing.ruleAccountRequired'),
       trigger: 'change'
     }
   ],
-  shipping_payer: [{ required: true, message: '请选择快递费负担', trigger: 'change' }],
-  shipping_method: [{ required: true, message: '请选择配送方法', trigger: 'change' }],
+  shipping_payer: [{ required: true, message: t('dialogs.combinedListing.ruleShippingPayerRequired'), trigger: 'change' }],
+  shipping_method: [{ required: true, message: t('dialogs.combinedListing.ruleShippingMethodRequired'), trigger: 'change' }],
   shipping_from: [
     {
       validator: (_, val, cb) => {
-        if (val == null || String(val).trim() === '') cb(new Error('请选择发货地址'))
+        if (val == null || String(val).trim() === '') cb(new Error(t('dialogs.combinedListing.ruleShippingFromRequired')))
         else cb()
       },
       trigger: 'change'
     }
   ],
-  shipping_days: [{ required: true, message: '请选择最大发货天数', trigger: 'change' }],
-  sale_type: [{ required: true, message: '请选择出售方法', trigger: 'change' }]
-}
+  shipping_days: [{ required: true, message: t('dialogs.combinedListing.ruleShippingDaysRequired'), trigger: 'change' }],
+  sale_type: [{ required: true, message: t('dialogs.combinedListing.ruleSaleTypeRequired'), trigger: 'change' }]
+}))
 
 function onSaleTypeChange() {
   if (form.value.sale_type !== 'auction') {
@@ -444,7 +447,7 @@ const categoryTypeTreeMeta = computed(() => {
     const mappingId = String(m?.mapping_id ?? '').trim()
     const typeName = String(m?.product_type ?? '').trim()
     if (!mappingId || !typeName) continue
-    const l1 = String(m?.category_level1 ?? '').trim() || '未分类'
+    const l1 = String(m?.category_level1 ?? '').trim() || t('dialogs.combinedListing.uncategorized')
     const l2 = String(m?.category_level2 ?? '').trim()
     const l3 = String(m?.category_level3 ?? '').trim()
     const l1Val = `L1:${l1}`
@@ -475,38 +478,38 @@ const categoryTypeTreeMeta = computed(() => {
 
 const categoryTypeCascaderOptions = computed(() => categoryTypeTreeMeta.value.roots)
 
-const listingStatusOptions = [
-  { label: '新品、未使用', value: 'new_unused' },
-  { label: '未使用に近い', value: 'almost_unused' },
-  { label: '目立った傷や汚れなし', value: 'good' },
-  { label: 'やや傷や汚れあり', value: 'fair' },
-  { label: '傷や汚れあり', value: 'used' }
-]
-const shippingPayerOptions = [
-  { label: '送料込み(出品者负担)', value: 'seller' },
-  { label: '着払い(购买者负担)', value: 'buyer' }
-]
-const shippingMethodOptions = [
-  { label: '未定', value: 'undecided' },
-  { label: 'らくらくメルカリ便', value: 'rakuraku' },
-  { label: 'ゆうゆうメルカリ便', value: 'yuuyu' },
-  { label: '普通邮便(定形、定形外)', value: 'regular_mail' }
-]
-const shippingDaysOptions = [
-  { label: '1~2天', value: '1_2_days' },
-  { label: '2~3天', value: '2_3_days' },
-  { label: '4~7天', value: '4_7_days' }
-]
-const saleTypeOptions = [
-  { label: '即购', value: 'instant_buy' },
-  { label: '拍卖', value: 'auction' }
-]
+const listingStatusOptions = computed(() => [
+  { label: t('dialogs.combinedListing.statusNewUnused'), value: 'new_unused' },
+  { label: t('dialogs.combinedListing.statusAlmostUnused'), value: 'almost_unused' },
+  { label: t('dialogs.combinedListing.statusGood'), value: 'good' },
+  { label: t('dialogs.combinedListing.statusFair'), value: 'fair' },
+  { label: t('dialogs.combinedListing.statusUsed'), value: 'used' }
+])
+const shippingPayerOptions = computed(() => [
+  { label: t('dialogs.combinedListing.payerSeller'), value: 'seller' },
+  { label: t('dialogs.combinedListing.payerBuyer'), value: 'buyer' }
+])
+const shippingMethodOptions = computed(() => [
+  { label: t('dialogs.combinedListing.methodUndecided'), value: 'undecided' },
+  { label: t('dialogs.combinedListing.methodRakuraku'), value: 'rakuraku' },
+  { label: t('dialogs.combinedListing.methodYuuyu'), value: 'yuuyu' },
+  { label: t('dialogs.combinedListing.methodRegularMail'), value: 'regular_mail' }
+])
+const shippingDaysOptions = computed(() => [
+  { label: t('dialogs.combinedListing.days1to2'), value: '1_2_days' },
+  { label: t('dialogs.combinedListing.days2to3'), value: '2_3_days' },
+  { label: t('dialogs.combinedListing.days4to7'), value: '4_7_days' }
+])
+const saleTypeOptions = computed(() => [
+  { label: t('dialogs.combinedListing.saleInstant'), value: 'instant_buy' },
+  { label: t('dialogs.combinedListing.saleAuction'), value: 'auction' }
+])
 
 function mercariAccountOptionLabel(a) {
   const name = (a?.account_name || '').trim() || `ID ${a?.id}`
   const sid = String(a?.seller_id || '').trim()
-  const tail = sid ? ` · 卖家 ${sid}` : ''
-  const inactive = a?.status === 'disabled' ? '（停用）' : ''
+  const tail = sid ? ` · ${t('dialogs.combinedListing.sellerLabel', { id: sid })}` : ''
+  const inactive = a?.status === 'disabled' ? t('dialogs.combinedListing.inactiveSuffix') : ''
   return `${name}${tail}${inactive}`
 }
 

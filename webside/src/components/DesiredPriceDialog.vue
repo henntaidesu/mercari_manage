@@ -9,7 +9,7 @@
     :close-on-click-modal="false"
     class="desired-price-dialog"
   >
-    <div v-loading="loading" element-loading-text="正在打开浏览器并捕获降价请求详情...">
+    <div v-loading="loading" :element-loading-text="t('dialogs.desiredPrice.loadingCapture')">
       <template v-if="detail">
         <el-alert
           v-if="isDecided"
@@ -50,27 +50,27 @@
           </div>
         </div>
 
-        <div class="section-title">买家报价</div>
+        <div class="section-title">{{ t('dialogs.desiredPrice.buyerOffer') }}</div>
         <el-descriptions :column="2" border size="small" class="offer-meta">
-          <el-descriptions-item label="希望价格">
+          <el-descriptions-item :label="t('onSaleItems.desiredPrice')">
             <span class="amount">¥{{ formatYen(detail.offered_price) }}</span>
             <span
               v-if="discountText"
               class="discount-text"
             >({{ discountText }})</span>
           </el-descriptions-item>
-          <el-descriptions-item label="状态">
+          <el-descriptions-item :label="t('common.status')">
             {{ stateLabel(detail.state) }}
           </el-descriptions-item>
-          <el-descriptions-item label="回答期限">
+          <el-descriptions-item :label="t('dialogs.desiredPrice.replyDeadline')">
             {{ displayTs(detail.expire_time) }}
           </el-descriptions-item>
-          <el-descriptions-item label="请求时间">
+          <el-descriptions-item :label="t('dialogs.desiredPrice.requestTime')">
             {{ displayTs(detail.create_time) }}
           </el-descriptions-item>
         </el-descriptions>
 
-        <div class="section-title">买家信息</div>
+        <div class="section-title">{{ t('dialogs.desiredPrice.buyerInfo') }}</div>
         <div class="buyer-row">
           <el-avatar
             v-if="detail.buyer_photo"
@@ -85,10 +85,10 @@
             <div class="buyer-stats">
               <span v-if="detail.buyer_score">
                 <el-icon class="rating-icon"><Star /></el-icon>
-                {{ detail.buyer_score }} 星
+                {{ detail.buyer_score }} {{ t('dialogs.desiredPrice.starUnit') }}
               </span>
               <span v-if="detail.buyer_reviews_count !== null">
-                · 评价 {{ detail.buyer_reviews_count }}
+                · {{ t('dialogs.desiredPrice.reviews') }} {{ detail.buyer_reviews_count }}
               </span>
               <span v-if="detail.buyer_id" class="buyer-id">
                 · ID: {{ detail.buyer_id }}
@@ -100,7 +100,7 @@
         <div
           v-if="otherOffers.length > 0"
           class="section-title"
-        >其他报价 ({{ otherOffers.length }})</div>
+        >{{ t('dialogs.desiredPrice.otherOffers') }} ({{ otherOffers.length }})</div>
         <el-table
           v-if="otherOffers.length > 0"
           :data="otherOffers"
@@ -108,35 +108,35 @@
           size="small"
           class="other-offers"
         >
-          <el-table-column label="买家" min-width="180">
+          <el-table-column :label="t('dialogs.desiredPrice.buyer')" min-width="180">
             <template #default="{ row }">
               <span>{{ row.buyer_username || '-' }}</span>
               <span v-if="row.buyer_id" class="muted"> ({{ row.buyer_id }})</span>
             </template>
           </el-table-column>
-          <el-table-column label="希望价格" width="140" align="right">
+          <el-table-column :label="t('onSaleItems.desiredPrice')" width="140" align="right">
             <template #default="{ row }">¥{{ formatYen(row.price) }}</template>
           </el-table-column>
-          <el-table-column label="回答期限" width="170">
+          <el-table-column :label="t('dialogs.desiredPrice.replyDeadline')" width="170">
             <template #default="{ row }">{{ displayTsRfc(row.expire_time) }}</template>
           </el-table-column>
         </el-table>
       </template>
       <template v-else-if="!loading">
-        <el-empty description="尚未捕获到降价请求数据" />
+        <el-empty :description="t('dialogs.desiredPrice.emptyDescription')" />
       </template>
     </div>
 
     <template #footer>
       <div class="dialog-footer">
-        <el-button @click="onVisibleChange(false)" :disabled="busy">关闭</el-button>
+        <el-button @click="onVisibleChange(false)" :disabled="busy">{{ t('common.close') }}</el-button>
         <el-button
           v-if="detail"
           :loading="syncing"
           :disabled="accepting || rejecting"
           @click="runSync"
         >
-          刷新
+          {{ t('common.refresh') }}
         </el-button>
         <el-button
           v-if="detail"
@@ -145,7 +145,7 @@
           :disabled="accepting || isDecided"
           @click="onReject"
         >
-          拒绝报价（売らない）
+          {{ t('dialogs.desiredPrice.rejectOffer') }}
         </el-button>
         <el-button
           v-if="detail"
@@ -154,7 +154,7 @@
           :disabled="rejecting || isDecided"
           @click="onAccept"
         >
-          同意报价（売る）
+          {{ t('dialogs.desiredPrice.acceptOffer') }}
         </el-button>
       </div>
     </template>
@@ -164,12 +164,14 @@
 
 <script setup>
 import { computed, onBeforeUnmount, ref, watch } from 'vue'
+import { useI18n } from 'vue-i18n'
 import { ElMessage } from 'element-plus'
 import { Star } from '@element-plus/icons-vue'
 import { notificationsApi } from '@/api'
 import { useSyncOverlay } from '@/composables/useSyncOverlay'
 import SyncOverlay from '@/components/SyncOverlay.vue'
 
+const { t } = useI18n()
 const desiredOverlay = useSyncOverlay()
 
 const props = defineProps({
@@ -209,7 +211,7 @@ const itemUrl = computed(() =>
 )
 
 const dialogTitle = computed(() => {
-  const base = '降价请求详情'
+  const base = t('dialogs.desiredPrice.dialogTitle')
   if (props.itemName) return `${base} · ${props.itemName}`
   if (detail.value?.item_name) return `${base} · ${detail.value.item_name}`
   return `${base} · ${itemId.value || ''}`
@@ -221,7 +223,7 @@ const discountText = computed(() => {
   if (!offered || !price || offered >= price) return ''
   const off = Math.round((1 - offered / price) * 100)
   if (!off) return ''
-  return `较原价低 ${off}%`
+  return t('dialogs.desiredPrice.discountText', { off })
 })
 
 const otherOffers = computed(() => {
@@ -238,28 +240,28 @@ const decidedBannerType = computed(() => {
 })
 const decidedBannerText = computed(() => {
   const s = String(detail.value?.state || '').trim().toUpperCase()
-  if (s === 'ACCEPTED') return '此请求已同意（売る）, 无需再次操作'
-  if (s === 'REJECTED') return '此请求已拒绝（売らない）, 无法再次操作'
-  if (s === 'EXPIRED') return '此请求已过期 / 已撤回, 无法再操作'
-  return '此请求已处理'
+  if (s === 'ACCEPTED') return t('dialogs.desiredPrice.decidedAccepted')
+  if (s === 'REJECTED') return t('dialogs.desiredPrice.decidedRejected')
+  if (s === 'EXPIRED') return t('dialogs.desiredPrice.decidedExpired')
+  return t('dialogs.desiredPrice.decidedDefault')
 })
 
 function stateLabel(state) {
   const map = {
-    NOTIFIED: '待处理',
-    ACCEPTED: '已同意',
-    REJECTED: '已拒绝',
-    EXPIRED: '已过期',
+    NOTIFIED: t('dialogs.desiredPrice.stateNotified'),
+    ACCEPTED: t('dialogs.desiredPrice.stateAccepted'),
+    REJECTED: t('dialogs.desiredPrice.stateRejected'),
+    EXPIRED: t('dialogs.desiredPrice.stateExpired'),
   }
   return map[state] || state || '-'
 }
 
 function itemStatusLabel(s) {
   const m = {
-    on_sale: '在售',
-    trading: '交易中',
-    sold_out: '已售',
-    stop: '已下架',
+    on_sale: t('dialogs.desiredPrice.itemStatusOnSale'),
+    trading: t('dialogs.desiredPrice.itemStatusTrading'),
+    sold_out: t('dialogs.desiredPrice.itemStatusSoldOut'),
+    stop: t('dialogs.desiredPrice.itemStatusStop'),
   }
   return m[s] || s || '-'
 }
@@ -304,7 +306,7 @@ async function loadDetail() {
     return true
   } catch (e) {
     if (e?.response?.status === 404) return false
-    ElMessage.error(e?.message || '加载失败')
+    ElMessage.error(e?.message || t('dialogs.desiredPrice.loadFailed'))
     return false
   }
 }
@@ -319,7 +321,7 @@ async function runSync() {
   browserOpened.value = true
   try {
     await desiredOverlay.run({
-      title: '正在抓取降价请求详情',
+      title: t('dialogs.desiredPrice.syncingTitle'),
       consoleTag: '[降价请求同步]',
       pollFn: (jobId) => notificationsApi.getSyncProgress(jobId),
       actionFn: (jobId) =>
@@ -332,7 +334,7 @@ async function runSync() {
     })
     await loadDetail()
   } catch (e) {
-    ElMessage.error(e?.response?.data?.detail || e?.message || '同步失败')
+    ElMessage.error(e?.response?.data?.detail || e?.message || t('dialogs.desiredPrice.syncFailed'))
   } finally {
     syncing.value = false
     loading.value = false
@@ -346,7 +348,7 @@ async function onAccept() {
   browserOpened.value = true
   try {
     const res = await desiredOverlay.run({
-      title: '正在同意降价请求',
+      title: t('dialogs.desiredPrice.acceptingTitle'),
       consoleTag: '[降价请求同意]',
       pollFn: (jobId) => notificationsApi.getSyncProgress(jobId),
       actionFn: (jobId) =>
@@ -358,10 +360,10 @@ async function onAccept() {
     })
     if (res?.skipped) {
       ElMessage.warning(
-        `页面已显示「${res.skipped_reason || '已処理済み'}」, 无需操作；本地状态已同步`,
+        t('dialogs.desiredPrice.skippedMessage', { reason: res.skipped_reason || t('dialogs.desiredPrice.alreadyProcessed') }),
       )
     } else {
-      ElMessage.success('已点击「売る」(同意报价)')
+      ElMessage.success(t('dialogs.desiredPrice.acceptedMessage'))
     }
     // decide 完成后后端已关闭浏览器, 这里不必再 close
     browserOpened.value = false
@@ -375,7 +377,7 @@ async function onAccept() {
     emit('update:modelValue', false)
     resetState()
   } catch (e) {
-    ElMessage.error(e?.response?.data?.detail || e?.message || '同意失败')
+    ElMessage.error(e?.response?.data?.detail || e?.message || t('dialogs.desiredPrice.acceptFailed'))
   } finally {
     accepting.value = false
   }
@@ -387,7 +389,7 @@ async function onReject() {
   browserOpened.value = true
   try {
     const res = await desiredOverlay.run({
-      title: '正在拒绝降价请求',
+      title: t('dialogs.desiredPrice.rejectingTitle'),
       consoleTag: '[降价请求拒绝]',
       pollFn: (jobId) => notificationsApi.getSyncProgress(jobId),
       actionFn: (jobId) =>
@@ -399,10 +401,10 @@ async function onReject() {
     })
     if (res?.skipped) {
       ElMessage.warning(
-        `页面已显示「${res.skipped_reason || '已処理済み'}」, 无需操作；本地状态已同步`,
+        t('dialogs.desiredPrice.skippedMessage', { reason: res.skipped_reason || t('dialogs.desiredPrice.alreadyProcessed') }),
       )
     } else {
-      ElMessage.success('已点击「売らない」(拒绝报价)')
+      ElMessage.success(t('dialogs.desiredPrice.rejectedMessage'))
     }
     browserOpened.value = false
     emit('decided', {
@@ -415,7 +417,7 @@ async function onReject() {
     emit('update:modelValue', false)
     resetState()
   } catch (e) {
-    ElMessage.error(e?.response?.data?.detail || e?.message || '拒绝失败')
+    ElMessage.error(e?.response?.data?.detail || e?.message || t('dialogs.desiredPrice.rejectFailed'))
   } finally {
     rejecting.value = false
   }

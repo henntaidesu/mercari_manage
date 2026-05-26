@@ -5,13 +5,13 @@
         <el-col :xs="24" :md="16" class="search-left-group">
           <el-input
             v-model="filters.keyword"
-            placeholder="搜索消息 / 商品 ID / 商品名"
+            :placeholder="t('notifications.searchKeywordPlaceholder')"
             clearable
             @change="onFilterChange"
           />
           <el-select
             v-model="filters.account_id"
-            placeholder="账号"
+            :placeholder="t('notifications.account')"
             clearable
             filterable
             style="min-width: 200px"
@@ -26,7 +26,7 @@
           </el-select>
           <el-select
             v-model="filters.kind"
-            placeholder="类型"
+            :placeholder="t('common.type')"
             clearable
             filterable
             style="min-width: 200px"
@@ -40,16 +40,16 @@
             />
           </el-select>
           <el-checkbox v-model="filters.only_unread" @change="onFilterChange">
-            仅未读
+            {{ t('notifications.onlyUnread') }}
           </el-checkbox>
           <el-checkbox v-model="filters.show_likes" @change="onFilterChange">
-            显示点赞
+            {{ t('notifications.showLikes') }}
           </el-checkbox>
         </el-col>
         <el-col :xs="24" :md="8" class="search-actions">
           <el-select
             v-model="globalAccountId"
-            placeholder="选择煤炉账号"
+            :placeholder="t('notifications.selectMercariAccount')"
             filterable
             class="sync-account-select"
             :loading="mercariAccountStore.loading"
@@ -62,7 +62,7 @@
             />
           </el-select>
           <el-button type="primary" :icon="Download" :loading="syncLoading" @click="runSync">
-            从煤炉同步
+            {{ t('notifications.syncFromMercari') }}
           </el-button>
         </el-col>
       </el-row>
@@ -70,7 +70,7 @@
 
     <el-card shadow="never" class="table-card">
       <el-table :data="list" v-loading="loading" stripe row-key="id">
-        <el-table-column label="图" width="80" align="center" header-align="center">
+        <el-table-column :label="t('notifications.colImage')" width="80" align="center" header-align="center">
           <template #default="{ row }">
             <el-image
               v-if="row.photo_url"
@@ -90,7 +90,7 @@
           </template>
         </el-table-column>
 
-        <el-table-column label="类型" width="160" align="center" header-align="center">
+        <el-table-column :label="t('common.type')" width="160" align="center" header-align="center">
           <template #default="{ row }">
             <el-tag :type="kindTagType(row.kind)" size="small" effect="light">
               {{ kindLabel(row.kind) }}
@@ -98,7 +98,7 @@
           </template>
         </el-table-column>
 
-        <el-table-column label="消息" min-width="360" align="left" header-align="center">
+        <el-table-column :label="t('notifications.colMessage')" min-width="360" align="left" header-align="center">
           <template #default="{ row }">
             <div :class="['cell-message', !row.is_read ? 'cell-message-unread' : '']">
               {{ row.message || '-' }}
@@ -107,12 +107,12 @@
               <span class="cell-itemid-text">{{ row.item_id }}</span>
               <span v-if="row.item_name" class="cell-itemname">{{ row.item_name }}</span>
             </div>
-            <div v-if="row.price" class="cell-extra">值下げ依頼: ¥{{ formatYen(row.price) }}</div>
-            <div v-if="row.bid_price" class="cell-extra">入札: ¥{{ formatYen(row.bid_price) }}</div>
+            <div v-if="row.price" class="cell-extra">{{ t('notifications.priceDownRequest') }}: ¥{{ formatYen(row.price) }}</div>
+            <div v-if="row.bid_price" class="cell-extra">{{ t('notifications.bidLabel') }}: ¥{{ formatYen(row.bid_price) }}</div>
           </template>
         </el-table-column>
 
-        <el-table-column label="发件人" width="160" align="center" header-align="center">
+        <el-table-column :label="t('notifications.colSender')" width="160" align="center" header-align="center">
           <template #default="{ row }">
             <div v-if="senderNameFromMessage(row.message)" class="cell-buyer">
               {{ senderNameFromMessage(row.message) }}
@@ -127,19 +127,19 @@
           </template>
         </el-table-column>
 
-        <el-table-column label="时间" width="170" align="center" header-align="center">
+        <el-table-column :label="t('common.time')" width="170" align="center" header-align="center">
           <template #default="{ row }">
             <div>{{ displayTs(row.mercari_created) }}</div>
           </template>
         </el-table-column>
 
-        <el-table-column label="账号" width="140" align="center" header-align="center">
+        <el-table-column :label="t('notifications.account')" width="140" align="center" header-align="center">
           <template #default="{ row }">
             <span>{{ row.account_name || `#${row.account_id}` }}</span>
           </template>
         </el-table-column>
 
-        <el-table-column label="操作" width="170" align="center" header-align="center" fixed="right">
+        <el-table-column :label="t('common.operate')" width="170" align="center" header-align="center" fixed="right">
           <template #default="{ row }">
             <el-button
               v-if="actionForKind(row.kind) === 'open'"
@@ -149,7 +149,7 @@
               :disabled="!hasTargetUrl(row)"
               @click="onOpenTarget(row)"
             >
-              打开
+              {{ t('notifications.open') }}
             </el-button>
             <el-button
               v-else-if="actionForKind(row.kind) === 'detail'"
@@ -158,7 +158,7 @@
               size="small"
               @click="onViewDetail(row)"
             >
-              查看详情
+              {{ t('notifications.viewDetail') }}
             </el-button>
             <el-button
               v-if="!row.is_read"
@@ -168,7 +168,7 @@
               :loading="markReadLoadingIds.has(row.id)"
               @click="onMarkRead(row)"
             >
-              已读
+              {{ t('notifications.read') }}
             </el-button>
             <el-button
               v-else
@@ -178,7 +178,7 @@
               :loading="markReadLoadingIds.has(row.id)"
               @click="onMarkUnread(row)"
             >
-              取消已读
+              {{ t('notifications.markUnread') }}
             </el-button>
           </template>
         </el-table-column>
@@ -230,7 +230,7 @@
         <div class="notifications-sync-overlay__box">
           <el-icon class="is-loading notifications-sync-overlay__icon" :size="40"><Loading /></el-icon>
           <div class="notifications-sync-overlay__title">{{ syncOverlayTitle }}</div>
-          <div class="notifications-sync-overlay__step">{{ syncProgressLabel || '请稍候…' }}</div>
+          <div class="notifications-sync-overlay__step">{{ syncProgressLabel || t('notifications.pleaseWait') }}</div>
         </div>
       </div>
     </teleport>
@@ -239,6 +239,7 @@
 
 <script setup>
 import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
+import { useI18n } from 'vue-i18n'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { Download, Loading } from '@element-plus/icons-vue'
 import { notificationsApi, mercariAccountApi } from '@/api'
@@ -247,23 +248,24 @@ import BundlePurchaseDialog from '@/components/BundlePurchaseDialog.vue'
 import ItemCommentDialog from '@/components/ItemCommentDialog.vue'
 import DesiredPriceDialog from '@/components/DesiredPriceDialog.vue'
 
+const { t } = useI18n()
 const mercariAccountStore = useMercariAccountStore()
 const globalAccountId = computed({
   get: () => mercariAccountStore.selectedId,
   set: (v) => mercariAccountStore.setSelected(v),
 })
 
-const KIND_LABELS = {
-  Like: '点赞',
-  Comment: '留言',
-  LikedItemReceiveComment: '关注商品留言',
-  DesiredPriceOfferCreated: '降价请求',
-  AuctionBidCreated: '拍卖出价',
-  BundleRequestCreated: '合并购买请求',
-  WaitPayment: '待支付',
-  PrivateMessage: '事务局消息',
-  'merpay-egp-ian-promotion': '活动公告',
-  'merpay-egp-ian-promotion-action-url': '活动公告',
+const KIND_LABEL_KEYS = {
+  Like: 'notifications.kindLike',
+  Comment: 'notifications.kindComment',
+  LikedItemReceiveComment: 'notifications.kindLikedItemReceiveComment',
+  DesiredPriceOfferCreated: 'notifications.kindDesiredPriceOfferCreated',
+  AuctionBidCreated: 'notifications.kindAuctionBidCreated',
+  BundleRequestCreated: 'notifications.kindBundleRequestCreated',
+  WaitPayment: 'notifications.kindWaitPayment',
+  PrivateMessage: 'notifications.kindPrivateMessage',
+  'merpay-egp-ian-promotion': 'notifications.kindPromotion',
+  'merpay-egp-ian-promotion-action-url': 'notifications.kindPromotion',
 }
 
 const KIND_TAG_TYPES = {
@@ -320,7 +322,7 @@ const markReadLoadingIds = ref(new Set())
 
 /** 「从煤炉同步」全屏等待与步骤文案（与后端 progress_job_id 轮询同步） */
 const syncOverlayVisible = ref(false)
-const syncOverlayTitle = ref('正在从煤炉同步')
+const syncOverlayTitle = ref(t('notifications.syncingFromMercari'))
 const syncOverlayFailed = ref(false)
 const syncProgressLabel = ref('')
 let syncProgressTimer = null
@@ -346,7 +348,7 @@ async function load() {
     list.value = res?.items || []
     total.value = Number(res?.total || 0)
   } catch (e) {
-    ElMessage.error(e?.message || '加载失败')
+    ElMessage.error(e?.message || t('notifications.loadFailed'))
   } finally {
     loading.value = false
   }
@@ -392,15 +394,15 @@ async function runSync() {
   if (syncLoading.value) return
   const aid = mercariAccountStore.selectedId
   if (!aid) {
-    ElMessage.warning('请先在右上角选择煤炉账号')
+    ElMessage.warning(t('notifications.pleaseSelectMercariAccount'))
     return
   }
   const name = mercariAccountStore.selectedAccountName || `#${aid}`
   try {
     await ElMessageBox.confirm(
-      `将使用账号「${name}」从煤炉同步通知，是否继续？`,
-      '确认同步',
-      { type: 'info', confirmButtonText: '开始', cancelButtonText: '取消' },
+      t('notifications.syncConfirmContent', { name }),
+      t('notifications.syncConfirmTitle'),
+      { type: 'info', confirmButtonText: t('notifications.startBtn'), cancelButtonText: t('common.cancel') },
     )
   } catch {
     return
@@ -429,9 +431,9 @@ async function runSync() {
     }
   }
 
-  syncOverlayTitle.value = '正在从煤炉同步'
+  syncOverlayTitle.value = t('notifications.syncingFromMercari')
   syncOverlayFailed.value = false
-  syncProgressLabel.value = '正在连接服务器…'
+  syncProgressLabel.value = t('notifications.connectingServer')
   syncOverlayVisible.value = true
   syncLoading.value = true
   await pollSyncProgress()
@@ -441,17 +443,21 @@ async function runSync() {
   try {
     const d = (await notificationsApi.sync({ account_id: aid, progress_job_id: progressJobId })) || {}
     ElMessageBox.alert(
-      `账号 #${d.account_id ?? '-'} 同步完成：` +
-        `新增 ${d.inserted ?? 0} 条，更新 ${d.updated ?? 0} 条，共抓取 ${d.total ?? 0} 条。`,
-      '同步结果',
-      { type: 'success', confirmButtonText: '确定' },
+      t('notifications.syncResultContent', {
+        accountId: d.account_id ?? '-',
+        inserted: d.inserted ?? 0,
+        updated: d.updated ?? 0,
+        total: d.total ?? 0,
+      }),
+      t('notifications.syncResultTitle'),
+      { type: 'success', confirmButtonText: t('dialog.confirmBtn') },
     )
     await Promise.all([load(), loadKindOptions()])
   } catch (e) {
     syncHadError = true
-    syncOverlayTitle.value = '同步失败'
+    syncOverlayTitle.value = t('notifications.syncFailed')
     syncOverlayFailed.value = true
-    const msg = e?.response?.data?.detail || e?.message || '同步失败'
+    const msg = e?.response?.data?.detail || e?.message || t('notifications.syncFailed')
     syncProgressLabel.value = String(msg)
     ElMessage.error(msg)
   } finally {
@@ -463,7 +469,7 @@ async function runSync() {
       await new Promise((r) => setTimeout(r, 1200))
     }
     syncOverlayVisible.value = false
-    syncOverlayTitle.value = '正在从煤炉同步'
+    syncOverlayTitle.value = t('notifications.syncingFromMercari')
     syncOverlayFailed.value = false
     syncProgressLabel.value = ''
     syncLoading.value = false
@@ -537,7 +543,7 @@ function onViewDetail(row) {
   if (row?.kind === 'BundleRequestCreated') {
     const bid = extractBundleId(row)
     if (!bid) {
-      ElMessage.warning('该通知未携带 bundle_id，无法打开合并购买请求详情')
+      ElMessage.warning(t('notifications.noBundleId'))
       return
     }
     bundleDialogBundleId.value = bid
@@ -550,7 +556,7 @@ function onViewDetail(row) {
   if (row?.kind === 'Comment') {
     const iid = resolveItemId(row)
     if (!iid) {
-      ElMessage.warning('该通知未携带 item_id，无法打开留言详情')
+      ElMessage.warning(t('notifications.noItemIdComment'))
       return
     }
     commentDialogItemId.value = iid
@@ -563,7 +569,7 @@ function onViewDetail(row) {
   if (row?.kind === 'DesiredPriceOfferCreated') {
     const iid = resolveItemId(row)
     if (!iid) {
-      ElMessage.warning('该通知未携带 item_id，无法打开降价请求详情')
+      ElMessage.warning(t('notifications.noItemIdDesiredPrice'))
       return
     }
     desiredPriceDialogItemId.value = iid
@@ -574,7 +580,7 @@ function onViewDetail(row) {
     autoMarkRead(row)
     return
   }
-  ElMessage.info(`查看详情功能待对接（kind=${row.kind}）`)
+  ElMessage.info(t('notifications.detailNotReady', { kind: row.kind }))
 }
 
 async function onMarkRead(row) {
@@ -592,7 +598,7 @@ async function onMarkRead(row) {
       total.value = Math.max(0, total.value - 1)
     }
   } catch (e) {
-    ElMessage.error(e?.message || '标记已读失败')
+    ElMessage.error(e?.message || t('notifications.markReadFailed'))
   } finally {
     const after = new Set(markReadLoadingIds.value)
     after.delete(row.id)
@@ -610,7 +616,7 @@ async function onMarkUnread(row) {
     await notificationsApi.markRead([row.id], false)
     row.is_read = 0
   } catch (e) {
-    ElMessage.error(e?.message || '取消已读失败')
+    ElMessage.error(e?.message || t('notifications.markUnreadFailed'))
   } finally {
     const after = new Set(markReadLoadingIds.value)
     after.delete(row.id)
@@ -624,7 +630,7 @@ async function onOpenTarget(row) {
     url = `https://jp.mercari.com/item/${row.item_id}`
   }
   if (!url) {
-    ElMessage.warning('该通知没有可跳转的链接')
+    ElMessage.warning(t('notifications.noTargetUrl'))
     return
   }
   window.open(url, '_blank', 'noopener')
@@ -639,7 +645,8 @@ async function onOpenTarget(row) {
 
 function kindLabel(kind) {
   if (!kind) return '-'
-  return KIND_LABELS[kind] || kind
+  const key = KIND_LABEL_KEYS[kind]
+  return key ? t(key) : kind
 }
 function kindTagType(kind) {
   return KIND_TAG_TYPES[kind] || 'info'

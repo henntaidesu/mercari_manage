@@ -13,7 +13,7 @@
         v-if="isMobile && !mobileDrawerOpen"
         type="button"
         class="layout-mobile-fab"
-        aria-label="打开菜单"
+        :aria-label="t('layout.openMenu')"
         aria-expanded="false"
         @click="mobileDrawerOpen = true"
       >
@@ -36,9 +36,9 @@
           <img
             class="logo-image"
             src="/static/mercari.png"
-            alt="mercari 订单管理"
+            :alt="t('layout.logoText')"
           />
-          <span class="logo-text">mercari 订单管理</span>
+          <span class="logo-text">{{ t('layout.logoText') }}</span>
           <el-button
             v-if="isMobile"
             text
@@ -65,7 +65,7 @@
             >
               <el-icon><component :is="item.icon" /></el-icon>
               <template #title>
-                <span class="menu-title">{{ item.title }}</span>
+                <span class="menu-title">{{ t(item.titleKey) }}</span>
                 <el-icon
                   v-if="item.children"
                   class="menu-arrow"
@@ -78,10 +78,26 @@
           </el-menu>
         </div>
         <div class="sidebar-footer">
+          <div class="sidebar-lang-row">
+            <el-icon :size="14" color="#9ba8bf"><Promotion /></el-icon>
+            <el-select
+              v-model="locale"
+              size="small"
+              class="sidebar-lang-select"
+              @change="onLocaleChange"
+            >
+              <el-option
+                v-for="lang in localeOptions"
+                :key="lang.value"
+                :label="lang.label"
+                :value="lang.value"
+              />
+            </el-select>
+          </div>
           <div class="sidebar-footer-row">
             <div class="sidebar-footer-user" :title="userName">{{ userName }}</div>
             <el-button class="sidebar-logout-btn" type="danger" plain size="small" @click="handleLogout">
-              退出
+              {{ t('layout.logoutBtn') }}
             </el-button>
           </div>
         </div>
@@ -112,7 +128,7 @@
           >
             <el-menu-item v-for="c in currentSecondaryItems" :key="c.path" :index="c.path">
               <el-icon><component :is="c.icon" /></el-icon>
-              <template #title>{{ c.title }}</template>
+              <template #title>{{ t(c.titleKey) }}</template>
             </el-menu-item>
           </el-menu>
         </div>
@@ -133,10 +149,22 @@
 import { computed, ref, onMounted, onUnmounted, watch } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
 import { ElMessageBox } from 'element-plus'
-import { Menu, Close, ArrowRight } from '@element-plus/icons-vue'
+import { Menu, Close, ArrowRight, Promotion } from '@element-plus/icons-vue'
+import { useI18n } from 'vue-i18n'
+import { setLocale, SUPPORTED_LOCALES } from '@/i18n'
 
 const router = useRouter()
 const route = useRoute()
+const { t, locale } = useI18n()
+
+const localeOptions = computed(() => SUPPORTED_LOCALES.map(code => ({
+  value: code,
+  label: t(`lang.${code}`),
+})))
+
+function onLocaleChange(val) {
+  setLocale(val)
+}
 
 const isMobile = ref(false)
 /** 仅手机端：抽屉侧栏是否打开；电脑端忽略 */
@@ -171,32 +199,32 @@ onUnmounted(() => {
 const userName = computed(() => {
   try {
     const u = JSON.parse(localStorage.getItem('auth_user') || '{}')
-    return u.display_name || u.username || '用户'
+    return u.display_name || u.username || t('layout.user')
   } catch {
-    return '用户'
+    return t('layout.user')
   }
 })
 
 const menuItems = [
-  { path: '/dashboard', title: '控制台', icon: 'Odometer' },
-  { path: '/inventory', title: '库存管理', icon: 'Goods' },
-  { path: '/orders', title: '订单管理', icon: 'Tickets' },
-  { path: '/on-sale-items', title: '在售商品', icon: 'ShoppingBag' },
-  { path: '/todos', title: '待办事项', icon: 'BellFilled' },
-  { path: '/notifications', title: '煤炉通知', icon: 'Bell' },
-  { path: '/mercari-accounts', title: '煤炉账号', icon: 'User' },
+  { path: '/dashboard', titleKey: 'layout.menu.dashboard', icon: 'Odometer' },
+  { path: '/inventory', titleKey: 'layout.menu.inventory', icon: 'Goods' },
+  { path: '/orders', titleKey: 'layout.menu.orders', icon: 'Tickets' },
+  { path: '/on-sale-items', titleKey: 'layout.menu.onSaleItems', icon: 'ShoppingBag' },
+  { path: '/todos', titleKey: 'layout.menu.todos', icon: 'BellFilled' },
+  { path: '/notifications', titleKey: 'layout.menu.notifications', icon: 'Bell' },
+  { path: '/mercari-accounts', titleKey: 'layout.menu.mercariAccounts', icon: 'User' },
   {
     path: '/system',
-    title: '系统管理',
+    titleKey: 'layout.menu.system',
     icon: 'Setting',
     children: [
-      { path: '/system', title: '系统总览', icon: 'Setting' },
-      { path: '/system/transactions', title: '库存记录', icon: 'List' },
-      { path: '/system/cost-records', title: '库存包材', icon: 'Money' },
-      { path: '/system/cost-expenses', title: '包材使用记录', icon: 'Wallet' },
-      { path: '/system/warehouses', title: '仓库管理', icon: 'OfficeBuilding' },
-      { path: '/system/categories', title: '游戏分类', icon: 'Collection' },
-      { path: '/system/product-type-category-mappings', title: '商品类型映射', icon: 'Connection' }
+      { path: '/system', titleKey: 'layout.menu.systemOverview', icon: 'Setting' },
+      { path: '/system/transactions', titleKey: 'layout.menu.transactions', icon: 'List' },
+      { path: '/system/cost-records', titleKey: 'layout.menu.costRecords', icon: 'Money' },
+      { path: '/system/cost-expenses', titleKey: 'layout.menu.costExpenses', icon: 'Wallet' },
+      { path: '/system/warehouses', titleKey: 'layout.menu.warehouses', icon: 'OfficeBuilding' },
+      { path: '/system/categories', titleKey: 'layout.menu.categories', icon: 'Collection' },
+      { path: '/system/product-type-category-mappings', titleKey: 'layout.menu.productTypeMappings', icon: 'Connection' }
     ]
   }
 ]
@@ -223,7 +251,7 @@ const currentSecondaryItems = computed(() => {
 
 const activePrimaryTitle = computed(() => {
   const found = menuItems.find(m => m.path === activeWithChildren.value)
-  return found?.title || ''
+  return found ? t(found.titleKey) : ''
 })
 
 function onPrimarySelect(path) {
@@ -271,10 +299,10 @@ watch(
 )
 
 const handleLogout = async () => {
-  await ElMessageBox.confirm('确认退出当前账号？', '提示', {
+  await ElMessageBox.confirm(t('layout.logoutConfirm'), t('common.tip'), {
     type: 'warning',
-    confirmButtonText: '退出',
-    cancelButtonText: '取消',
+    confirmButtonText: t('layout.logoutBtn'),
+    cancelButtonText: t('common.cancel'),
   })
   localStorage.removeItem('auth_token')
   localStorage.removeItem('auth_user')
@@ -389,6 +417,22 @@ const handleLogout = async () => {
   flex-shrink: 0;
   padding: 12px 14px 16px;
   border-top: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.sidebar-lang-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 10px;
+}
+
+.sidebar-lang-select {
+  flex: 1;
+  width: auto !important;
+}
+
+.sidebar-lang-select :deep(.el-select__wrapper) {
+  background: #131c2f !important;
 }
 
 .sidebar-footer-row {

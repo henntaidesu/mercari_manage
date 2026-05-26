@@ -10,7 +10,7 @@
       <div class="sync-overlay__box">
         <el-icon class="is-loading sync-overlay__icon" :size="40"><Loading /></el-icon>
         <div class="sync-overlay__title">{{ state.title }}</div>
-        <div class="sync-overlay__step">{{ state.label || '请稍候…' }}</div>
+        <div class="sync-overlay__step">{{ state.label || t('sync.pleaseWait') }}</div>
       </div>
     </div>
   </teleport>
@@ -18,6 +18,9 @@
 
 <script setup>
 import { Loading } from '@element-plus/icons-vue'
+import { useI18n } from 'vue-i18n'
+
+const { t } = useI18n()
 
 defineProps({
   state: { type: Object, required: true },
