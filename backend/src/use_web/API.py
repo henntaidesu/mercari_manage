@@ -34,6 +34,7 @@ from .inventory.API import public_router as inventory_public_router
 from .mercari_accounts.API import router as mercari_accounts_router
 from .todos.API import router as todos_router
 from .notifications.API import router as notifications_router
+from .memos.API import router as memos_router
 from .mercari_image.API import public_router as mercari_image_public_router
 
 router = APIRouter(prefix="/use_web")
@@ -59,3 +60,4 @@ router.include_router(inventory_router, prefix="/inventory", tags=["inventory"],
 router.include_router(mercari_accounts_router, prefix="/mercari-accounts", tags=["mercari-accounts"], dependencies=_AUTH)
 router.include_router(todos_router, prefix="/todos", tags=["todos"], dependencies=_AUTH)
 router.include_router(notifications_router, prefix="/notifications", tags=["notifications"], dependencies=_AUTH)
+router.include_router(memos_router, prefix="/memos", tags=["memos"], dependencies=_AUTH)

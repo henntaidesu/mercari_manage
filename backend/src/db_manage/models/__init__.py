@@ -17,6 +17,7 @@ from .todo_item import TodoItemModel
 from .notification import NotificationModel
 from .bundle_purchase_request import BundlePurchaseRequestModel
 from .desired_price_offer import DesiredPriceOfferModel
+from .memo import MemoModel
 
 __all__ = [
     'CategoryModel',
@@ -37,4 +38,5 @@ __all__ = [
     'NotificationModel',
     'BundlePurchaseRequestModel',
     'DesiredPriceOfferModel',
+    'MemoModel',
 ]

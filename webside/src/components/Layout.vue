@@ -213,6 +213,7 @@ const menuItems = [
   { path: '/todos', titleKey: 'layout.menu.todos', icon: 'BellFilled' },
   { path: '/notifications', titleKey: 'layout.menu.notifications', icon: 'Bell' },
   { path: '/mercari-accounts', titleKey: 'layout.menu.mercariAccounts', icon: 'User' },
+  { path: '/memos', titleKey: 'layout.menu.memos', icon: 'ChatDotRound' },
   {
     path: '/system',
     titleKey: 'layout.menu.system',
