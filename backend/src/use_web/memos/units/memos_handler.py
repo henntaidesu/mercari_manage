@@ -2,7 +2,7 @@
 """备忘录 / 站内信处理器：用户互发留言 + 已读状态 + 附图。"""
 
 import json
-from datetime import datetime, timezone
+from datetime import datetime
 from typing import List, Optional
 
 from fastapi import Depends, File, HTTPException, UploadFile
@@ -126,7 +126,7 @@ def list_users_for_memo(claims: dict = Depends(require_auth)):
 
 def list_inbox(
     keyword: Optional[str] = None,
-    only_unread: bool = False,
+    processed: bool = False,
     page: int = 1,
     page_size: int = 20,
     claims: dict = Depends(require_auth),
@@ -134,7 +134,10 @@ def list_inbox(
     me = _current_user_id(claims)
     where = "receiver_id = ?"
     params: list = [me]
-    if only_unread:
+    # 收件箱默认只显示待处理项；已处理项在「已处理」标签页单独查看
+    if processed:
+        where += " AND COALESCE(is_read, 0) = 1"
+    else:
         where += " AND COALESCE(is_read, 0) = 0"
     if keyword:
         kw = f"%{keyword.strip()}%"
@@ -227,6 +230,7 @@ def create_memo(data: MemoCreate, claims: dict = Depends(require_auth)):
         if image_paths
         else None
     )
+    # 显式写入本地时间，避免依赖模型默认值 'CURRENT_TIMESTAMP'（会被当作字符串字面量写入）
     memo = MemoModel(
         sender_id=me,
         receiver_id=receiver_id,
@@ -234,6 +238,7 @@ def create_memo(data: MemoCreate, claims: dict = Depends(require_auth)):
         content=content,
         images_json=images_json,
         is_read=0,
+        created_at=datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
     )
     if not memo.save():
         # 保存失败时清理已落盘的图片，避免孤儿文件
@@ -258,7 +263,7 @@ def mark_read(data: MarkReadBody, claims: dict = Depends(require_auth)):
     ids = [int(i) for i in (data.ids or []) if int(i) > 0]
     if not ids:
         raise HTTPException(status_code=400, detail="请提供 ids")
-    now_iso = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S")
+    now_iso = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     placeholders = ",".join(["?"] * len(ids))
     if data.is_read:
         affected = db.execute_update(
@@ -277,7 +282,7 @@ def mark_read(data: MarkReadBody, claims: dict = Depends(require_auth)):
 
 def mark_all_read(claims: dict = Depends(require_auth)):
     me = _current_user_id(claims)
-    now_iso = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S")
+    now_iso = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     affected = db.execute_update(
         "UPDATE [memos] SET is_read = 1, read_at = ? "
         "WHERE receiver_id = ? AND COALESCE(is_read, 0) = 0",

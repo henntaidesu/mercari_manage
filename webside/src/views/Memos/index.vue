@@ -12,6 +12,7 @@
               class="memos-badge"
             />
           </el-radio-button>
+          <el-radio-button label="processed">{{ t('memos.tabProcessed') }}</el-radio-button>
           <el-radio-button label="sent">{{ t('memos.tabSent') }}</el-radio-button>
         </el-radio-group>
 
@@ -28,14 +29,6 @@
           </template>
         </el-input>
 
-        <el-checkbox
-          v-if="tab === 'inbox'"
-          v-model="onlyUnread"
-          @change="reload(1)"
-        >
-          {{ t('memos.onlyUnread') }}
-        </el-checkbox>
-
         <div class="memos-toolbar-spacer" />
 
         <el-button
@@ -43,7 +36,7 @@
           :disabled="unread === 0"
           @click="markAllRead"
         >
-          <el-icon><Check /></el-icon> {{ t('memos.markAllRead') }}
+          <el-icon><Check /></el-icon> {{ t('memos.markAllProcessed') }}
         </el-button>
         <el-button type="primary" @click="openComposeDialog">
           <el-icon><EditPen /></el-icon> {{ t('memos.compose') }}
@@ -56,12 +49,11 @@
         :data="list"
         v-loading="loading"
         stripe
-        :row-class-name="rowClassName"
         @row-click="onRowClick"
       >
         <el-table-column label="ID" prop="id" width="70" />
         <el-table-column
-          v-if="tab === 'inbox'"
+          v-if="tab !== 'sent'"
           :label="t('memos.colSender')"
           width="140"
         >
@@ -80,20 +72,7 @@
         </el-table-column>
         <el-table-column :label="t('memos.colTitle')" prop="title" min-width="160">
           <template #default="{ row }">
-            <span class="memos-title-cell">
-              <el-tag
-                v-if="tab === 'inbox' && !row.is_read"
-                type="danger"
-                size="small"
-                effect="dark"
-                class="memos-unread-tag"
-              >
-                {{ t('memos.unread') }}
-              </el-tag>
-              <span :class="{ 'memos-title-bold': tab === 'inbox' && !row.is_read }">
-                {{ row.title || t('memos.untitled') }}
-              </span>
-            </span>
+            <span>{{ row.title || t('memos.untitled') }}</span>
           </template>
         </el-table-column>
         <el-table-column :label="t('memos.colContent')" min-width="240" show-overflow-tooltip>
@@ -119,8 +98,8 @@
         </el-table-column>
         <el-table-column :label="t('memos.colCreatedAt')" prop="created_at" width="170" />
         <el-table-column
-          v-if="tab === 'inbox'"
-          :label="t('memos.colReadAt')"
+          v-if="tab === 'processed'"
+          :label="t('memos.colProcessedAt')"
           prop="read_at"
           width="170"
         >
@@ -128,10 +107,25 @@
             <span>{{ row.read_at || '-' }}</span>
           </template>
         </el-table-column>
-        <el-table-column :label="t('common.actions')" width="180" fixed="right">
+        <el-table-column :label="t('common.actions')" width="260" fixed="right">
           <template #default="{ row }">
             <el-button size="small" @click.stop="openDetail(row)">
               {{ t('memos.view') }}
+            </el-button>
+            <el-button
+              v-if="tab === 'inbox'"
+              size="small"
+              type="primary"
+              @click.stop="setRead(row, true)"
+            >
+              {{ t('memos.markProcessed') }}
+            </el-button>
+            <el-button
+              v-else-if="tab === 'processed'"
+              size="small"
+              @click.stop="setRead(row, false)"
+            >
+              {{ t('memos.markUnprocessed') }}
             </el-button>
             <el-popconfirm
               :title="t('memos.deleteConfirm')"
@@ -246,8 +240,8 @@
           <span class="memos-detail-label">{{ t('memos.colCreatedAt') }}：</span>
           <span>{{ detailMemo.created_at }}</span>
         </div>
-        <div v-if="tab === 'inbox' && detailMemo.read_at" class="memos-detail-row">
-          <span class="memos-detail-label">{{ t('memos.colReadAt') }}：</span>
+        <div v-if="tab === 'processed' && detailMemo.read_at" class="memos-detail-row">
+          <span class="memos-detail-label">{{ t('memos.colProcessedAt') }}：</span>
           <span>{{ detailMemo.read_at }}</span>
         </div>
         <el-divider />
@@ -270,10 +264,17 @@
       </div>
       <template #footer>
         <el-button
-          v-if="tab === 'inbox' && detailMemo && detailMemo.is_read"
+          v-if="tab === 'inbox' && detailMemo"
+          type="primary"
+          @click="setRead(detailMemo, true)"
+        >
+          {{ t('memos.markProcessed') }}
+        </el-button>
+        <el-button
+          v-else-if="tab === 'processed' && detailMemo"
           @click="setRead(detailMemo, false)"
         >
-          {{ t('memos.markUnread') }}
+          {{ t('memos.markUnprocessed') }}
         </el-button>
         <el-button @click="detailVisible = false">{{ t('common.close') }}</el-button>
       </template>

@@ -11,7 +11,6 @@ export default defineComponent({
 
     const tab = ref('inbox')
     const keyword = ref('')
-    const onlyUnread = ref(false)
 
     const list = ref([])
     const loading = ref(false)
@@ -53,38 +52,34 @@ export default defineComponent({
           page_size: pageSize.value,
         }
         let r
-        if (tab.value === 'inbox') {
-          params.only_unread = onlyUnread.value || undefined
-          r = await memosApi.inbox(params)
-        } else {
+        if (tab.value === 'sent') {
           r = await memosApi.sent(params)
+        } else {
+          // inbox = 待处理 (processed=false)，processed = 已处理 (processed=true)
+          params.processed = tab.value === 'processed' || undefined
+          r = await memosApi.inbox(params)
         }
         list.value = r?.items || []
         total.value = r?.total || 0
       } finally {
         loading.value = false
       }
-      if (tab.value === 'inbox') refreshUnread()
+      refreshUnread()
     }
 
     function onTabChange() {
       page.value = 1
       keyword.value = ''
-      onlyUnread.value = false
       reload(1)
     }
 
-    function rowClassName({ row }) {
-      if (tab.value === 'inbox' && !row.is_read) return 'memos-row-unread'
-      return ''
-    }
-
+    /** 标记已处理 / 退回待处理：变更后该项会移出当前列表，重新拉取 */
     async function setRead(row, isRead) {
       try {
         await memosApi.markRead([row.id], isRead)
-        row.is_read = isRead
-        row.read_at = isRead ? new Date().toISOString().replace('T', ' ').slice(0, 19) : null
-        refreshUnread()
+        if (isRead) ElMessage.success(t('memos.processedSuccess'))
+        detailVisible.value = false
+        await reload()
       } catch {
         // 错误已被 axios 拦截器提示
       }
@@ -94,19 +89,17 @@ export default defineComponent({
       openDetail(row)
     }
 
+    /** 仅打开详情查看，不再自动标记为已处理（需手动点击按钮） */
     function openDetail(row) {
       detailMemo.value = row
       detailVisible.value = true
-      if (tab.value === 'inbox' && !row.is_read) {
-        setRead(row, true)
-      }
     }
 
     async function markAllRead() {
       try {
         await memosApi.markAllRead()
         ElMessage.success(t('common.success'))
-        reload()
+        await reload()
       } catch {
         // ignore
       }
@@ -206,7 +199,6 @@ export default defineComponent({
       t,
       tab,
       keyword,
-      onlyUnread,
       list,
       loading,
       page,
@@ -224,7 +216,6 @@ export default defineComponent({
       detailMemo,
       reload,
       onTabChange,
-      rowClassName,
       onRowClick,
       openDetail,
       setRead,

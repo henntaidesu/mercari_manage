@@ -13,7 +13,9 @@
       "Bash(python -c \"import ast; ast.parse\\(open\\('backend/src/use_web/web_drive/units/web_drive_handler.py', encoding='utf-8'\\).read\\(\\)\\); print\\('OK'\\)\")",
       "Read(//d/Project/mercari/backend/backend/.venv/**)",
       "PowerShell(Get-Command python -ErrorAction SilentlyContinue)",
-      "PowerShell($env:PYTHONPATH = 'backend'; python backend\\\\_verify_syslog_tmp.py; Remove-Item backend\\\\_verify_syslog_tmp.py -Force)"
+      "PowerShell($env:PYTHONPATH = 'backend'; python backend\\\\_verify_syslog_tmp.py; Remove-Item backend\\\\_verify_syslog_tmp.py -Force)",
+      "Bash(cd /d/Project/mercari/backend && grep -rn \"now\\(JST\\\\|timezone\\(timedelta\\\\|Asia/Tokyo\\\\|JST\\\\|localtime\\\\|now\\(\\)\\\\.strftime\\\\|datetime.now\\(\\)\" src --include=*.py | head -50)",
+      "Read(//d/d/Project/mercari/backend/**)"
     ]
   }
 }
