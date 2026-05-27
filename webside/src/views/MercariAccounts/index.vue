@@ -1,17 +1,6 @@
 <template>
   <div>
     <el-card shadow="never" class="list-card" v-loading="loading">
-      <div class="auto-listing-master-bar">
-        <div class="auto-listing-master-bar__text">
-          <span class="auto-listing-master-bar__title">{{ t('mercariAccounts.autoListingMaster') }}</span>
-          <span class="auto-listing-master-bar__hint">{{ t('mercariAccounts.autoListingMasterHint') }}</span>
-        </div>
-        <el-switch
-          v-model="autoListingMaster"
-          :loading="autoListingMasterLoading"
-          @change="onAutoListingMasterToggle"
-        />
-      </div>
       <el-row :gutter="16">
         <el-col :xs="24" :sm="12" :md="8" :lg="6" class="card-col">
           <div class="add-card">
@@ -158,7 +147,13 @@
                 :false-value="0"
                 @change="onAutoFetchTaskChange"
               >{{ t('mercariAccounts.taskNotifications') }}</el-checkbox>
+              <el-checkbox
+                v-model="form.auto_fetch_relist"
+                :true-value="1"
+                :false-value="0"
+              >{{ t('mercariAccounts.taskRelist') }}</el-checkbox>
             </div>
+            <p class="af-task-hint">{{ t('mercariAccounts.taskRelistHint') }}</p>
           </el-form-item>
           <el-form-item :label="t('mercariAccounts.interval')" prop="fetch_interval">
             <el-select v-model="form.fetch_interval" style="width: 100%" :placeholder="t('mercariAccounts.intervalPlaceholder')" @change="onAutoFetchTaskChange">

@@ -56,6 +56,7 @@ class MercariAccountCreate(PydanticModel):
     auto_fetch_on_sale: int = 0
     auto_fetch_todos: int = 0
     auto_fetch_notifications: int = 0
+    auto_fetch_relist: int = 0
     pause_start_time: Optional[str] = None
     pause_end_time: Optional[str] = None
 
@@ -73,6 +74,7 @@ class MercariAccountUpdate(PydanticModel):
     auto_fetch_on_sale: Optional[int] = None
     auto_fetch_todos: Optional[int] = None
     auto_fetch_notifications: Optional[int] = None
+    auto_fetch_relist: Optional[int] = None
     pause_start_time: Optional[str] = None
     pause_end_time: Optional[str] = None
 

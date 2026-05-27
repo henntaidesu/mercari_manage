@@ -21,9 +21,6 @@ from .units.app_config_handler import (
     ListingDefaultsOut,
     get_listing_defaults,
     put_listing_defaults,
-    AutoListingMasterOut,
-    get_auto_listing_master,
-    put_auto_listing_master,
 )
 from .units.system_log_handler import (
     list_system_logs,
@@ -59,10 +56,6 @@ router.add_api_route("/change-password", change_password, methods=["POST"])
 # 应用配置（出品默认值）
 router.add_api_route("/listing-defaults", get_listing_defaults, methods=["GET"], response_model=ListingDefaultsOut)
 router.add_api_route("/listing-defaults", put_listing_defaults, methods=["PUT"], response_model=ListingDefaultsOut)
-
-# 自动出品总开关
-router.add_api_route("/auto-listing-master", get_auto_listing_master, methods=["GET"], response_model=AutoListingMasterOut)
-router.add_api_route("/auto-listing-master", put_auto_listing_master, methods=["PUT"], response_model=AutoListingMasterOut)
 
 # 系统日志（自动上架 / 自动获取）
 router.add_api_route("/system-logs", list_system_logs, methods=["GET"])

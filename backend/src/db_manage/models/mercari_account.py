@@ -101,6 +101,12 @@ class MercariAccountModel(BaseModel):
                 'not_null': True,
                 'default': 0,
             },
+            # 自动上架（售出即补挂）账号级开关：1=本账号售出订单触发补挂（需配合订单更新列表 + 商品单品开关）
+            'auto_fetch_relist': {
+                'type': 'INTEGER',
+                'not_null': True,
+                'default': 0,
+            },
             # 不进行获取时间段（本地时间 24 小时制 "HH:MM"）；两个字段均非空时启用，
             # 当 start == end 表示无效（视为不暂停）；start > end 跨日（如 22:00 → 08:00）
             'pause_start_time': {

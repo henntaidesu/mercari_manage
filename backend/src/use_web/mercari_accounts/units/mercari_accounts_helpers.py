@@ -137,6 +137,7 @@ def _item_api_dict(item: MercariAccountModel) -> dict:
     d['auto_fetch_on_sale'] = 1 if d.get('auto_fetch_on_sale') else 0
     d['auto_fetch_todos'] = 1 if d.get('auto_fetch_todos') else 0
     d['auto_fetch_notifications'] = 1 if d.get('auto_fetch_notifications') else 0
+    d['auto_fetch_relist'] = 1 if d.get('auto_fetch_relist') else 0
     d['pause_start_time'] = (d.get('pause_start_time') or None)
     d['pause_end_time'] = (d.get('pause_end_time') or None)
     return d

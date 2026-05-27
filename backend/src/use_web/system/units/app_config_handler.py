@@ -16,8 +16,6 @@ _K_SHIP_DAYS = "listing_defaults_shipping_days"
 _K_MERCARI = "listing_defaults_mercari_account_id"
 _K_CONDITION = "listing_defaults_condition"
 _K_SALE_TYPE = "listing_defaults_sale_type"
-# 自动出品（售出即补挂）总开关："1"=开，其余=关
-_K_AUTO_MASTER = "auto_listing_master_enabled"
 
 _ALLOWED_METHODS = frozenset({"undecided", "rakuraku", "yuuyu", "tanome", "regular_mail"})
 _ALLOWED_PAYERS = frozenset({"seller", "buyer"})
@@ -68,14 +66,6 @@ class ListingDefaultsUpdate(BaseModel):
         return s if s else None
 
 
-class AutoListingMasterOut(BaseModel):
-    enabled: bool = False
-
-
-class AutoListingMasterUpdate(BaseModel):
-    enabled: bool
-
-
 def _read_listing_defaults() -> Dict[str, Any]:
     raw_area = ConfigEntryModel.get_value(_K_SHIP_FROM)
     raw_method = ConfigEntryModel.get_value(_K_SHIP_METHOD)
@@ -101,11 +91,6 @@ def _read_listing_defaults() -> Dict[str, Any]:
         "condition": raw_condition,
         "sale_type": raw_sale_type,
     }
-
-
-def auto_listing_master_enabled() -> bool:
-    """自动出品总开关是否开启（供同步链路调用）。"""
-    return str(ConfigEntryModel.get_value(_K_AUTO_MASTER) or "").strip() == "1"
 
 
 def get_listing_defaults():
@@ -166,12 +151,3 @@ def put_listing_defaults(body: ListingDefaultsUpdate):
         ConfigEntryModel.set_value(_K_MERCARI, str(mid) if mid is not None else None)
 
     return ListingDefaultsOut(**_read_listing_defaults())
-
-
-def get_auto_listing_master():
-    return AutoListingMasterOut(enabled=auto_listing_master_enabled())
-
-
-def put_auto_listing_master(body: AutoListingMasterUpdate):
-    ConfigEntryModel.set_value(_K_AUTO_MASTER, "1" if body.enabled else "0")
-    return AutoListingMasterOut(enabled=auto_listing_master_enabled())

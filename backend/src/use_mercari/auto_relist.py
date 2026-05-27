@@ -3,7 +3,7 @@
 自动出品（售出即补挂）。
 
 当增量订单同步发现某商品的**新售出订单**时，若满足：
-  · 总开关开启（config: auto_listing_master_enabled）
+  · 该账号开启了「自动上架」同步项（mercari_accounts.auto_fetch_relist=1）
   · 该商品单品开关开启（inventory.auto_listing_enabled=1）
   · 仍有剩余可售库存（quantity - on_sale_quantity - pending_outbound_qty > 0）
 则在售出该商品的同一煤炉账号下，用商品当前保存的出品设置 + 系统出品默认值，
@@ -39,14 +39,13 @@ _RELIST_TASKS: Set["asyncio.Task"] = set()
 _DESCRIPTION_MAX_LEN = 1000
 
 
-def auto_listing_master_enabled() -> bool:
-    """自动出品总开关是否开启。"""
-    from ..use_web.system.units.app_config_handler import (
-        auto_listing_master_enabled as _impl,
-    )
-
+def _account_relist_enabled(account_id: Optional[int]) -> bool:
+    """该账号是否开启了「自动上架」同步项（账号级开关）。"""
+    if account_id is None:
+        return False
     try:
-        return bool(_impl())
+        acc = MercariAccountModel.find_by_id(id=int(account_id))
+        return acc is not None and int(getattr(acc, "auto_fetch_relist", 0) or 0) == 1
     except Exception:
         return False
 
@@ -66,7 +65,8 @@ def schedule_auto_relist_for_orders(
     nos = [str(x).strip() for x in (order_nos or []) if str(x or "").strip()]
     if not nos:
         return
-    if not auto_listing_master_enabled():
+    # 账号级「自动上架」开关：传入了 account_id 且未开启 → 直接跳过调度
+    if account_id is not None and not _account_relist_enabled(account_id):
         return
     try:
         loop = asyncio.get_running_loop()
@@ -174,24 +174,11 @@ async def _relist_for_order(
 ) -> None:
     """处理单个售出订单的补挂。全程吞异常，仅记日志，绝不影响同步主流程。"""
     try:
-        if not auto_listing_master_enabled():
-            return
-
         orders = OrderModel.find_all(where="[order_no] = ?", params=(order_no,), limit=1)
         if not orders:
             return
         order = orders[0]
         if int(getattr(order, "auto_relisted", 0) or 0) == 1:
-            return
-
-        # 乐观占用：先标记已处理，避免重复触发造成重复上架（上架涉及真实挂牌）。
-        DatabaseManager().execute_update(
-            "UPDATE [orders] SET [auto_relisted] = 1 WHERE [order_no] = ?",
-            (order_no,),
-        )
-
-        inventory_ids = _inventory_ids_for_order(order_no)
-        if not inventory_ids:
             return
 
         aid = _resolve_account_id(
@@ -203,6 +190,19 @@ async def _relist_for_order(
                 order_no,
                 seller_id or getattr(order, "data_user", None),
             )
+            return
+        # 账号级「自动上架」开关未开 → 不补挂（不标记，便于将来开启后由新订单触发）
+        if not _account_relist_enabled(aid):
+            return
+
+        # 乐观占用：先标记已处理，避免重复触发造成重复上架（上架涉及真实挂牌）。
+        DatabaseManager().execute_update(
+            "UPDATE [orders] SET [auto_relisted] = 1 WHERE [order_no] = ?",
+            (order_no,),
+        )
+
+        inventory_ids = _inventory_ids_for_order(order_no)
+        if not inventory_ids:
             return
 
         for inv_id in inventory_ids:
