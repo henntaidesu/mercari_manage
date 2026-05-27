@@ -19,9 +19,10 @@ import asyncio
 import logging
 import os
 from datetime import datetime, timezone
-from typing import Optional
+from typing import Any, Dict, List, Optional, Tuple
 
 from .db_manage.models.mercari_account import MercariAccountModel
+from .db_manage.models.system_log import SystemLogModel
 from .use_mercari.get_notifications.notification_sync import sync_notifications_from_mercari
 from .use_mercari.get_to_du_list.todolist_sync import sync_todos_from_mercari
 from .use_mercari.on_sale_items_sync import sync_on_sale_items_from_mercari
@@ -134,25 +135,69 @@ def _account_due(item: MercariAccountModel, now: datetime) -> bool:
     return elapsed >= _interval_seconds(iv)
 
 
-async def _run_auto_fetch_for_account(aid: int, item: MercariAccountModel) -> None:
+async def _run_auto_fetch_for_account(aid: int, item: MercariAccountModel) -> Dict[str, Any]:
+    """执行账号本轮各子任务并收集各自返回的 stats（用于系统日志汇总）。"""
     li = _normalize_row_is_open(getattr(item, "auto_fetch_order_list", 0))
     os_ = _normalize_row_is_open(getattr(item, "auto_fetch_on_sale", 0))
     td = _normalize_row_is_open(getattr(item, "auto_fetch_todos", 0))
     nt = _normalize_row_is_open(getattr(item, "auto_fetch_notifications", 0))
+    results: Dict[str, Any] = {}
     if not (li or os_ or td or nt):
-        return
+        return results
 
     async def _body():
         if li:
-            await sync_new_data(account_id=aid)
+            results["order_list"] = await sync_new_data(account_id=aid)
         if os_:
-            await sync_on_sale_items_from_mercari(account_id=aid)
+            results["on_sale"] = await sync_on_sale_items_from_mercari(account_id=aid)
         if td:
-            await sync_todos_from_mercari(account_id=aid)
+            results["todos"] = await sync_todos_from_mercari(account_id=aid)
         if nt:
-            await sync_notifications_from_mercari(account_id=aid)
+            results["notifications"] = await sync_notifications_from_mercari(account_id=aid)
 
     await run_mercari_serial_async(queue_key_for_mercari_account(aid), _body)
+    return results
+
+
+_AUTO_FETCH_TASK_LABELS = {
+    "order_list": "订单",
+    "on_sale": "在售",
+    "todos": "待办",
+    "notifications": "通知",
+}
+
+
+def _stats_error_count(stats: Any) -> int:
+    if not isinstance(stats, dict):
+        return 0
+    n = 0
+    for key in ("errors", "info_errors"):
+        v = stats.get(key)
+        if isinstance(v, (list, tuple)):
+            n += len(v)
+    return n
+
+
+def _summarize_auto_fetch(results: Dict[str, Any]) -> Tuple[str, str]:
+    """把各子任务 stats 汇总为一条人类可读消息与级别（有错误→warning）。"""
+    parts: List[str] = []
+    has_err = False
+    for key in ("order_list", "on_sale", "todos", "notifications"):
+        if key not in results:
+            continue
+        stats = results[key]
+        label = _AUTO_FETCH_TASK_LABELS[key]
+        if isinstance(stats, dict):
+            seg = f"{label} 新增{stats.get('inserted', 0)}/更新{stats.get('updated', 0)}"
+            err_n = _stats_error_count(stats)
+            if err_n:
+                has_err = True
+                seg += f"/错误{err_n}"
+            parts.append(seg)
+        else:
+            parts.append(f"{label} -")
+    message = "；".join(parts) if parts else "无启用的子任务"
+    return message, ("warning" if has_err else "info")
 
 
 def _mark_last_at(aid: int) -> None:
@@ -196,11 +241,27 @@ async def run_mercari_auto_fetch_tick() -> None:
             if not _any_auto_task_enabled(item):
                 continue
             log.info("[mercari_auto_fetch] 开始账号 id=%s seller_id=%s", aid, sid)
-            await _run_auto_fetch_for_account(int(aid), item)
+            results = await _run_auto_fetch_for_account(int(aid), item)
             _mark_last_at(int(aid))
+            msg, level = _summarize_auto_fetch(results)
+            SystemLogModel.add(
+                category="auto_fetch",
+                level=level,
+                account_id=int(aid),
+                account_name=getattr(item, "account_name", None),
+                message=msg,
+                detail=results,
+            )
             log.info("[mercari_auto_fetch] 完成账号 id=%s", aid)
-        except Exception:
+        except Exception as exc:
             log.exception("[mercari_auto_fetch] 账号 id=%s 本轮失败", aid)
+            SystemLogModel.add(
+                category="auto_fetch",
+                level="error",
+                account_id=int(aid) if aid is not None else None,
+                account_name=getattr(item, "account_name", None),
+                message=f"自动获取异常：{exc}",
+            )
 
 
 def _tick_seconds() -> int:

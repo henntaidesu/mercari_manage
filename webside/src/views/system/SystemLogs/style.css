@@ -1,0 +1,17 @@
+.search-card { margin-bottom: 16px; border-radius: 8px; }
+.search-row { justify-content: space-between; }
+.search-left-group { display: flex; align-items: center; gap: 20px; }
+.search-actions { display: flex; justify-content: flex-end; gap: 8px; }
+.table-card { border-radius: 8px; }
+.pagination { margin-top: 16px; display: flex; justify-content: flex-end; }
+.log-detail {
+  margin: 0;
+  padding: 8px 12px;
+  white-space: pre-wrap;
+  word-break: break-all;
+  font-size: 12px;
+  line-height: 1.5;
+  color: #a8b4ce;
+  background: rgba(19, 28, 47, 0.6);
+  border-radius: 6px;
+}

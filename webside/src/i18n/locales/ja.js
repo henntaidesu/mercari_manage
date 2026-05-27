@@ -104,6 +104,7 @@ export default {
       warehouses: "倉庫管理",
       categories: "ゲームカテゴリ",
       productTypeMappings: "商品種別マッピング",
+      systemLogs: "システムログ",
     },
     logout: "ログアウト",
     logoutConfirm: "現在のアカウントからログアウトしますか？",

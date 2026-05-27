@@ -25,6 +25,7 @@ from .models import (
     BundlePurchaseRequestModel,
     DesiredPriceOfferModel,
     MemoModel,
+    SystemLogModel,
 )
 
 
@@ -383,6 +384,7 @@ class DBManager:
             DesiredPriceOfferModel,  # 降价请求(値下げ依頼)缓存（依赖 notifications，仅顺序习惯）
             ProductTypeCategoryMappingModel,  # 商品类型与类别字段映射
             MemoModel,  # 备忘录 / 站内信（依赖 users，仅顺序习惯）
+            SystemLogModel,  # 系统日志（自动上架 / 自动获取，无外键依赖）
         ]
 
     def initialize_database(self) -> bool:

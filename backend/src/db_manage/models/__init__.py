@@ -18,6 +18,7 @@ from .notification import NotificationModel
 from .bundle_purchase_request import BundlePurchaseRequestModel
 from .desired_price_offer import DesiredPriceOfferModel
 from .memo import MemoModel
+from .system_log import SystemLogModel
 
 __all__ = [
     'CategoryModel',
@@ -39,4 +40,5 @@ __all__ = [
     'BundlePurchaseRequestModel',
     'DesiredPriceOfferModel',
     'MemoModel',
+    'SystemLogModel',
 ]

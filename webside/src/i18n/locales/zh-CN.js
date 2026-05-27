@@ -104,6 +104,7 @@ export default {
       warehouses: "仓库管理",
       categories: "游戏分类",
       productTypeMappings: "商品类型映射",
+      systemLogs: "系统日志",
     },
     logout: "退出",
     logoutConfirm: "确认退出当前账号？",

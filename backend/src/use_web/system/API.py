@@ -25,6 +25,10 @@ from .units.app_config_handler import (
     get_auto_listing_master,
     put_auto_listing_master,
 )
+from .units.system_log_handler import (
+    list_system_logs,
+    clear_system_logs,
+)
 from .units.ssl_mitm_handler import (
     download_ca_cert,
     get_last_capture,
@@ -59,6 +63,10 @@ router.add_api_route("/listing-defaults", put_listing_defaults, methods=["PUT"],
 # 自动出品总开关
 router.add_api_route("/auto-listing-master", get_auto_listing_master, methods=["GET"], response_model=AutoListingMasterOut)
 router.add_api_route("/auto-listing-master", put_auto_listing_master, methods=["PUT"], response_model=AutoListingMasterOut)
+
+# 系统日志（自动上架 / 自动获取）
+router.add_api_route("/system-logs", list_system_logs, methods=["GET"])
+router.add_api_route("/system-logs/clear", clear_system_logs, methods=["POST"])
 
 # SSL MITM 代理控制
 router.add_api_route("/ssl-mitm/status", get_status, methods=["GET"])

@@ -104,6 +104,7 @@ export default {
       warehouses: "Warehouses",
       categories: "Game Categories",
       productTypeMappings: "Product Type Mappings",
+      systemLogs: "System Logs",
     },
     logout: "Logout",
     logoutConfirm: "Are you sure you want to log out?",

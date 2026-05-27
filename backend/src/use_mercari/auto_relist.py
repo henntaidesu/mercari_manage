@@ -27,6 +27,7 @@ from ..db_manage.models.inventory import InventoryModel
 from ..db_manage.models.mercari_account import MercariAccountModel
 from ..db_manage.models.order import OrderModel
 from ..db_manage.models.order_outbound_line import OrderOutboundLineModel
+from ..db_manage.models.system_log import SystemLogModel
 from .mgmt_id_cipher import encode_mgmt_id, is_cipher_mgmt_line
 
 log = logging.getLogger(__name__)
@@ -100,6 +101,20 @@ def _resolve_account_id(seller_id: Optional[str], account_id: Optional[int]) -> 
     try:
         return int(getattr(rows[0], "id"))
     except (TypeError, ValueError):
+        return None
+
+
+def _account_name(account_id: Optional[int]) -> Optional[str]:
+    """取煤炉账号名（用于系统日志冗余展示）；取不到返回 None。"""
+    if account_id is None:
+        return None
+    try:
+        acc = MercariAccountModel.find_by_id(id=int(account_id))
+        if acc is None:
+            return None
+        name = str(getattr(acc, "account_name", "") or "").strip()
+        return name or None
+    except Exception:
         return None
 
 
@@ -279,6 +294,8 @@ async def _relist_single_inventory(inventory_id: int, account_id: int) -> None:
         use_mitm_proxy=True,
     )
 
+    account_name = _account_name(account_id)
+
     log.info(
         "[auto_relist] 商品 %s 触发补挂：account_id=%s price=%s name=%s",
         inventory_id, account_id, price, name,
@@ -287,7 +304,17 @@ async def _relist_single_inventory(inventory_id: int, account_id: int) -> None:
         res = await post_to_market(body)
     except Exception as exc:
         log.exception("[auto_relist] 商品 %s 出品自动化失败：%s", inventory_id, exc)
+        SystemLogModel.add(
+            category="auto_relist",
+            level="error",
+            account_id=account_id,
+            account_name=account_name,
+            message=f"重新上架失败：#{inventory_id} {name}（¥{price}）：{exc}",
+            detail={"inventory_id": inventory_id, "name": name, "price": price,
+                    "account_id": account_id, "error": str(exc)},
+        )
         return
+    submit_msg = None
     try:
         data = (res or {}).get("data") if isinstance(res, dict) else None
         submit_msg = (data or {}).get("submit_message") if isinstance(data, dict) else None
@@ -297,3 +324,12 @@ async def _relist_single_inventory(inventory_id: int, account_id: int) -> None:
         )
     except Exception:
         pass
+    SystemLogModel.add(
+        category="auto_relist",
+        level="info",
+        account_id=account_id,
+        account_name=account_name,
+        message=f"重新上架：#{inventory_id} {name}（¥{price}）",
+        detail={"inventory_id": inventory_id, "name": name, "price": price,
+                "account_id": account_id, "submit_message": submit_msg},
+    )

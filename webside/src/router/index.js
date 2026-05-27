@@ -27,7 +27,8 @@ const routes = [
       { path: 'system/cost-expenses', name: 'CostExpenses', component: () => import('@/views/system/CostExpenses/index.vue'), meta: { title: '包材使用记录', icon: 'Wallet' } },
       { path: 'system/warehouses', name: 'Warehouses', component: () => import('@/views/system/Warehouses/index.vue'), meta: { title: '仓库管理', icon: 'OfficeBuilding' } },
       { path: 'system/categories', name: 'Categories', component: () => import('@/views/system/Categories/index.vue'), meta: { title: '游戏分类', icon: 'Collection' } },
-      { path: 'system/product-type-category-mappings', name: 'ProductTypeCategoryMappings', component: () => import('@/views/system/ProductTypeCategoryMappings/index.vue'), meta: { title: '商品类型映射', icon: 'Connection' } }
+      { path: 'system/product-type-category-mappings', name: 'ProductTypeCategoryMappings', component: () => import('@/views/system/ProductTypeCategoryMappings/index.vue'), meta: { title: '商品类型映射', icon: 'Connection' } },
+      { path: 'system/system-logs', name: 'SystemLogs', component: () => import('@/views/system/SystemLogs/index.vue'), meta: { title: '系统日志', icon: 'Document' } }
     ]
   }
 ]
