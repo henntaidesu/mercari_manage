@@ -170,8 +170,8 @@ Key tables in `backend/src/db_manage/models/`:
 - `JWT_EXPIRE_HOURS`: Token validity (default: 12)
 - `SSL_MITM_AUTO_START`: Set to `0` to disable mitmproxy (default: 1)
 - `INTERACTIVE_BROWSER_AUTO_START`: Set to `0` to disable headed browser auto-start at boot (default: 0)
-- `WEB_DRIVE_AUTOMATION_HEADLESS`: Set to `1` to launch all automation browsers (startup pre-warm / MITM listing/delete/revise / mercari MITM capture) as truly headless. Does NOT affect the manual "Open Browser" button on `/mercari-accounts` (always headed). Default: 0.
-- `WEB_DRIVE_MITM_MINIMIZED`: Set to `0` to keep MITM automation windows in the foreground; otherwise they are minimized to the taskbar. Default: 1. Has no effect when `WEB_DRIVE_AUTOMATION_HEADLESS=1`.
+- `WEB_DRIVE_AUTOMATION_HEADLESS`: When enabled, all automation browsers (data fetch / startup pre-warm / MITM listing/delete/revise / mercari MITM capture) launch truly headless (silent, never shown in the foreground). Does NOT affect the manual "Open Browser" button on `/mercari-accounts` (always headed). **Default: 1 (headless).** Set to `0` to launch them headed+minimized for debugging.
+- `WEB_DRIVE_MITM_MINIMIZED`: Set to `0` to keep MITM automation windows in the foreground; otherwise they are minimized to the taskbar. Default: 1. Has no effect when automation is headless (the default).
 
 **Frontend** (`webside/.env.development`):
 - `MERCARI_DEV_HTTP`: Use HTTP instead of HTTPS (default: 0)

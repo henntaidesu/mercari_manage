@@ -170,8 +170,6 @@ async def _run_auto_fetch_for_account(aid: int, item: MercariAccountModel) -> Di
             except Exception as exc:
                 raise _AutoFetchTaskError(key, exc) from exc
 
-    # 数据获取全程静默：MITM 浏览器以无头方式启动（由四个 sync_* 入口的
-    # @silent_data_fetch 装饰器统一保证），不在前台显示、不抢焦点。
     await run_mercari_serial_async(queue_key_for_mercari_account(aid), _body)
     return results
 

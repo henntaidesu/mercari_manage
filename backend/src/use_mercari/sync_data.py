@@ -21,7 +21,6 @@ from .get_order.get_in_progress_order.get_order_info import apply_item_info_to_o
 from .sync_progress import make_sync_reporter
 from ..db_manage.models.mercari_account import MercariAccountModel
 from ..db_manage.models.order import OrderModel
-from ..web_drive.core.mitm_session import silent_data_fetch
 
 
 def resolve_account_id_by_seller_id(seller_id_str: Optional[str]) -> Optional[int]:
@@ -142,7 +141,6 @@ async def sync_open_orders(
     }
 
 
-@silent_data_fetch
 async def sync_new_data(
     account_id: Optional[int] = None,
     progress_job_id: Optional[str] = None,

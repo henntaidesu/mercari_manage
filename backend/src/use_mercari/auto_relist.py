@@ -28,7 +28,6 @@ from ..db_manage.models.mercari_account import MercariAccountModel
 from ..db_manage.models.order import OrderModel
 from ..db_manage.models.order_outbound_line import OrderOutboundLineModel
 from ..db_manage.models.system_log import SystemLogModel
-from ..web_drive.core.mitm_session import headed_op
 from .mgmt_id_cipher import encode_mgmt_id, is_cipher_mgmt_line
 
 log = logging.getLogger(__name__)
@@ -167,18 +166,13 @@ def _inventory_image_urls(inv) -> List[str]:
     )
 
 
-@headed_op
 async def _relist_for_order(
     order_no: str,
     *,
     seller_id: Optional[str],
     account_id: Optional[int],
 ) -> None:
-    """处理单个售出订单的补挂。全程吞异常，仅记日志，绝不影响同步主流程。
-
-    ``@headed_op``：补挂属于「上架/出品」操作（对无头较敏感），即使由静默的数据获取
-    流程 ``create_task`` 派生、误继承静默标记，也强制按有头方式启动浏览器。
-    """
+    """处理单个售出订单的补挂。全程吞异常，仅记日志，绝不影响同步主流程。"""
     try:
         orders = OrderModel.find_all(where="[order_no] = ?", params=(order_no,), limit=1)
         if not orders:

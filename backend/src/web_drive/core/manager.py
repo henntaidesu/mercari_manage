@@ -41,11 +41,14 @@ def get_web_drive_manager() -> "EdgeWebDriveManager":
 def automation_headless_enabled() -> bool:
     """所有自动化任务（除 /mercari-accounts 用户手动外）是否切真·无头浏览器。
 
-    通过 ``WEB_DRIVE_AUTOMATION_HEADLESS`` 环境变量控制，默认 0（保留有头并最小化）。
-    生效范围：系统启动预热、MITM 自动化（出品/删除/改价）、煤炉账号 MITM 抓取；
-    不生效范围：``/use_web/web-drive/sessions/open``（前端 /mercari-accounts 手动按钮）。
+    通过 ``WEB_DRIVE_AUTOMATION_HEADLESS`` 环境变量控制，**默认 1（无头静默）**：
+    除前端「打开浏览器」外，所有调用 WebDrive 的自动化都不在前台显示。
+    生效范围：系统启动预热、MITM 自动化（数据获取/出品/删除/改价）、煤炉账号 MITM 抓取；
+    不生效范围：``/use_web/web-drive/sessions/open``（前端 /mercari-accounts 手动按钮，恒有头）。
+
+    设 ``WEB_DRIVE_AUTOMATION_HEADLESS=0`` 可改回有头+最小化（调试观察浏览器用）。
     """
-    v = (os.environ.get("WEB_DRIVE_AUTOMATION_HEADLESS") or "0").strip().lower()
+    v = (os.environ.get("WEB_DRIVE_AUTOMATION_HEADLESS") or "1").strip().lower()
     return v in ("1", "true", "yes", "on")
 
 

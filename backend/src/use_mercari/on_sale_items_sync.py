@@ -29,7 +29,7 @@ from ..ssl_mitm_proxy.capture_config import (
     canonical_mercari_item_id,
     clear_on_sale_list_response_file,
 )
-from ..web_drive.core.mitm_session import mitm_automation_browser, silent_data_fetch
+from ..web_drive.core.mitm_session import mitm_automation_browser
 
 _MERCARI_ID_SEP_RE = re.compile(r"[\n,，、\s]+")
 
@@ -547,7 +547,6 @@ def apply_on_sale_list_sync(
     return stats
 
 
-@silent_data_fetch
 async def sync_on_sale_items_from_mercari(
     account_id: Optional[int] = None,
     progress_job_id: Optional[str] = None,
