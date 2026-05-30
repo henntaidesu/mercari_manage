@@ -57,6 +57,48 @@ async def silent_data_fetch_scope() -> AsyncIterator[None]:
     finally:
         _silent_data_fetch.reset(token)
 
+
+def silent_data_fetch(fn: Callable[..., Any]) -> Callable[..., Any]:
+    """装饰器：被装饰的 async「数据获取」函数执行期间，MITM 浏览器一律无头静默运行。
+
+    用于订单/在售/待办/通知四个同步入口，使无论从「自动获取」后台循环还是前端
+    「更新列表 / 同步」按钮触发，浏览器都不在前台显示。
+    """
+    import functools
+
+    @functools.wraps(fn)
+    async def _wrapper(*args: Any, **kwargs: Any) -> Any:
+        async with silent_data_fetch_scope():
+            return await fn(*args, **kwargs)
+
+    return _wrapper
+
+
+@asynccontextmanager
+async def headed_op_scope() -> AsyncIterator[None]:
+    """显式退出「静默数据获取」：作用域内 MITM 浏览器按常规（有头/最小化）启动。
+
+    用于从数据获取流程中 ``create_task`` 派生、但本身属于上架/出品等需要有头的操作
+    （它们会复制创建时的 contextvar，从而误继承静默标记）。
+    """
+    token = _silent_data_fetch.set(False)
+    try:
+        yield
+    finally:
+        _silent_data_fetch.reset(token)
+
+
+def headed_op(fn: Callable[..., Any]) -> Callable[..., Any]:
+    """装饰器：被装饰的 async 函数强制按有头方式运行，抵消调用链上的静默标记。"""
+    import functools
+
+    @functools.wraps(fn)
+    async def _wrapper(*args: Any, **kwargs: Any) -> Any:
+        async with headed_op_scope():
+            return await fn(*args, **kwargs)
+
+    return _wrapper
+
 # 煤炉登录页 URL 模式：cookies 过期时所有目标页都会 302 到这里
 _MERCARI_LOGIN_URL_RE = re.compile(
     r"^https?://login\.jp\.mercari\.com/",

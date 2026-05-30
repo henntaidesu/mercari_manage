@@ -20,7 +20,7 @@ from typing import Any, Dict, List, Optional
 from ...db_manage.database import DatabaseManager
 from ...db_manage.models.mercari_account import MercariAccountModel
 from ...ssl_mitm_proxy.capture_config import clear_todolist_response_file
-from ...web_drive.core.mitm_session import mitm_automation_browser
+from ...web_drive.core.mitm_session import mitm_automation_browser, silent_data_fetch
 from ..sync_progress import make_sync_reporter
 from .todolist_capture import TODOS_PAGE_URL, capture_todolist_via_mitm_session
 
@@ -203,6 +203,7 @@ def _resolve_account_id(account_id: Optional[int]) -> int:
     return int(rows[0].id)
 
 
+@silent_data_fetch
 async def sync_todos_from_mercari(
     account_id: Optional[int] = None,
     progress_job_id: Optional[str] = None,

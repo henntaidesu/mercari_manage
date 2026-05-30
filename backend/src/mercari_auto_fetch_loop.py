@@ -28,7 +28,6 @@ from .use_mercari.get_to_du_list.todolist_sync import sync_todos_from_mercari
 from .use_mercari.on_sale_items_sync import sync_on_sale_items_from_mercari
 from .use_mercari.sync_data import sync_new_data
 from .web_drive.core.account_serial_queue import queue_key_for_mercari_account, run_mercari_serial_async
-from .web_drive.core.mitm_session import silent_data_fetch_scope
 
 log = logging.getLogger(__name__)
 
@@ -171,9 +170,9 @@ async def _run_auto_fetch_for_account(aid: int, item: MercariAccountModel) -> Di
             except Exception as exc:
                 raise _AutoFetchTaskError(key, exc) from exc
 
-    # 数据获取全程静默：MITM 浏览器以无头方式启动，不在前台显示、不抢焦点。
-    async with silent_data_fetch_scope():
-        await run_mercari_serial_async(queue_key_for_mercari_account(aid), _body)
+    # 数据获取全程静默：MITM 浏览器以无头方式启动（由四个 sync_* 入口的
+    # @silent_data_fetch 装饰器统一保证），不在前台显示、不抢焦点。
+    await run_mercari_serial_async(queue_key_for_mercari_account(aid), _body)
     return results
 
 
