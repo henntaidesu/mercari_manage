@@ -9,7 +9,10 @@ export const webDriveApi = {
   profilesRoot: () => http.get('/use_web/web-drive/profiles-root'),
   /** WebDrive 打开编辑页并删除煤炉在售商品 */
   deleteMercariItem: (data, axiosConfig = {}) =>
-    http.post('/use_web/web-drive/on-sale/delete-item', data, { timeout: 0, ...axiosConfig })
+    http.post('/use_web/web-drive/on-sale/delete-item', data, { timeout: 0, ...axiosConfig }),
+  /** WebDrive 打开编辑页并提交修改（标题 / 价格 / 商品说明） */
+  reviseMercariItem: (data, axiosConfig = {}) =>
+    http.post('/use_web/web-drive/on-sale/revise-item', data, { timeout: 0, ...axiosConfig })
 }
 
 /**

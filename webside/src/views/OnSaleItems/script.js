@@ -3,7 +3,7 @@ import { ElMessage, ElMessageBox } from 'element-plus'
 import { Download, Loading, WarningFilled } from '@element-plus/icons-vue'
 import { useI18n } from 'vue-i18n'
 import { onSaleItemApi, mercariAccountApi, webDriveApi } from '@/api/index.js'
-import { parseMgmtIdsFromDescription } from '@/utils/mgmtIdCipher.js'
+import { parseMgmtIdsFromDescription, stripTrailingMgmtBlock } from '@/utils/mgmtIdCipher.js'
 import { mercariImageUrlList } from '@/utils/mercariImage.js'
 import { useMercariAccountStore } from '@/stores/mercariAccount.js'
 
@@ -383,20 +383,136 @@ export default defineComponent({
     const reviseDialogVisible = ref(false)
     const reviseSaving = ref(false)
     const reviseForm = reactive({ name: '', price: 0, listing_description: '' })
+    /** 商品说明末行的「暗码」（管理番号暗号）；编辑时锁定不可改，保存时原样回拼 */
+    const reviseDescCipher = ref('')
+
+    /**
+     * 拆分商品说明：用与解析端一致的 stripTrailingMgmtBlock 去掉「末尾管理番号块」
+     * （含 -=~<> 五进制暗码及明文「管理番号:」），剩余为可编辑正文；被去掉的尾部即锁定暗码。
+     */
+    function splitListingCipher(desc) {
+      const text = String(desc || '')
+      if (!text.trim()) return { body: text, cipher: '' }
+      const body = stripTrailingMgmtBlock(text)
+      if (body.length >= text.length) return { body: text, cipher: '' }
+      const cipher = text.slice(body.length).trim()
+      if (!cipher) return { body: text, cipher: '' }
+      return { body, cipher }
+    }
+
+    /** 回拼完整商品说明：可编辑正文 + 锁定暗码（保证暗码为最后一行、内容不变） */
+    function composeReviseDescription() {
+      const body = String(reviseForm.listing_description || '')
+      const cipher = String(reviseDescCipher.value || '')
+      if (!cipher) return body
+      return `${body.replace(/\s+$/, '')}\n\n${cipher}`
+    }
 
     function openReviseDialog() {
       const base = detailViewBase.value
       if (!base) return
       reviseForm.name = String(base.name || '')
       reviseForm.price = Number(base.price || 0)
-      reviseForm.listing_description = String(detailListingBodyText.value || '')
+      const { body, cipher } = splitListingCipher(detailListingBodyText.value || '')
+      reviseForm.listing_description = body
+      reviseDescCipher.value = cipher
       reviseDialogVisible.value = true
     }
 
+    /**
+     * 提交修改：打开煤炉编辑页 https://jp.mercari.com/sell/edit/{item_id} 填写并点击「変更する」。
+     * 商品说明用 composeReviseDescription() 回拼，末行暗码原样保留。
+     */
     async function submitReviseDetail() {
-      // TODO: 接入修改方法（标题 / 价格 / 商品说明 / 出品方式）。
-      // 可用数据：detailViewBase.value?.item_id 与 reviseForm.{ name, price, listing_description }
-      ElMessage.info(t('onSaleItems.reviseTodoMsg'))
+      const base = detailViewBase.value
+      if (!base?.item_id) {
+        ElMessage.warning(t('onSaleItems.missingItemId'))
+        return
+      }
+      const iid = String(base.item_id || '').trim()
+      const resolved = resolveAccountKeyForRow(base)
+      if (!resolved) {
+        ElMessage.warning(t('onSaleItems.noActiveAccountForSeller', { sid: String(base.seller_id || '').trim() || '-' }))
+        return
+      }
+      const name = String(reviseForm.name || '').trim()
+      const price = Number(reviseForm.price)
+      const description = composeReviseDescription()
+      if (!name) {
+        ElMessage.warning(t('onSaleItems.titleRequired'))
+        return
+      }
+      if (!Number.isFinite(price) || price < 300) {
+        ElMessage.warning(t('onSaleItems.priceInvalid'))
+        return
+      }
+      if (reviseSaving.value) return
+
+      const progressJobId =
+        typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function'
+          ? crypto.randomUUID()
+          : `job_${Date.now()}_${Math.random().toString(36).slice(2, 11)}`
+
+      let pollTimer = null
+      let lastConsoleStep = ''
+      async function poll() {
+        try {
+          const pr = await onSaleItemApi.getSyncProgress(progressJobId)
+          const zh = pr?.data?.label_zh
+          if (zh) {
+            syncProgressLabel.value = zh
+            if (zh !== lastConsoleStep) {
+              lastConsoleStep = zh
+              console.log('[修改商品]', zh)
+            }
+          }
+        } catch {
+          /* 轮询失败忽略 */
+        }
+      }
+
+      syncOverlayTitle.value = t('onSaleItems.revisingMercariItem')
+      syncOverlayFailed.value = false
+      syncProgressLabel.value = t('onSaleItems.connectingServer')
+      syncOverlayVisible.value = true
+      reviseSaving.value = true
+      await poll()
+      pollTimer = setInterval(poll, 400)
+
+      let hadError = false
+      try {
+        await webDriveApi.reviseMercariItem({
+          account_key: resolved.accountKey,
+          item_id: iid,
+          name,
+          price: Math.floor(price),
+          description,
+          use_mitm_proxy: true,
+          progress_job_id: progressJobId,
+        })
+        ElMessage.success(t('onSaleItems.reviseSuccess'))
+        reviseDialogVisible.value = false
+        detailViewVisible.value = false
+        await load()
+      } catch (e) {
+        hadError = true
+        syncOverlayTitle.value = t('onSaleItems.reviseFailed')
+        syncOverlayFailed.value = true
+        const msg = e?.response?.data?.detail || e?.message || t('onSaleItems.reviseFailed')
+        syncProgressLabel.value = String(msg)
+      } finally {
+        if (pollTimer != null) {
+          clearInterval(pollTimer)
+        }
+        if (hadError) {
+          await new Promise((r) => setTimeout(r, 1200))
+        }
+        syncOverlayVisible.value = false
+        syncOverlayTitle.value = t('onSaleItems.syncingFromMercari')
+        syncOverlayFailed.value = false
+        syncProgressLabel.value = ''
+        reviseSaving.value = false
+      }
     }
 
     function resolveAccountKeyForRow(row) {
@@ -844,6 +960,7 @@ export default defineComponent({
       reviseDialogVisible,
       reviseSaving,
       reviseForm,
+      reviseDescCipher,
       openReviseDialog,
       submitReviseDetail,
     }

@@ -131,6 +131,13 @@
 .on-sale-revise-form {
   padding-right: 8px;
 }
+
+.revise-cipher-hint {
+  font-size: 12px;
+  color: var(--el-text-color-secondary);
+  line-height: 1.4;
+  margin-top: 4px;
+}
 .detail-listing-body-wrap :deep(.el-textarea__inner) {
   font-family: inherit;
   line-height: 1.55;

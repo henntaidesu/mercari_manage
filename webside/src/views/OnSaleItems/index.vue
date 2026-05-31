@@ -392,6 +392,10 @@
             show-word-limit
           />
         </el-form-item>
+        <el-form-item v-if="reviseDescCipher" :label="t('onSaleItems.secretCodeLabel')">
+          <el-input :model-value="reviseDescCipher" disabled />
+          <div class="revise-cipher-hint">{{ t('onSaleItems.secretCodeHint') }}</div>
+        </el-form-item>
         <!-- 出品方式：稍后接入 -->
       </el-form>
       <template #footer>

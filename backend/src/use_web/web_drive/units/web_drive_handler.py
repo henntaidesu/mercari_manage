@@ -303,3 +303,83 @@ async def delete_on_sale_item(body: DeleteMercariItemBody):
     finally:
         if jid:
             clear_sync_progress(jid)
+
+
+# ──────────────────────── 在售商品修改 ──────────────────────── #
+
+class ReviseMercariItemBody(PydanticModel):
+    """通过 WebDrive 在煤炉编辑页修改在售商品（标题 / 价格 / 商品说明）。"""
+
+    account_key: str = Field(..., min_length=1, max_length=64, pattern=r"^[a-zA-Z0-9_-]+$")
+    item_id: str = Field(..., min_length=1, max_length=64)
+    name: Optional[str] = Field(default=None, max_length=80)
+    price: Optional[int] = None
+    description: Optional[str] = Field(default=None, max_length=4000)
+    proxy_server: Optional[str] = None
+    use_mitm_proxy: bool = True
+    progress_job_id: Optional[str] = None
+
+
+async def revise_on_sale_item(body: ReviseMercariItemBody):
+    """
+    账号主 profile ``mercari_{id}`` 经 MITM 打开编辑页填写并点击「変更する」提交，
+    随后打开出品一覧同步本地列表；经 ``run_mercari_serial_async`` 串行，浏览器在队列空闲超时后自动关闭。
+
+    ``progress_job_id`` 与 GET /use_web/on-sale-items/sync-progress/{job_id} 共用通用
+    sync_progress 内存存储，前端可复用同一个轮询接口展示步骤。
+    """
+    from ....web_drive.core.account_serial_queue import (
+        queue_key_for_mercari_account,
+        run_mercari_serial_async,
+    )
+    from ....web_drive.core.paths import mercari_id_from_account_key
+    from ....web_drive.revise.units.revise_order import revise_mercari_item as _do_revise
+    from ....ssl_mitm_proxy.runner import default_mitm_proxy_url
+    from ....use_mercari.sync_progress import clear_sync_progress
+
+    item_id = (body.item_id or "").strip()
+    if not item_id:
+        raise HTTPException(status_code=400, detail="item_id 不能为空")
+
+    jid = (body.progress_job_id or "").strip() or None
+    if jid and not _LISTING_JOB_ID_RE.fullmatch(jid):
+        raise HTTPException(status_code=400, detail="invalid progress_job_id")
+
+    account_id = mercari_id_from_account_key(body.account_key)
+    if account_id is None:
+        raise HTTPException(status_code=400, detail="无效的 account_key")
+
+    try:
+        proxy: Optional[str] = None
+        if body.use_mitm_proxy:
+            proxy = (body.proxy_server or "").strip() or default_mitm_proxy_url()
+
+        mgr = get_web_drive_manager()
+
+        async def _run() -> Dict[str, Any]:
+            return await _do_revise(
+                mgr,
+                body.account_key,
+                item_id=item_id,
+                name=body.name,
+                price=body.price,
+                description=body.description,
+                proxy_server=proxy,
+                progress_job_id=jid,
+            )
+
+        data = await run_mercari_serial_async(
+            queue_key_for_mercari_account(account_id),
+            _run,
+        )
+        return {"success": True, "data": data}
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    except RuntimeError as exc:
+        raise HTTPException(status_code=500, detail=str(exc)) from exc
+    except Exception as exc:
+        log.exception("revise_on_sale_item 异常")
+        raise HTTPException(status_code=500, detail=str(exc)) from exc
+    finally:
+        if jid:
+            clear_sync_progress(jid)
