@@ -525,12 +525,17 @@
       destroy-on-close
       @close="onQrScanDialogClose"
     >
-      <div class="qr-scan-hint">{{ t('todos.qrScanHint') }}</div>
+      <div class="qr-scan-hint">{{ t('todos.qrCamHint') }}</div>
       <div class="qr-scan-stage">
-        <img v-if="qrScanFrame" :src="qrScanFrame" alt="QR scanner" class="qr-scan-img" />
-        <div v-else class="qr-scan-loading">
-          <el-icon class="is-loading" :size="32"><Loading /></el-icon>
-          <span>{{ t('todos.qrScanConnecting') }}</span>
+        <video
+          ref="qrVideoEl"
+          class="qr-scan-video"
+          autoplay
+          playsinline
+          muted
+        ></video>
+        <div v-if="qrCamError" class="qr-scan-error">
+          {{ t('todos.cameraOpenFailed') }}: {{ qrCamError }}
         </div>
         <div v-if="qrScanDone" class="qr-scan-done">{{ t('todos.qrScanDone') }}</div>
       </div>

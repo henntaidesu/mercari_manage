@@ -565,18 +565,24 @@
   border-radius: 8px;
   overflow: hidden;
 }
-.qr-scan-img {
+.qr-scan-video {
   width: 100%;
   height: auto;
+  max-height: 70vh;
   display: block;
+  object-fit: contain;
+  background: #000;
 }
-.qr-scan-loading {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 10px;
-  color: #fff;
-  font-size: 13px;
+.qr-scan-error {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  padding: 8px 12px;
+  background: rgba(0, 0, 0, 0.6);
+  color: var(--el-color-warning);
+  font-size: 12px;
+  text-align: center;
 }
 .qr-scan-done {
   position: absolute;

@@ -24,6 +24,17 @@ class ConfirmShippingSelectionRequest(PydanticModel):
     progress_job_id: Optional[str] = None
 
 
+class CameraFrameRequest(PydanticModel):
+    """客户端摄像头单帧（data URL）→ 推送到有头浏览器的虚拟摄像头。
+
+    ``frame`` 为空时仅查询扫描状态（done/on_scanner），不写入画面。
+    """
+
+    frame: str = ""
+    width: int = 0
+    height: int = 0
+
+
 class SubmitTransactionReviewRequest(PydanticModel):
     text: str = Field(..., min_length=1, max_length=140)
     progress_job_id: Optional[str] = None

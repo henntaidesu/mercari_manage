@@ -18,6 +18,7 @@ from ....use_mercari.get_to_du_list.transaction_detail import (
     confirm_shipping_selection,
     fetch_transaction_detail,
     finalize_post_shipping,
+    push_remote_camera_frame,
     read_post_shipping_confirm_info,
     send_message_reaction_by_index,
     send_transaction_message,
@@ -35,6 +36,7 @@ from ....web_drive.core.account_serial_queue import (
 from ....web_drive.core.manager import get_web_drive_manager
 from ....web_drive.core.paths import mercari_account_key
 from .todos_models import (
+    CameraFrameRequest,
     ConfirmShippingSelectionRequest,
     SendMessageReactionRequest,
     SendTransactionMessageRequest,
@@ -373,6 +375,35 @@ async def qr_scanner_frame_endpoint(todo_id: int) -> Dict[str, Any]:
         return await run_mercari_serial_async(
             queue_key_for_mercari_account(aid),
             lambda: capture_qr_scanner_frame(int(todo_id)),
+            suppress_idle_close=True,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+    except RuntimeError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+
+
+async def camera_frame_endpoint(todo_id: int, req: CameraFrameRequest) -> Dict[str, Any]:
+    """客户端摄像头帧 → 推到有头浏览器的虚拟摄像头（QR スキャナ用）。
+
+    前端以 ~15fps 调用：上传一帧 + 取回扫描状态。``done=True`` 表示读取成功
+    （已回到 /transaction/），前端据此停止推流并进入发货二次确认。
+    """
+    todo = TodoItemModel.find_by_id(id=int(todo_id))
+    if not todo:
+        raise HTTPException(status_code=404, detail="待办事项不存在")
+    aid = int(getattr(todo, "account_id", 0) or 0)
+    if not aid:
+        raise HTTPException(status_code=400, detail="待办事项缺少 account_id")
+    try:
+        return await run_mercari_serial_async(
+            queue_key_for_mercari_account(aid),
+            lambda: push_remote_camera_frame(
+                int(todo_id),
+                frame=req.frame or "",
+                width=int(req.width or 0),
+                height=int(req.height or 0),
+            ),
             suppress_idle_close=True,
         )
     except ValueError as exc:

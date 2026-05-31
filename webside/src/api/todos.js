@@ -36,6 +36,9 @@ export const todosApi = {
   /** QR 扫描页镜像：抓取有头浏览器当前标签页一帧（base64 JPEG）+ 完成状态 */
   qrScannerFrame: (todoId, axiosConfig = {}) =>
     http.get(`/use_web/todos/${encodeURIComponent(todoId)}/qr-scanner-frame`, { timeout: 20000, ...axiosConfig }),
+  /** 远程摄像头：上传客户端摄像头一帧（data URL）到有头浏览器的虚拟摄像头 + 取回扫描状态 */
+  cameraFrame: (todoId, data, axiosConfig = {}) =>
+    http.post(`/use_web/todos/${encodeURIComponent(todoId)}/camera-frame`, data || {}, { timeout: 15000, ...axiosConfig }),
   /** QR 读取成功后读取「発送確認符号 / 追跡番号」供二次确认 */
   postShippingInfo: (todoId, axiosConfig = {}) =>
     http.get(`/use_web/todos/${encodeURIComponent(todoId)}/post-shipping-info`, { timeout: 30000, ...axiosConfig }),

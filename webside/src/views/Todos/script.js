@@ -1,4 +1,4 @@
-import { defineComponent, computed, onBeforeUnmount, onMounted, reactive, ref } from 'vue'
+import { defineComponent, computed, nextTick, onBeforeUnmount, onMounted, reactive, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { Download, Loading } from '@element-plus/icons-vue'
@@ -842,51 +842,104 @@ export default defineComponent({
       }
     }
 
-    // ─── QR 扫描镜像（把有头浏览器的 /qr_code_scanner 摄像头画面镜像到弹窗） ───
+    // ─── 远程摄像头：服务器无摄像头 → 把「本机（客户端）摄像头」推流给有头浏览器当虚拟摄像头 ───
+    // 弹窗里显示本机摄像头画面，并以 ~15fps 把每帧上传后端 → 注入到 /qr_code_scanner 的虚拟摄像头 canvas。
+    // 同一次上传的响应带 done 状态：读取成功（回到 /transaction/）即停止推流并进入二次确认。
     const qrScanVisible = ref(false)
-    const qrScanFrame = ref('')
     const qrScanDone = ref(false)
-    const QR_SCAN_FPS = 24
+    const qrCamError = ref('')
+    const qrVideoEl = ref(null)
+    const QR_CAM_FPS = 15
+    const QR_CAM_MAX_W = 960 // 上传帧最大宽度（限制体积，同时保留足够分辨率供二维码识别）
+    let qrCamStream = null
+    let qrCamCanvas = null
     let qrScanTimer = null
-    let qrScanInFlight = false // 防止上一帧未返回就发下一帧请求堆积
+    let qrPushInFlight = false // 防止上一帧未返回就堆积请求
 
     function stopQrScanMirror() {
       if (qrScanTimer != null) {
         clearInterval(qrScanTimer)
         qrScanTimer = null
       }
-      qrScanInFlight = false
+      qrPushInFlight = false
+      if (qrCamStream) {
+        try {
+          qrCamStream.getTracks().forEach((tr) => tr.stop())
+        } catch { /* noop */ }
+        qrCamStream = null
+      }
+      if (qrVideoEl.value) {
+        try {
+          qrVideoEl.value.srcObject = null
+        } catch { /* noop */ }
+      }
     }
 
-    async function pollQrScanFrame() {
+    /** 抓取本机摄像头一帧 → JPEG dataURL → 上传后端注入虚拟摄像头；响应里读 done */
+    async function captureAndPushFrame() {
       const id = currentRow.value?.id
       if (!id) return
-      if (qrScanInFlight) return
-      qrScanInFlight = true
+      if (qrPushInFlight) return
+      qrPushInFlight = true
       try {
-        const res = await todosApi.qrScannerFrame(id)
-        if (res?.frame) qrScanFrame.value = res.frame
+        let frame = ''
+        let w = 0
+        let h = 0
+        const video = qrVideoEl.value
+        if (video && video.readyState >= 2 && video.videoWidth > 0) {
+          const sw = video.videoWidth
+          const sh = video.videoHeight
+          const scale = sw > QR_CAM_MAX_W ? QR_CAM_MAX_W / sw : 1
+          w = Math.round(sw * scale)
+          h = Math.round(sh * scale)
+          if (!qrCamCanvas) qrCamCanvas = document.createElement('canvas')
+          qrCamCanvas.width = w
+          qrCamCanvas.height = h
+          const ctx = qrCamCanvas.getContext('2d')
+          ctx.drawImage(video, 0, 0, w, h)
+          frame = qrCamCanvas.toDataURL('image/jpeg', 0.6)
+        }
+        const res = await todosApi.cameraFrame(id, { frame, width: w, height: h })
         if (res?.done) {
           qrScanDone.value = true
           stopQrScanMirror()
-          // 扫描成功 → 自动关闭扫码弹窗 → 读取确认信息并弹二次确认框
+          // 读取成功 → 自动关闭扫码弹窗 → 读取确认信息并弹二次确认框
           qrScanVisible.value = false
           openShipConfirmDialog()
         }
       } catch (e) {
-        console.error('[QR镜像]', e?.message || e)
+        console.error('[QR摄像头]', e?.message || e)
       } finally {
-        qrScanInFlight = false
+        qrPushInFlight = false
       }
     }
 
-    function startQrScanMirror(/* todoId */) {
+    async function startQrScanMirror(/* todoId */) {
       stopQrScanMirror()
-      qrScanFrame.value = ''
       qrScanDone.value = false
+      qrCamError.value = ''
       qrScanVisible.value = true
-      pollQrScanFrame()
-      qrScanTimer = setInterval(pollQrScanFrame, Math.round(1000 / QR_SCAN_FPS))
+      // 等弹窗渲染出 <video> 后再绑定摄像头流
+      await nextTick()
+      try {
+        qrCamStream = await navigator.mediaDevices.getUserMedia({
+          video: { facingMode: 'environment', width: { ideal: 1280 }, height: { ideal: 720 } },
+          audio: false,
+        })
+        if (qrVideoEl.value) {
+          qrVideoEl.value.srcObject = qrCamStream
+          try {
+            await qrVideoEl.value.play()
+          } catch { /* 自动播放可能被拦截，muted + playsinline 一般可行 */ }
+        }
+      } catch (e) {
+        qrCamError.value = e?.message || String(e)
+        ElMessage.error(t('todos.cameraOpenFailed'))
+      }
+      // 即使本机相机打开失败，也继续轮询后端状态（done 检测）；相机正常则同时推帧
+      qrPushInFlight = false
+      captureAndPushFrame()
+      qrScanTimer = setInterval(captureAndPushFrame, Math.round(1000 / QR_CAM_FPS))
     }
 
     function onQrScanDialogClose() {
@@ -1222,8 +1275,9 @@ export default defineComponent({
       onClickShippingSizeLocation,
       onConfirmShippingSelection,
       qrScanVisible,
-      qrScanFrame,
       qrScanDone,
+      qrCamError,
+      qrVideoEl,
       startQrScanMirror,
       stopQrScanMirror,
       onQrScanDialogClose,
