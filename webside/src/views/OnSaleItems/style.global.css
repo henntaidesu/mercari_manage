@@ -90,3 +90,9 @@
 .on-sale-alert-tooltip-list li::marker {
   color: #ff8a92;
 }
+
+/* 修改在售商品弹窗（append-to-body，已脱离 scoped）：标题/价格等输入框撑满，与商品说明同宽 */
+.on-sale-revise-form .el-input,
+.on-sale-revise-form .el-input-number {
+  width: 100%;
+}

@@ -3,7 +3,7 @@ import { ElMessage, ElMessageBox } from 'element-plus'
 import { Download, Loading, WarningFilled } from '@element-plus/icons-vue'
 import { useI18n } from 'vue-i18n'
 import { onSaleItemApi, mercariAccountApi, webDriveApi } from '@/api/index.js'
-import { parseMgmtIdsFromDescription, stripTrailingMgmtBlock } from '@/utils/mgmtIdCipher.js'
+import { parseMgmtIdsFromDescription, isCipherMgmtLine } from '@/utils/mgmtIdCipher.js'
 import { mercariImageUrlList } from '@/utils/mercariImage.js'
 import { useMercariAccountStore } from '@/stores/mercariAccount.js'
 
@@ -387,17 +387,25 @@ export default defineComponent({
     const reviseDescCipher = ref('')
 
     /**
-     * 拆分商品说明：用与解析端一致的 stripTrailingMgmtBlock 去掉「末尾管理番号块」
-     * （含 -=~<> 五进制暗码及明文「管理番号:」），剩余为可编辑正文；被去掉的尾部即锁定暗码。
+     * 拆分商品说明：仅把「最后一行」整行均为 -=~<> 暗号字符的暗码锁定，其余为可编辑正文。
+     * 用 isCipherMgmtLine 判定（与解析端一致，排除「管理ID:」「バーコード:」并支持 *数量）。
      */
     function splitListingCipher(desc) {
       const text = String(desc || '')
       if (!text.trim()) return { body: text, cipher: '' }
-      const body = stripTrailingMgmtBlock(text)
-      if (body.length >= text.length) return { body: text, cipher: '' }
-      const cipher = text.slice(body.length).trim()
-      if (!cipher) return { body: text, cipher: '' }
-      return { body, cipher }
+      const lines = text.split(/\r?\n/)
+      let li = -1
+      for (let i = lines.length - 1; i >= 0; i--) {
+        if (lines[i].trim() !== '') {
+          li = i
+          break
+        }
+      }
+      if (li < 0) return { body: text, cipher: '' }
+      const lastLine = lines[li].trim()
+      if (!isCipherMgmtLine(lastLine)) return { body: text, cipher: '' }
+      const body = lines.slice(0, li).join('\n').replace(/\s+$/, '')
+      return { body, cipher: lastLine }
     }
 
     /** 回拼完整商品说明：可编辑正文 + 锁定暗码（保证暗码为最后一行、内容不变） */

@@ -37,6 +37,9 @@ export default defineComponent({
     const DEFAULT_REPLY = 'ご購入いただきありがとうございます。これから発送の準備をさせていただきます。設定した期日内に発送予定ですので今しばらくお待ちください。取引終了までよろしくお願いいたします。'
     const DEFAULT_REVIEW = 'この度はお取引ありがとうございました。また機会がありましたらよろしくお願いします。'
 
+    // 「発送をしてください」（待发货）待办：处理时按商品 ID 反查本地库存图片与关联订单号
+    const WAIT_SHIPPING_TITLE = '発送をしてください'
+
     // 发货尺寸硬编码列表，按 shipping_method_name 区分。
     // name 字段必须与煤炉 /shipping_class 页 radio 卡片标题文本完全一致（用于 Playwright 文本匹配点击）
     const SHIPPING_OPTIONS = {
@@ -172,6 +175,61 @@ export default defineComponent({
     const detailLoading = ref(false)
     const currentRow = ref(null)
     const detail = reactive(createEmptyDetail())
+
+    // 「発送をしてください」反查到的本地库存（图片）与关联订单号
+    const invMatch = reactive({ loading: false, inventory: [], order_nos: [] })
+
+    function resetInvMatch() {
+      invMatch.loading = false
+      invMatch.inventory = []
+      invMatch.order_nos = []
+    }
+
+    /** 本地库存图（/imges/...）走缩略图端点；非本地路径原样返回 */
+    function inventoryThumbUrl(src, size = 200) {
+      const s = String(src || '')
+      if (!s.startsWith('/imges/')) return s
+      return `/mercariV2/src/use_web/inventory/image-thumb?path=${encodeURIComponent(s)}&size=${size}`
+    }
+
+    // 当前待办是否「発送をしてください」（待发货）
+    const isWaitShipping = computed(
+      () => String(currentRow.value?.title || '').trim() === WAIT_SHIPPING_TITLE,
+    )
+    // 反查到的库存里是否有至少一张本地图片
+    const hasLocalInventoryImages = computed(() =>
+      (invMatch.inventory || []).some((inv) => Array.isArray(inv?.images) && inv.images.length > 0),
+    )
+    // 关联库存的「商品类型」（去重后合并展示；无匹配时为空）
+    const inventoryProductType = computed(() => {
+      const types = (invMatch.inventory || [])
+        .map((inv) => String(inv?.product_type_name || '').trim())
+        .filter(Boolean)
+      return [...new Set(types)].join(' / ')
+    })
+    // 是否展示煤炉缩略图：仅在「非待发货」或「待发货但没关联到本地图片」时回落到煤炉图
+    const showMercariPhoto = computed(() => {
+      if (!detail.photo_url) return false
+      if (!isWaitShipping.value) return true
+      return !invMatch.loading && !hasLocalInventoryImages.value
+    })
+
+    async function loadInventoryMatch(itemId) {
+      const iid = String(itemId || '').trim()
+      if (!iid) return
+      resetInvMatch()
+      invMatch.loading = true
+      try {
+        const res = await todosApi.matchInventory(iid)
+        invMatch.inventory = Array.isArray(res?.inventory) ? res.inventory : []
+        invMatch.order_nos = Array.isArray(res?.order_nos) ? res.order_nos : []
+      } catch (e) {
+        // 反查失败不打断处理流程，仅记录
+        console.error('[库存反查]', e?.message || e)
+      } finally {
+        invMatch.loading = false
+      }
+    }
 
     function createEmptyDetail() {
       return {
@@ -519,7 +577,12 @@ export default defineComponent({
         buyer_name: buyerNameFromMessage(row.message) || '',
         sender_id: row.sender_id || '',
       })
+      resetInvMatch()
       detailDialogVisible.value = true
+      // 「発送をしてください」：按商品 ID 反查本地库存图片与关联订单号
+      if (String(row.title || '').trim() === WAIT_SHIPPING_TITLE) {
+        loadInventoryMatch(row.item_id)
+      }
       // 自动启动浏览器抓取真实数据
       onDetailRefresh()
     }
@@ -764,6 +827,7 @@ export default defineComponent({
       }
       currentRow.value = null
       replyLoading.value = false
+      resetInvMatch()
     }
 
 
@@ -835,6 +899,14 @@ export default defineComponent({
       currentRow,
       detail,
       createEmptyDetail,
+      WAIT_SHIPPING_TITLE,
+      invMatch,
+      inventoryThumbUrl,
+      loadInventoryMatch,
+      isWaitShipping,
+      hasLocalInventoryImages,
+      showMercariPhoto,
+      inventoryProductType,
       replyLoading,
       reviewLoading,
       reactionLoading,

@@ -128,8 +128,23 @@
   background: var(--el-fill-color-light);
 }
 
+.detail-footer {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+.detail-footer__right {
+  display: flex;
+}
+
 .on-sale-revise-form {
   padding-right: 8px;
+}
+
+.on-sale-revise-form :deep(.el-input),
+.on-sale-revise-form :deep(.el-input-number),
+.on-sale-revise-form :deep(.el-textarea) {
+  width: 100%;
 }
 
 .revise-cipher-hint {

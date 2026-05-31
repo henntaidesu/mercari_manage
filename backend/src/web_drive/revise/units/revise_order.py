@@ -1,19 +1,19 @@
 # -*- coding: utf-8 -*-
 """
 Mercari 在售商品修改：用账号主 profile 经 MITM 打开编辑页，填写「标题/价格/商品说明」
-并点击「変更する」提交，完成后打开出品一覧同步本地列表（浏览器由队列空闲超时关闭）。
+并点击「変更する」提交。提交成功后**不再从煤炉重新同步列表**，而是直接把改动写回本地
+``on_sale_items`` 数据库（浏览器由队列空闲超时关闭）。
 
-流程（与删除同模式，cookie 由 Edge 持久化自动维护）：
+流程（cookie 由 Edge 持久化自动维护）：
   1. ``mitm_automation_browser(account_id, start_url=edit_url)`` 进入账号主 profile ``mercari_{id}``
   2. 填写 标题(input[name=name]) / 价格(input[name=price]) / 商品说明(textarea[name=description])
   3. 点击「変更する」(button[data-testid=edit-button]) 提交
-  4. 打开出品一覧，MITM 截获 items/get_items 并同步本地
+  4. 直接 UPDATE 本地 on_sale_items 表对应记录
 """
 from __future__ import annotations
 
 import logging
-import time
-from typing import Any, Dict, Optional
+from typing import Any, Dict, List, Optional
 
 from ...listing.units.post_to_macket import (
     DEFAULT_ELEMENT_TIMEOUT_MS,
@@ -45,6 +45,43 @@ async def _fill_value(page: Any, selector: str, value: str, *, element_timeout_m
     await loc.fill(value)
 
 
+def _update_local_on_sale_item(
+    item_ids: List[str],
+    *,
+    name: Optional[str] = None,
+    price: Optional[int] = None,
+    description: Optional[str] = None,
+) -> int:
+    """把改动直接写回本地 on_sale_items 表（按 item_id 匹配，兼容带/不带 m 前缀）。"""
+    from ....db_manage.database import DatabaseManager
+
+    sets: List[str] = []
+    params: List[Any] = []
+    if name:
+        sets.append("[name] = ?")
+        params.append(name)
+    if price is not None:
+        sets.append("[price] = ?")
+        params.append(int(price))
+    if description is not None:
+        sets.append("[listing_description] = ?")
+        params.append(description)
+    if not sets:
+        return 0
+
+    ids = [i for i in {str(x).strip() for x in item_ids} if i]
+    if not ids:
+        return 0
+
+    db = DatabaseManager()
+    placeholders = ",".join(["?"] * len(ids))
+    sql = (
+        f"UPDATE [on_sale_items] SET {', '.join(sets)} "
+        f"WHERE TRIM(IFNULL([item_id], '')) IN ({placeholders})"
+    )
+    return int(db.execute_update(sql, tuple(params) + tuple(ids)) or 0)
+
+
 async def revise_mercari_item(
     manager: Any,
     account_key: str,
@@ -59,21 +96,14 @@ async def revise_mercari_item(
     progress_job_id: Optional[str] = None,
 ) -> Dict[str, Any]:
     """
-    使用账号主 profile ``mercari_{id}`` 经 MITM 打开编辑页修改商品并同步在售列表；
-    上下文退出后浏览器由 ``account_serial_queue`` 在队列空闲超时后自动关闭。
+    使用账号主 profile ``mercari_{id}`` 经 MITM 打开编辑页修改商品并提交；提交后直接更新本地数据库
+    （不重新同步在售列表）。上下文退出后浏览器由 ``account_serial_queue`` 在队列空闲超时后自动关闭。
 
-    仅填写传入的字段（name / price / description 任意组合）。
-    ``progress_job_id`` 配合通用 ``sync_progress``：每个阶段写入中文步骤供前端轮询。
+    仅填写/更新传入的字段（name / price / description 任意组合）。
     """
     from ...core.manager import EdgeWebDriveManager
     from ...core.mitm_session import mitm_automation_browser
     from ...core.paths import mercari_account_key, mercari_id_from_account_key
-    from ....use_mercari.get_order.get_on_sale.on_sale_list import (
-        LISTINGS_PAGE_URL,
-        sync_on_sale_from_listings_browser_page,
-    )
-    from ....use_mercari.sync_data import _resolve_account_and_seller
-    from ....ssl_mitm_proxy.capture_config import clear_on_sale_list_response_file
 
     report = make_sync_reporter(progress_job_id)
 
@@ -100,13 +130,8 @@ async def revise_mercari_item(
     if not name_val and desc_val is None and price_val is None:
         raise ValueError("没有需要修改的字段")
 
-    report("resolve_account", "正在准备煤炉账号…")
-    _aid, seller_id = _resolve_account_and_seller(account_id)
-    seller_key = str(int(seller_id))
     auto_key = mercari_account_key(account_id)
     edit_url = build_sell_edit_url(item_id)
-
-    clear_on_sale_list_response_file(seller_key)
 
     log.info(
         "[revise_mercari_item] account=%s auto=%s item=%s url=%s",
@@ -123,7 +148,7 @@ async def revise_mercari_item(
         "edit_url": edit_url,
         "filled": [],
         "revise_confirmed": False,
-        "sync": None,
+        "updated_rows": 0,
         "browser_closed": False,
     }
 
@@ -163,7 +188,6 @@ async def revise_mercari_item(
 
         await page.wait_for_timeout(500)
 
-        capture_since_ms = int(time.time() * 1000)
         report("submit", "正在提交修改「変更する」…")
         submit_btn = page.locator(SUBMIT_BTN_SELECTOR).first
         await submit_btn.wait_for(state="visible", timeout=element_timeout_ms)
@@ -179,28 +203,25 @@ async def revise_mercari_item(
             pass
         await page.wait_for_timeout(2000)
 
-        report("sync_listings", "修改已提交，正在打开出品一覧并同步列表…")
-        try:
-            await page.goto(LISTINGS_PAGE_URL, wait_until="domcontentloaded")
-        except Exception:
-            pass
-
-        sync_stats = await sync_on_sale_from_listings_browser_page(
-            mgr,
-            browser_key,
-            int(seller_id),
-            page,
-            capture_since_ms=capture_since_ms,
-            timeout=max(90, element_timeout_ms // 1000),
-        )
-        result["sync"] = sync_stats
-
     result["browser_closed"] = True
-    report("done", "修改完成并已同步列表")
+
+    # 提交成功后直接更新本地数据库（不重新同步）
+    report("update_local", "正在更新本地数据…")
+    raw_item_id = (item_id or "").strip()
+    updated = _update_local_on_sale_item(
+        [seg, raw_item_id],
+        name=name_val or None,
+        price=price_val,
+        description=desc_val,
+    )
+    result["updated_rows"] = updated
+
+    report("done", "修改完成")
     log.info(
-        "[revise_mercari_item] 完成并已关闭浏览器 account=%s item=%s filled=%s",
+        "[revise_mercari_item] 完成并已关闭浏览器 account=%s item=%s filled=%s updated_rows=%s",
         account_key,
         seg,
         result["filled"],
+        updated,
     )
     return result

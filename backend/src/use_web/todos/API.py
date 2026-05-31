@@ -13,7 +13,7 @@ from typing import Optional
 
 from fastapi import APIRouter
 
-from .units.todos_query import list_kinds, list_todos
+from .units.todos_query import list_kinds, list_todos, match_inventory_for_item
 from .units.todos_sync import (
     change_shipping_method_endpoint,
     close_detail_browser,
@@ -52,8 +52,14 @@ def _list_kinds_endpoint():
     return {"kinds": list_kinds()}
 
 
+def _inventory_match_endpoint(item_id: str = ""):
+    """按煤炉商品 ID 反查本地库存与关联订单（「発送をしてください」处理用）。"""
+    return match_inventory_for_item(item_id)
+
+
 router.add_api_route("", _list_todos_endpoint, methods=["GET"])
 router.add_api_route("/kinds", _list_kinds_endpoint, methods=["GET"])
+router.add_api_route("/inventory-match", _inventory_match_endpoint, methods=["GET"])
 router.add_api_route("/sync", sync_todos, methods=["POST"])
 router.add_api_route("/sync-progress/{job_id}", todos_sync_progress, methods=["GET"])
 router.add_api_route("/{todo_id}/transaction-detail", fetch_todo_transaction_detail, methods=["POST"])

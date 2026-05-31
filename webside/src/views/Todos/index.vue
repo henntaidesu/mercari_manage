@@ -178,25 +178,10 @@
           <section class="detail-section">
             <div class="detail-section-title">{{ t('todos.section.product') }}</div>
             <div class="detail-row">
-              <div class="detail-label">{{ t('orders.itemName') }}</div>
-              <div class="detail-value">
-                <el-input
-                  v-model="detail.product_name"
-                  size="default"
-                  :placeholder="t('todos.productNamePlaceholder')"
-                  clearable
-                />
-              </div>
+              <div class="detail-label">{{ t('todos.productType') }}</div>
+              <div class="detail-value">{{ inventoryProductType || dash }}</div>
             </div>
-            <div class="detail-row">
-              <div class="detail-label">{{ t('todos.productId') }}</div>
-              <div class="detail-value">
-                <el-link :href="mercariItemUrl(detail.item_id)" target="_blank" type="primary" underline="never">
-                  {{ detail.item_id || dash }}
-                </el-link>
-              </div>
-            </div>
-            <div v-if="detail.photo_url" class="detail-photo-wrap">
+            <div v-if="showMercariPhoto" class="detail-photo-wrap">
               <el-image
                 :src="mercariImageUrl(detail.photo_url)"
                 :preview-src-list="[mercariImageUrl(detail.photo_url)]"
@@ -206,12 +191,46 @@
                 class="detail-photo"
               />
             </div>
-          </section>
 
-          <section class="detail-section">
-            <div class="detail-section-title">{{ t('todos.section.sender') }}</div>
-            <div v-if="detail.sender_address" class="detail-block">{{ detail.sender_address }}</div>
-            <div v-else class="detail-empty">{{ t('todos.toFetch') }}</div>
+            <!-- 「発送をしてください」：按商品 ID 反查到的本地库存图片与关联订单号 -->
+            <div
+              v-if="String(currentRow?.title || '').trim() === WAIT_SHIPPING_TITLE"
+              class="detail-inv-match"
+            >
+              <div class="detail-label">{{ t('todos.matchedInventory') }}</div>
+              <div v-if="invMatch.loading" class="detail-empty">{{ t('todos.matching') }}</div>
+              <div v-else-if="!invMatch.inventory.length" class="detail-empty">{{ t('todos.noInventoryMatch') }}</div>
+              <template v-else>
+                <div v-for="inv in invMatch.inventory" :key="inv.id" class="detail-inv-card">
+                  <div class="detail-inv-images">
+                    <el-image
+                      v-for="(img, ii) in inv.images"
+                      :key="ii"
+                      :src="inventoryThumbUrl(img)"
+                      :preview-src-list="inv.images"
+                      :initial-index="ii"
+                      :preview-teleported="true"
+                      fit="cover"
+                      class="detail-inv-thumb"
+                    >
+                      <template #error><span class="thumb-fallback">-</span></template>
+                    </el-image>
+                    <span v-if="!inv.images.length" class="detail-empty">{{ t('todos.noInventoryImage') }}</span>
+                  </div>
+                  <div class="detail-inv-meta">
+                    <span class="detail-inv-id">{{ t('todos.inventoryId') }}: {{ inv.id }}</span>
+                    <span v-if="inv.name" class="detail-inv-name"> · {{ inv.name }}</span>
+                    <span v-if="inv.warehouse_name || inv.shelf_name" class="detail-inv-loc">
+                      {{ [inv.warehouse_name, inv.shelf_name].filter(Boolean).join(' / ') }}
+                    </span>
+                  </div>
+                </div>
+                <div v-if="invMatch.order_nos.length" class="detail-inv-orders">
+                  <span class="detail-label">{{ t('todos.matchedOrders') }}:</span>
+                  <span v-for="ono in invMatch.order_nos" :key="ono" class="detail-inv-order-no">{{ ono }}</span>
+                </div>
+              </template>
+            </div>
           </section>
 
           <section class="detail-section">

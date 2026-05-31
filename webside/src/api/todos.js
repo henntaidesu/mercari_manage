@@ -4,6 +4,9 @@ import http from './http'
 export const todosApi = {
   list: (params) => http.get('/use_web/todos', { params }),
   kinds: () => http.get('/use_web/todos/kinds'),
+  /** 「発送をしてください」处理：按商品 ID 反查本地库存（图片）与关联订单号 */
+  matchInventory: (itemId, axiosConfig = {}) =>
+    http.get('/use_web/todos/inventory-match', { params: { item_id: itemId }, ...axiosConfig }),
   sync: (data, axiosConfig = {}) =>
     http.post('/use_web/todos/sync', data, { timeout: 0, ...axiosConfig }),
   /** 与 sync 的 progress_job_id 配合，轮询当前同步步骤 */

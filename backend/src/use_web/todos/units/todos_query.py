@@ -99,6 +99,76 @@ def list_todos(
     }
 
 
+def match_inventory_for_item(item_id: str) -> Dict[str, Any]:
+    """
+    「発送をしてください」处理：按煤炉商品 ID 反查本地库存与关联订单。
+
+    链路：todo.item_id 即订单号（orders.order_no == item_id）
+          → order_outbound_lines.inventory_id（库存ID，组合购买可多条）
+          → inventory 本地图片。
+
+    返回该订单关联的每条库存的本地图片路径列表（images_json / image_front /
+    image / image_back），供前端在处理弹窗中展示全部图片。
+    """
+    from ...inventory.units.inventory_helpers import _inventory_paths_from_parsed_row
+
+    iid = (item_id or "").strip()
+    if not iid:
+        return {"item_id": "", "inventory": [], "order_nos": []}
+
+    db = DatabaseManager()
+    # item_id 即订单号：取该订单出库明细关联的库存（去重，按明细排序）
+    inv_rows = db.execute_query(
+        """
+        SELECT p.id, p.name, p.image, p.image_front, p.image_back, p.images_json,
+               NULLIF(TRIM(w.warehouse), '') AS warehouse_name,
+               NULLIF(TRIM(w.shelf_name), '') AS shelf_name,
+               NULLIF(TRIM(w.name), '') AS shelf_code,
+               ptcm.product_type AS product_type_name,
+               MIN(l.sort_index) AS sort_index, MIN(l.id) AS line_id
+        FROM [order_outbound_lines] l
+        INNER JOIN [inventory] p ON p.id = l.inventory_id
+        LEFT JOIN [warehouses] w ON w.id = p.warehouse_id
+        LEFT JOIN [product_type_category_mappings] ptcm
+               ON ptcm.mapping_id = CAST(p.product_type_id AS TEXT)
+        WHERE TRIM(l.order_no) = TRIM(?)
+          AND l.inventory_id IS NOT NULL
+          AND COALESCE(p.is_delete, 0) = 0
+        GROUP BY p.id
+        ORDER BY sort_index ASC, line_id ASC
+        """,
+        (iid,),
+    )
+    keys = [
+        "id", "name", "image", "image_front", "image_back", "images_json",
+        "warehouse_name", "shelf_name", "shelf_code", "product_type_name",
+        "sort_index", "line_id",
+    ]
+    inventory: List[Dict[str, Any]] = []
+    for row in inv_rows:
+        d = dict(zip(keys, row))
+        inventory.append({
+            "id": d["id"],
+            "name": d["name"],
+            "product_type_name": d["product_type_name"],
+            "images": _inventory_paths_from_parsed_row(d),
+            "warehouse_name": d["warehouse_name"],
+            "shelf_name": d["shelf_name"],
+            "shelf_code": d["shelf_code"],
+        })
+
+    # 订单号即 item_id：仅当库中确有该订单时回显
+    order_nos: List[str] = []
+    has_order = db.execute_query(
+        "SELECT 1 FROM [orders] WHERE TRIM(order_no) = TRIM(?) LIMIT 1",
+        (iid,),
+    )
+    if has_order:
+        order_nos = [iid]
+
+    return {"item_id": iid, "inventory": inventory, "order_nos": order_nos}
+
+
 def list_kinds() -> List[str]:
     """返回所有出现过的 kind（前端做下拉用，含已删行也算）。"""
     db = DatabaseManager()
