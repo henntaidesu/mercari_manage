@@ -251,7 +251,6 @@
             <div class="detail-shipping-actions">
               <el-button
                 size="default"
-                :disabled="!detail.has_size_location_btn"
                 @click="onClickShippingSizeLocation"
               >
                 {{ t('todos.pickSizeAndLocation') }}
@@ -455,6 +454,30 @@
         >
           {{ t('todos.confirmAndSend') }}
         </el-button>
+      </template>
+    </el-dialog>
+
+    <!-- QR 扫描镜像：把有头浏览器的 /qr_code_scanner 摄像头画面镜像到此处 -->
+    <el-dialog
+      v-model="qrScanVisible"
+      :title="t('todos.qrScanTitle')"
+      width="720px"
+      :close-on-click-modal="false"
+      destroy-on-close
+      @close="onQrScanDialogClose"
+    >
+      <div class="qr-scan-hint">{{ t('todos.qrScanHint') }}</div>
+      <div class="qr-scan-stage">
+        <img v-if="qrScanFrame" :src="qrScanFrame" alt="QR scanner" class="qr-scan-img" />
+        <div v-else class="qr-scan-loading">
+          <el-icon class="is-loading" :size="32"><Loading /></el-icon>
+          <span>{{ t('todos.qrScanConnecting') }}</span>
+        </div>
+        <div v-if="qrScanDone" class="qr-scan-done">{{ t('todos.qrScanDone') }}</div>
+      </div>
+      <template #footer>
+        <el-button @click="onQrScanDialogClose">{{ t('common.close') }}</el-button>
+        <el-button type="primary" link @click="onOpenMercariPage">{{ t('todos.openMercariPage') }}</el-button>
       </template>
     </el-dialog>
 

@@ -19,6 +19,8 @@ class ConfirmShippingSelectionRequest(PydanticModel):
     class_text: str = Field(..., min_length=1, max_length=200)
     # 仅对需要选择 facility 的 size 必填：'post_office' | 'lawson' | None
     facility: Optional[str] = None
+    # ゆうパケットポスト/mini：完了後そのまま「2次元コードを読み取る」を押して QR スキャナを開く
+    scan_qr: bool = False
     progress_job_id: Optional[str] = None
 
 

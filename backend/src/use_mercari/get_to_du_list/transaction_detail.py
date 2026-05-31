@@ -459,6 +459,8 @@ _SIZE_SELECT_BUTTON_TEXT = "商品サイズと発送場所を選択する"
 _CHANGE_METHOD_BUTTON_TEXT = "発送方法を変更する"
 _SELECT_NEXT_BUTTON_TEXT = "選択して次へ"
 _SELECT_FINISH_BUTTON_TEXT = "選択して完了する"
+# ゆうパケットポスト / ゆうパケットポストmini 完了後、交易ページに出る「2次元コードを読み取る」
+_SCAN_QR_BUTTON_TEXT = "2次元コードを読み取る"
 
 
 async def start_select_shipping_class(
@@ -521,11 +523,54 @@ _FACILITY_XPATHS = {
 }
 
 
+async def _click_scan_qr_and_open_scanner(
+    page: Any,
+    *,
+    item_id: str,
+    report,
+) -> bool:
+    """交易ページに戻った後「2次元コードを読み取る」を押して /qr_code_scanner へ遷移。
+
+    成功で True。ボタンが無い（既に発送済み等）場合は False を返す。
+    """
+    # 完了する後、交易ページ /transaction/{item_id} に戻るのを待つ
+    try:
+        await page.wait_for_url("**/transaction/*", timeout=10000)
+    except Exception:
+        log.warning("[shipping] 完了後に交易ページへ戻る遷移を観測できず (URL: %s)", page.url)
+    # SPA 再描画待ち
+    await asyncio.sleep(0.6)
+
+    report("click_scan_qr", "正在点击「2次元コードを読み取る」…")
+    scan_btn = page.get_by_role("button", name=_SCAN_QR_BUTTON_TEXT)
+    try:
+        await scan_btn.first.wait_for(state="visible", timeout=6000)
+    except Exception:
+        scan_btn = page.locator(f'button:has-text("{_SCAN_QR_BUTTON_TEXT}")')
+        try:
+            await scan_btn.first.wait_for(state="visible", timeout=4000)
+        except Exception:
+            log.warning(
+                "[shipping] 「%s」ボタンが見つからず (URL: %s)",
+                _SCAN_QR_BUTTON_TEXT,
+                page.url,
+            )
+            return False
+    await scan_btn.first.click()
+    log.info("[shipping] 已点击「%s」", _SCAN_QR_BUTTON_TEXT)
+    try:
+        await page.wait_for_url("**/qr_code_scanner*", timeout=8000)
+    except Exception:
+        log.warning("[shipping] /qr_code_scanner への遷移を観測できず (URL: %s)", page.url)
+    return True
+
+
 async def confirm_shipping_selection(
     todo_id: int,
     class_text: str,
     facility: Optional[str] = None,
     *,
+    scan_qr: bool = False,
     progress_job_id: Optional[str] = None,
 ) -> Dict[str, Any]:
     """在 /shipping_class 页选 size → 次へ → 在 /shipping_facilities 页按需点 facility → 完了する。
@@ -619,6 +664,14 @@ async def confirm_shipping_selection(
     await finish_btn.first.click()
     log.info("[shipping] 已点击「%s」 account_id=%s", _SELECT_FINISH_BUTTON_TEXT, aid)
 
+    # ── Step 6: ゆうパケットポスト系は完了後そのまま QR スキャナへ ──
+    qr_scanner_open = False
+    if scan_qr:
+        item_id = (todo.item_id or "").strip()
+        qr_scanner_open = await _click_scan_qr_and_open_scanner(
+            page, item_id=item_id, report=report,
+        )
+
     report("done", "已完成发货尺寸与发货地选择")
     return {
         "todo_id": int(todo_id),
@@ -626,6 +679,68 @@ async def confirm_shipping_selection(
         "class_text": class_text,
         "facility": facility,
         "success": True,
+        "qr_scanner_open": qr_scanner_open,
+    }
+
+
+async def capture_qr_scanner_frame(todo_id: int) -> Dict[str, Any]:
+    """QR スキャナ（/qr_code_scanner）を開いている有頭ブラウザの現在タブを
+    JPEG スクリーンショットで取得し、base64 で返す（管理 UI へミラー表示用）。
+
+    返り値:
+      - ``frame``: data URI 文字列（``data:image/jpeg;base64,...``）。取得不可なら None
+      - ``on_scanner``: 現在 /qr_code_scanner 上にいるか
+      - ``done``: スキャン完了（/qr_code_scanner を離れ /transaction/ に戻った）
+      - ``url``: 現在 URL
+    """
+    todo = TodoItemModel.find_by_id(id=int(todo_id))
+    if not todo:
+        raise ValueError(f"待办事项 id={todo_id} 不存在")
+    aid = int(todo.account_id)
+    mgr = get_web_drive_manager()
+    auto_key = mercari_account_key(aid)
+    try:
+        page = await mgr.active_tab_page(auto_key)
+    except Exception as exc:
+        raise RuntimeError("浏览器未打开或已关闭") from exc
+
+    url = ""
+    try:
+        url = (page.url or "").strip()
+    except Exception:
+        url = ""
+    on_scanner = "/qr_code_scanner" in url
+    # スキャナを開いた後にスキャナを離れて transaction に戻った＝読み取り成功とみなす
+    done = (not on_scanner) and "/transaction/" in url
+
+    frame = None
+    try:
+        import base64
+
+        # 摄像头/取景框のみを切り出す（ページ全体・ヘッダ・余白は不要）。
+        # 取れない時のみページ全体にフォールバック。
+        shot = None
+        for sel in ('[data-testid="qr-code-scanner-from-camera"]', "#video"):
+            try:
+                loc = page.locator(sel)
+                if await loc.count() > 0:
+                    shot = await loc.first.screenshot(type="jpeg", quality=55)
+                    break
+            except Exception:
+                continue
+        if shot is None:
+            shot = await page.screenshot(type="jpeg", quality=55)
+        frame = "data:image/jpeg;base64," + base64.b64encode(shot).decode("ascii")
+    except Exception as exc:
+        log.debug("[qrscan] スクリーンショット取得失敗: %s", exc)
+
+    return {
+        "todo_id": int(todo_id),
+        "account_id": aid,
+        "frame": frame,
+        "on_scanner": on_scanner,
+        "done": done,
+        "url": url,
     }
 
 

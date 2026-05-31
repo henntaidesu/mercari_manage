@@ -30,9 +30,12 @@ export const todosApi = {
   /** 点「商品サイズと発送場所を選択する」→ 抓 shipping_classes → 返回可选项 */
   startShippingClass: (todoId, body = {}, axiosConfig = {}) =>
     http.post(`/use_web/todos/${encodeURIComponent(todoId)}/shipping/start`, body || {}, { timeout: 60000, ...axiosConfig }),
-  /** 提交所选 size+facility：浏览器内完成全套点击 */
+  /** 提交所选 size+facility：浏览器内完成全套点击（ゆうパケットポスト系传 scan_qr=true 完了后自动打开二维码扫描页） */
   confirmShippingSelection: (todoId, data, axiosConfig = {}) =>
     http.post(`/use_web/todos/${encodeURIComponent(todoId)}/shipping/confirm`, data, { timeout: 60000, ...axiosConfig }),
+  /** QR 扫描页镜像：抓取有头浏览器当前标签页一帧（base64 JPEG）+ 完成状态 */
+  qrScannerFrame: (todoId, axiosConfig = {}) =>
+    http.get(`/use_web/todos/${encodeURIComponent(todoId)}/qr-scanner-frame`, { timeout: 20000, ...axiosConfig }),
   /** 点「発送方法を変更する」（仅导航，后续由用户在浏览器内手动） */
   changeShippingMethod: (todoId, body = {}, axiosConfig = {}) =>
     http.post(`/use_web/todos/${encodeURIComponent(todoId)}/shipping/change-method`, body || {}, { timeout: 60000, ...axiosConfig })

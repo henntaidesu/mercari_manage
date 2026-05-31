@@ -19,6 +19,7 @@ from .units.todos_sync import (
     close_detail_browser,
     confirm_shipping_selection_endpoint,
     fetch_todo_transaction_detail,
+    qr_scanner_frame_endpoint,
     send_message_reaction_endpoint,
     send_transaction_message_endpoint,
     start_shipping_class_endpoint,
@@ -69,4 +70,5 @@ router.add_api_route("/{todo_id}/submit-review", submit_transaction_review_endpo
 router.add_api_route("/{todo_id}/shipping/start", start_shipping_class_endpoint, methods=["POST"])
 router.add_api_route("/{todo_id}/shipping/confirm", confirm_shipping_selection_endpoint, methods=["POST"])
 router.add_api_route("/{todo_id}/shipping/change-method", change_shipping_method_endpoint, methods=["POST"])
+router.add_api_route("/{todo_id}/qr-scanner-frame", qr_scanner_frame_endpoint, methods=["GET"])
 router.add_api_route("/close-detail-browser/{account_id}", close_detail_browser, methods=["POST"])

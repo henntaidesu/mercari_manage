@@ -686,9 +686,11 @@ export default defineComponent({
         ElMessage.warning(t('todos.pickFacility'))
         return
       }
+      // ゆうパケットポスト系（auto_finish_no_facility）は完了後そのまま二维码扫描ページへ
+      const wantScanQr = !!opt.auto_finish_no_facility
       shippingConfirmLoading.value = true
       try {
-        await txOverlay.run({
+        const result = await txOverlay.run({
           title: t('todos.confirmingShipping'),
           consoleTag: '[发货确认]',
           pollFn: (jobId) => todosApi.getSyncProgress(jobId),
@@ -696,17 +698,79 @@ export default defineComponent({
             todosApi.confirmShippingSelection(currentRow.value.id, {
               class_text: classText,
               facility: needsFacility ? shippingFacility.value : null,
+              scan_qr: wantScanQr,
               progress_job_id: jobId,
             }),
         })
         ElMessage.success(t('todos.shippingDone', { classText }))
         shippingDialogVisible.value = false
-        onDetailRefresh()
+        // 后端已自动打开 /qr_code_scanner → 开镜像弹窗轮询视频帧
+        if (wantScanQr && result?.qr_scanner_open) {
+          startQrScanMirror(currentRow.value.id)
+        } else {
+          onDetailRefresh()
+        }
       } catch (e) {
         if (!e?.response) ElMessage.error(e?.message || t('todos.submitFailed'))
       } finally {
         shippingConfirmLoading.value = false
       }
+    }
+
+    // ─── QR 扫描镜像（把有头浏览器的 /qr_code_scanner 摄像头画面镜像到弹窗） ───
+    const qrScanVisible = ref(false)
+    const qrScanFrame = ref('')
+    const qrScanDone = ref(false)
+    const QR_SCAN_FPS = 24
+    let qrScanTimer = null
+    let qrScanInFlight = false // 防止上一帧未返回就发下一帧请求堆积
+
+    function stopQrScanMirror() {
+      if (qrScanTimer != null) {
+        clearInterval(qrScanTimer)
+        qrScanTimer = null
+      }
+      qrScanInFlight = false
+    }
+
+    async function pollQrScanFrame() {
+      const id = currentRow.value?.id
+      if (!id) return
+      if (qrScanInFlight) return
+      qrScanInFlight = true
+      try {
+        const res = await todosApi.qrScannerFrame(id)
+        if (res?.frame) qrScanFrame.value = res.frame
+        if (res?.done) {
+          qrScanDone.value = true
+          stopQrScanMirror()
+          ElMessage.success(t('todos.qrScanDone'))
+          // 扫描成功，煤炉已跳回交易页 → 关弹窗并刷新详情/列表
+          setTimeout(() => {
+            qrScanVisible.value = false
+            detailDialogVisible.value = false
+            load()
+          }, 1200)
+        }
+      } catch (e) {
+        console.error('[QR镜像]', e?.message || e)
+      } finally {
+        qrScanInFlight = false
+      }
+    }
+
+    function startQrScanMirror(/* todoId */) {
+      stopQrScanMirror()
+      qrScanFrame.value = ''
+      qrScanDone.value = false
+      qrScanVisible.value = true
+      pollQrScanFrame()
+      qrScanTimer = setInterval(pollQrScanFrame, Math.round(1000 / QR_SCAN_FPS))
+    }
+
+    function onQrScanDialogClose() {
+      stopQrScanMirror()
+      qrScanVisible.value = false
     }
 
     async function onClickShippingChangeMethod() {
@@ -874,6 +938,7 @@ export default defineComponent({
         clearInterval(syncProgressTimer)
         syncProgressTimer = null
       }
+      stopQrScanMirror()
       txOverlay.dispose()
     })
 
@@ -967,6 +1032,12 @@ export default defineComponent({
       onOpenMercariPage,
       onClickShippingSizeLocation,
       onConfirmShippingSelection,
+      qrScanVisible,
+      qrScanFrame,
+      qrScanDone,
+      startQrScanMirror,
+      stopQrScanMirror,
+      onQrScanDialogClose,
       onClickShippingChangeMethod,
       onDetailSubmit,
       onResetReplyDefault,

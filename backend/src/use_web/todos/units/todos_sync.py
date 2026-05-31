@@ -13,6 +13,7 @@ from ....use_mercari.get_to_du_list.todolist_sync import (
 )
 from ....use_mercari.get_to_du_list.transaction_detail import (
     SUPPORTED_REACTIONS,
+    capture_qr_scanner_frame,
     click_change_shipping_method,
     confirm_shipping_selection,
     fetch_transaction_detail,
@@ -192,7 +193,8 @@ async def confirm_shipping_selection_endpoint(
         return await run_mercari_serial_async(
             queue_key_for_mercari_account(aid),
             lambda: confirm_shipping_selection(
-                int(todo_id), req.class_text, req.facility, progress_job_id=jid,
+                int(todo_id), req.class_text, req.facility,
+                scan_qr=bool(req.scan_qr), progress_job_id=jid,
             ),
             suppress_idle_close=True,
         )
@@ -304,3 +306,27 @@ async def close_detail_browser(account_id: int) -> Dict[str, Any]:
     main_key = mercari_account_key(aid)
     result = await mgr.close_session(main_key, force=True)
     return {"account_id": aid, **(result if isinstance(result, dict) else {})}
+
+
+async def qr_scanner_frame_endpoint(todo_id: int) -> Dict[str, Any]:
+    """QR スキャナを開いている有頭ブラウザの現在タブを 1 枚スクショして返す（ミラー用）。
+
+    前端が短間隔でポーリングして擬似ライブ映像として描画する。``done=True`` で
+    読み取り成功（交易ページへ戻った）と判断し、ポーリングを止める。
+    """
+    todo = TodoItemModel.find_by_id(id=int(todo_id))
+    if not todo:
+        raise HTTPException(status_code=404, detail="待办事项不存在")
+    aid = int(getattr(todo, "account_id", 0) or 0)
+    if not aid:
+        raise HTTPException(status_code=400, detail="待办事项缺少 account_id")
+    try:
+        return await run_mercari_serial_async(
+            queue_key_for_mercari_account(aid),
+            lambda: capture_qr_scanner_frame(int(todo_id)),
+            suppress_idle_close=True,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+    except RuntimeError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
