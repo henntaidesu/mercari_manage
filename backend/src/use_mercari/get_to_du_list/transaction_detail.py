@@ -464,9 +464,15 @@ _SELECT_FINISH_BUTTON_TEXT = "選択して完了する"
 _SCAN_QR_BUTTON_TEXT = "2次元コードを読み取る"
 # 読み取り成功後の交易ページ上の発送確定 UI
 _SCAN_OK_TEXT = "読み取りが正しく完了しました"
-_STICKER_CHECKBOX_TEXT = "梱包した商品に発送用シールを貼りました"
+# 確認用チェックボックスのラベル候補（シール/専用箱など発送方法で文言が変わるため複数許容）
+_SHIP_CONFIRM_CHECKBOX_TEXTS = (
+    "ご依頼主様控えを切り取りました",
+    "梱包した商品に発送用シールを貼りました",
+)
 _NOTIFY_SHIP_BUTTON_TEXT = "商品を発送したので、発送通知をする"
 _SHIPPED_CONFIRM_BUTTON_TEXT = "発送しました"
+# 二次确认後、页面が再読込され発送完了になると表示される文言
+_SHIP_SUCCESS_TEXT = "購入者の受取をお待ちください"
 
 
 async def start_select_shipping_class(
@@ -803,12 +809,93 @@ async def read_post_shipping_confirm_info(todo_id: int) -> Dict[str, Any]:
     }
 
 
+async def _tick_ship_confirm_checkboxes(page: Any) -> int:
+    """発送確認ページのチェックボックスにチェックを入れる（複数文言・構造に対応）。
+
+    1) ラベル文言を含む要素の祖先 ``<label>`` をクリック（無ければその要素を直接クリック）
+    2) 取りこぼした ``input[type=checkbox]`` を force でチェック
+    戻り値: チェック/クリックできた数。
+    """
+    ticked = 0
+    for label_text in _SHIP_CONFIRM_CHECKBOX_TEXTS:
+        try:
+            loc = page.get_by_text(label_text, exact=False)
+            if await loc.count() == 0:
+                continue
+        except Exception:
+            continue
+        clicked = False
+        # チェックボックスの toggle 範囲＝<label>。あればそれをクリック
+        try:
+            lbl = loc.first.locator("xpath=ancestor-or-self::label[1]")
+            if await lbl.count() > 0:
+                await lbl.first.click(timeout=3000)
+                clicked = True
+        except Exception:
+            clicked = False
+        if not clicked:
+            try:
+                await loc.first.click(timeout=3000)
+                clicked = True
+            except Exception:
+                clicked = False
+        if clicked:
+            ticked += 1
+            log.info("[postship] チェック「%s」", label_text)
+            await asyncio.sleep(0.2)
+
+    # 取りこぼし対策：未チェックの checkbox を force でチェック
+    try:
+        cbs = page.locator('input[type="checkbox"]')
+        cnt = await cbs.count()
+        for i in range(cnt):
+            cb = cbs.nth(i)
+            try:
+                if not await cb.is_checked():
+                    await cb.check(force=True, timeout=1500)
+                    ticked += 1
+                    log.info("[postship] force-checked checkbox[%d]", i)
+            except Exception:
+                pass
+    except Exception:
+        pass
+    return ticked
+
+
+async def _click_visible_button_by_text(page: Any, text: str, *, timeout_ms: int = 8000) -> bool:
+    """可視かつ有効な「text」ボタンを探してクリック（モーダル内のボタンも対象）。
+
+    role=button → ``button:has-text`` の順で候補を集め、**非表示の複製（portal/template）を
+    避けるため可視・有効なものだけ**をクリックする。出現するまで短間隔でポーリング。
+    """
+    deadline = time.monotonic() + timeout_ms / 1000
+    while time.monotonic() < deadline:
+        for loc in (
+            page.get_by_role("button", name=text),
+            page.locator(f'button:has-text("{text}")'),
+        ):
+            try:
+                n = await loc.count()
+            except Exception:
+                n = 0
+            for i in range(n):
+                b = loc.nth(i)
+                try:
+                    if await b.is_visible() and await b.is_enabled():
+                        await b.click()
+                        return True
+                except Exception:
+                    continue
+        await asyncio.sleep(0.3)
+    return False
+
+
 async def finalize_post_shipping(
     todo_id: int,
     *,
     progress_job_id: Optional[str] = None,
 ) -> Dict[str, Any]:
-    """ユーザーの二次確認後：シール貼付チェック → 発送通知 → 「発送しました」を順にクリック。"""
+    """ユーザーの二次確認後：確認チェック → 発送通知 → 「発送しました」を順にクリック。"""
     report = make_sync_reporter(progress_job_id)
     report("resolve_todo", "正在准备发货确认…")
     todo = TodoItemModel.find_by_id(id=int(todo_id))
@@ -823,54 +910,82 @@ async def finalize_post_shipping(
     except Exception as exc:
         raise RuntimeError("浏览器未打开或已关闭") from exc
 
-    # ── Step 1: シール貼付チェックボックス（ラベル文言クリックで checked） ──
-    report("check_sticker", "正在勾选「発送用シールを貼りました」…")
-    cb = page.get_by_text(_STICKER_CHECKBOX_TEXT, exact=False).first
-    try:
-        await cb.wait_for(state="visible", timeout=8000)
-        await cb.click()
-        log.info("[postship] チェック「%s」", _STICKER_CHECKBOX_TEXT)
-    except Exception as exc:
-        raise RuntimeError(
-            f"未找到「{_STICKER_CHECKBOX_TEXT}」（当前 URL: {page.url}）"
-        ) from exc
+    # ── Step 1: 確認チェックボックスにチェック（「ご依頼主様控えを切り取りました」等） ──
+    report("check_confirm", "正在勾选确认项…")
+    ticked = await _tick_ship_confirm_checkboxes(page)
+    if ticked == 0:
+        log.warning(
+            "[postship] 確認チェックボックスが見つからず（当前 URL: %s）。"
+            "そのまま発送通知ボタンを試行します。",
+            page.url,
+        )
     await asyncio.sleep(0.2)
 
     # ── Step 2: 「商品を発送したので、発送通知をする」 ──
     report("click_notify", "正在点击「発送通知をする」…")
-    notify = page.get_by_role("button", name=_NOTIFY_SHIP_BUTTON_TEXT)
-    try:
-        await notify.first.wait_for(state="visible", timeout=6000)
-    except Exception:
-        notify = page.locator(f'button:has-text("{_NOTIFY_SHIP_BUTTON_TEXT}")')
-        try:
-            await notify.first.wait_for(state="visible", timeout=4000)
-        except Exception as exc:
-            raise RuntimeError(
-                f"未找到「{_NOTIFY_SHIP_BUTTON_TEXT}」按钮（当前 URL: {page.url}）"
-            ) from exc
-    await notify.first.click()
+    if not await _click_visible_button_by_text(page, _NOTIFY_SHIP_BUTTON_TEXT, timeout_ms=8000):
+        raise RuntimeError(
+            f"未找到/未能点击「{_NOTIFY_SHIP_BUTTON_TEXT}」按钮（当前 URL: {page.url}）"
+        )
     log.info("[postship] 点击「%s」", _NOTIFY_SHIP_BUTTON_TEXT)
-    await asyncio.sleep(0.4)
 
-    # ── Step 3: 確認ダイアログ「発送しました」 ──
-    report("click_shipped", "正在点击「発送しました」…")
-    confirm = page.get_by_role("button", name=_SHIPPED_CONFIRM_BUTTON_TEXT)
-    try:
-        await confirm.first.wait_for(state="visible", timeout=6000)
-    except Exception:
-        confirm = page.locator(f'button:has-text("{_SHIPPED_CONFIRM_BUTTON_TEXT}")')
+    # ── Step 3: 二次确认ダイアログ「発送しました」 ──
+    # 通知ボタン押下後にモーダルが開く。アニメーション完了を待ってから、
+    # 可視・有効なボタンだけをクリック（非表示の複製を踏まないように）
+    report("click_shipped", "正在点击二次确认「発送しました」…")
+    await asyncio.sleep(0.6)
+    confirmed = await _click_visible_button_by_text(
+        page, _SHIPPED_CONFIRM_BUTTON_TEXT, timeout_ms=8000,
+    )
+    if confirmed:
+        log.info("[postship] 点击二次确认「%s」 完成发货通知", _SHIPPED_CONFIRM_BUTTON_TEXT)
+    else:
+        log.warning(
+            "[postship] 二次确认「%s」按钮未出现/未能点击。URL: %s",
+            _SHIPPED_CONFIRM_BUTTON_TEXT, page.url,
+        )
+
+    # ── Step 4: 数据発送＋页面再読込を待つ。「購入者の受取をお待ちください」が出れば成功 ──
+    report("waiting_reload", "已发送，正在等待页面刷新与发送完成…")
+    await asyncio.sleep(3)  # クリック後の送信・再読込待ち（要件）
+    shipped_ok = False
+    deadline = time.monotonic() + 15
+    while time.monotonic() < deadline:
         try:
-            await confirm.first.wait_for(state="visible", timeout=4000)
-        except Exception as exc:
-            raise RuntimeError(
-                f"未找到「{_SHIPPED_CONFIRM_BUTTON_TEXT}」按钮（当前 URL: {page.url}）"
-            ) from exc
-    await confirm.first.click()
-    log.info("[postship] 点击「%s」 完成发货通知", _SHIPPED_CONFIRM_BUTTON_TEXT)
+            text = await page.inner_text("body")
+        except Exception:
+            text = ""
+        if _SHIP_SUCCESS_TEXT in text:
+            shipped_ok = True
+            break
+        await asyncio.sleep(0.5)
+    if shipped_ok:
+        log.info("[postship] 检测到「%s」 发送成功 todo=%s", _SHIP_SUCCESS_TEXT, todo_id)
+    else:
+        log.warning(
+            "[postship] 未检测到「%s」(可能仍在处理)。URL: %s",
+            _SHIP_SUCCESS_TEXT, page.url,
+        )
 
-    report("done", "已完成发货通知")
-    return {"todo_id": int(todo_id), "account_id": aid, "success": True}
+    # ── Step 5: 成功确认后才软删除本地 todo（列表から消す） ──
+    if shipped_ok:
+        try:
+            todo.is_delete = 1
+            todo.synced_at = int(time.time() * 1000)
+            todo.save()
+            log.info("[postship] 已软删除 todo_id=%s", todo_id)
+        except Exception as exc:
+            log.warning("[postship] 软删除 todo 失败: %s", exc)
+
+    report("done", "已完成发货通知" if shipped_ok else "已发送（未检测到完成文案）")
+    return {
+        "todo_id": int(todo_id),
+        "account_id": aid,
+        "success": bool(shipped_ok),
+        "checkboxes_ticked": ticked,
+        "shipped_confirmed": confirmed,
+        "shipped_ok": shipped_ok,
+    }
 
 
 async def submit_transaction_review(

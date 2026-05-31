@@ -799,14 +799,24 @@ export default defineComponent({
       if (!id) return
       shipConfirmLoading.value = true
       try {
-        await txOverlay.run({
+        const result = await txOverlay.run({
           title: t('todos.finalizingShipping'),
           consoleTag: '[发货通知]',
           pollFn: (jobId) => todosApi.getSyncProgress(jobId),
           actionFn: (jobId) => todosApi.finalizePostShipping(id, { progress_job_id: jobId }),
         })
-        ElMessage.success(t('todos.shipNotified'))
+        // 仅当后端检测到「購入者の受取をお待ちください」才算发送成功
+        if (result?.shipped_ok) {
+          ElMessage.success(t('todos.shipNotified'))
+        } else {
+          ElMessage.warning(t('todos.shipNotifyUnconfirmed'))
+        }
+        // 完成后关闭本流程所有弹窗/表单：二次确认 → 扫码镜像 → 尺寸选择 → 交易详情
+        // （关交易详情会触发 closeDetailBrowser 关闭有头浏览器会话）
+        stopQrScanMirror()
         shipConfirmVisible.value = false
+        qrScanVisible.value = false
+        shippingDialogVisible.value = false
         detailDialogVisible.value = false
         load()
       } catch (e) {
