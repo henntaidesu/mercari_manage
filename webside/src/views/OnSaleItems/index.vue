@@ -314,6 +314,9 @@
             <el-table-column prop="barcode" :label="t('onSaleItems.barcode')" min-width="140" show-overflow-tooltip />
             <el-table-column prop="inventory_name" :label="t('onSaleItems.inventoryName')" min-width="160" show-overflow-tooltip />
             <el-table-column prop="location" :label="t('onSaleItems.location')" min-width="140" show-overflow-tooltip />
+            <el-table-column prop="quantity" :label="t('onSaleItems.inventoryQuantity')" width="88" align="center">
+              <template #default="{ row: r }">{{ r.quantity ?? 0 }}</template>
+            </el-table-column>
             <el-table-column prop="on_sale_quantity" :label="t('onSaleItems.onSaleQuantity')" width="88" align="center" />
           </el-table>
           <el-empty v-else :description="t('onSaleItems.invLinesEmpty')" :image-size="56" />

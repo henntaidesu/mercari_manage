@@ -158,6 +158,7 @@ def _attach_inventory_by_item_id(items: list) -> None:
                         "management_id": str(int(iid)),
                         "barcode": bc or None,
                         "location": loc_name,
+                        "quantity": _to_int(qty, 0),
                         "on_sale_quantity": _to_int(osq, 0),
                         "inventory_name": n or None,
                         "images": line_images,
