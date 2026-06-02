@@ -1342,9 +1342,15 @@ export default defineComponent({
       if (!currentRow.value?.id) return
       if (!message || !message.is_buyer) return
       if (reactionLoading.value) return
-      // 在「买家消息序列」里查 reaction_index（后端按这个在 DOM 上定位第 N 个 + 反应按钮）
-      const buyerMessages = (detail.messages || []).filter((m) => m && m.is_buyer)
-      const reactionIndex = buyerMessages.findIndex((m) => {
+      // 已经有反应的消息不能再加（也不该走到这里）
+      if (message.reaction) return
+      // reaction_index 必须与页面上「+」按钮（add-reaction-button）的顺序对齐。
+      // 煤炉只在「买家消息且尚无反应」的卡片上渲染该按钮，已反应的消息显示的是反应图标、
+      // 不再有「+」。因此这里只在「买家 + 无反应」的消息序列里取下标，否则会越界/错位。
+      const reactableBuyerMessages = (detail.messages || []).filter(
+        (m) => m && m.is_buyer && !m.reaction,
+      )
+      const reactionIndex = reactableBuyerMessages.findIndex((m) => {
         if (message.id && m.id) return String(m.id) === String(message.id)
         return m === message
       })

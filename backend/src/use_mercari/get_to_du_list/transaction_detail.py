@@ -1842,14 +1842,29 @@ async def send_message_reaction_by_index(
     emoji_idx = int(rinfo["index"])
 
     aid = int(todo.account_id)
+    item_id = (todo.item_id or "").strip()
     mgr = get_web_drive_manager()
     auto_key = mercari_account_key(aid)
 
     report("attach_browser", "正在连接已打开的浏览器交易页…")
     try:
         page = await mgr.active_tab_page(auto_key)
-    except Exception as exc:
-        raise RuntimeError("浏览器未打开或已关闭，请先点「处理」打开交易页") from exc
+    except Exception:
+        page = None
+
+    if page is None:
+        # 浏览器未打开（待回复面板走缓存、未开浏览器）：自动打开交易页。
+        # 进入上下文即打开并导航；退出不关闭，浏览器保持打开供下方点反应。
+        if not item_id:
+            raise RuntimeError("该待办无关联 item_id，无法打开交易页")
+        report("open_browser", f"正在打开交易页（{item_id}）…")
+        url = f"https://jp.mercari.com/transaction/{item_id}"
+        try:
+            async with mitm_automation_browser(aid, start_url=url):
+                pass
+            page = await mgr.active_tab_page(auto_key)
+        except Exception as exc:
+            raise RuntimeError("无法打开交易页，请重试") from exc
 
     # ── Step 1: 找到第 reaction_index 个「add-reaction-button」并点击 ──
     # 注：``[data-testid="add-reaction-button"]`` 只在买家消息卡片下渲染，所以这个 N
