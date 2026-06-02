@@ -157,7 +157,7 @@
             <el-form-item :label="t('common.quantity')" prop="quantity">
               <el-input-number
                 v-model="form.quantity"
-                :min="1"
+                :min="0"
                 :precision="0"
                 :controls="false"
                 :placeholder="t('system.costRecordInputQuantity')"

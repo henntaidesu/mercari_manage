@@ -113,7 +113,7 @@ export default defineComponent({
         item_name: row.item_name || '',
         item_image: row.item_image || '',
         amount: Number(row.amount || 0),
-        quantity: Number(row.quantity || 1),
+        quantity: Number(row.quantity ?? 0),
         warehouse_id: row.warehouse_id || null,
         remark: row.remark || '',
       }
