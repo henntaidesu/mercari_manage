@@ -599,15 +599,22 @@ export default defineComponent({
       let syncHadError = false
       try {
         const d = (await todosApi.sync({ progress_job_id: progressJobId })) || {}
+        let resultMsg = t('todos.syncResultMessage', {
+          accountCount: d.account_count ?? 0,
+          failCount: d.fail_count ?? 0,
+          inserted: d.inserted ?? 0,
+          updated: d.updated ?? 0,
+          markedDone: d.marked_deleted ?? 0,
+          total: d.total ?? 0,
+        })
+        // 待发货详情预缓存：仅在确有补抓（成功或失败）时追加一行
+        const detailFetched = Number(d.detail_fetched ?? 0)
+        const detailFailed = Number(d.detail_failed ?? 0)
+        if (detailFetched || detailFailed) {
+          resultMsg += `\n${t('todos.syncDetailPrecacheLine', { fetched: detailFetched, failed: detailFailed })}`
+        }
         ElMessageBox.alert(
-          t('todos.syncResultMessage', {
-            accountCount: d.account_count ?? 0,
-            failCount: d.fail_count ?? 0,
-            inserted: d.inserted ?? 0,
-            updated: d.updated ?? 0,
-            markedDone: d.marked_deleted ?? 0,
-            total: d.total ?? 0,
-          }),
+          resultMsg,
           t('todos.syncResultTitle'),
           { type: 'success', confirmButtonText: t('dialog.confirmBtn') },
         )

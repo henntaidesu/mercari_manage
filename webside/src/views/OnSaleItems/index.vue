@@ -190,12 +190,11 @@
         <el-table-column :label="t('onSaleItems.updated')" width="160" align="center" header-align="center">
           <template #default="{ row }">{{ displayTs(row.updated) }}</template>
         </el-table-column>
-        <el-table-column :label="t('common.operate')" width="120" fixed="right" align="center" header-align="center">
+        <el-table-column :label="t('common.operate')" width="130" fixed="right" align="center" header-align="center">
           <template #default="{ row }">
             <el-button
               :type="hasDetailViewable(row) ? 'success' : 'warning'"
-              link
-              size="small"
+              plain
               :loading="detailLoadingIds.has(String(row.item_id || '').trim())"
               @click="onDetailActionClick(row)"
             >

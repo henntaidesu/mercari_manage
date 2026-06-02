@@ -684,7 +684,6 @@
             </div>
             <el-form-item
               prop="image_front"
-              style="display: block"
               label=""
               class="inventory-images-form-item inventory-images-form-item--combined inventory-images-form-item--combined-grid inventory-images-form-item--no-label"
             >
@@ -799,6 +798,7 @@
           class="product-edit-dialog-layout__aside product-edit-dialog-layout__aside--combined"
           v-loading="combinedEditDetailLoading"
         >
+          <div class="combined-edit-aside-inner">
           <div class="combined-edit-aside-title">{{ t('inventory.combinedComponentsDetail') }}</div>
           <div class="combined-edit-aside-list">
             <div
@@ -857,6 +857,7 @@
             <div v-if="!combinedEditDetailLoading && combinedEditDetailRows.length === 0" class="combined-edit-aside-empty">
               {{ t('inventory.noCombinedItemsParsed') }}
             </div>
+          </div>
           </div>
         </aside>
       </div>

@@ -21,6 +21,7 @@ from ....use_mercari.get_to_du_list.transaction_detail import (
     fetch_transaction_detail,
     finalize_post_shipping,
     get_cached_transaction_detail,
+    list_uncached_wait_shipping_todo_ids,
     revise_shipping_after_qr,
     push_remote_camera_frame,
     read_post_shipping_confirm_info,
@@ -32,6 +33,7 @@ from ....use_mercari.get_to_du_list.transaction_detail import (
 from ....use_mercari.sync_progress import (
     clear_sync_progress,
     get_sync_progress,
+    set_sync_progress,
 )
 from ....use_mercari.sync_lock import (
     LABEL_FULL,
@@ -115,6 +117,12 @@ async def sync_todos(req: SyncTodosRequest) -> Dict[str, Any]:
                     log.warning(
                         "[todolist] 关闭 account_id=%s 浏览器失败: %s", aid, close_exc
                     )
+
+        # ── 待发货详情预缓存：列表同步完后，为「待发货」且尚无交易详情缓存的待办
+        #    静默无头补抓一次详情，使前端「处理」面板打开即有缓存可用（无需逐条手动「刷新抓取」）。──
+        detail_fetched, detail_failed = await _precache_wait_shipping_details(
+            account_ids, jid, mgr
+        )
     finally:
         sync_lock_end(lock_token)
         if jid:
@@ -128,7 +136,60 @@ async def sync_todos(req: SyncTodosRequest) -> Dict[str, Any]:
         "updated": updated,
         "marked_deleted": marked_deleted,
         "total": total,
+        "detail_fetched": detail_fetched,
+        "detail_failed": detail_failed,
     }
+
+
+async def _precache_wait_shipping_details(
+    account_ids: list[int], jid: Optional[str], mgr: Any
+) -> tuple[int, int]:
+    """为各账号下「待发货」且无交易详情缓存的待办，按账号串行补抓详情（静默无头）。
+
+    返回 ``(成功条数, 失败条数)``。单条/单账号失败均不抛出，不影响同步整体结果。
+    """
+    fetched = 0
+    failed = 0
+    for aid in account_ids:
+        todo_ids = list_uncached_wait_shipping_todo_ids(aid)
+        if not todo_ids:
+            continue
+        log.info(
+            "[todolist] 待发货详情预缓存 account_id=%s 共 %d 条", aid, len(todo_ids)
+        )
+        try:
+            for idx, tid in enumerate(todo_ids, start=1):
+                if jid:
+                    set_sync_progress(
+                        jid,
+                        "precache_detail",
+                        f"补抓待发货交易详情（{idx}/{len(todo_ids)}）…",
+                    )
+                try:
+                    # 同账号多条复用同一浏览器会话（mitm_automation_browser 退出不关闭，
+                    # 仅刷新标签页）；串行队列保证不与其它操作抢占同一账号。
+                    await run_mercari_serial_async(
+                        queue_key_for_mercari_account(aid),
+                        lambda tid=tid: fetch_transaction_detail(
+                            int(tid), progress_job_id=jid, force_headless=True
+                        ),
+                        suppress_idle_close=True,
+                    )
+                    fetched += 1
+                except Exception as exc:  # noqa: BLE001 单条失败不阻断其余
+                    failed += 1
+                    log.warning(
+                        "[todolist] 待发货详情预缓存失败 todo_id=%s: %s", tid, exc
+                    )
+        finally:
+            # 该账号补抓完毕，强制关闭其浏览器，避免与下一账号或后续操作重叠。
+            try:
+                await mgr.close_session(mercari_account_key(aid), force=True)
+            except Exception as close_exc:  # noqa: BLE001
+                log.warning(
+                    "[todolist] 预缓存后关闭 account_id=%s 浏览器失败: %s", aid, close_exc
+                )
+    return fetched, failed
 
 
 def todos_sync_progress(job_id: str):

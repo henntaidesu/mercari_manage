@@ -108,9 +108,9 @@
           </template>
         </el-table-column>
 
-        <el-table-column :label="t('common.operate')" width="90" align="center" header-align="center" fixed="right">
+        <el-table-column :label="t('common.operate')" width="110" align="center" header-align="center" fixed="right">
           <template #default="{ row }">
-            <el-button type="primary" link size="small" @click="onProcess(row)">{{ t('todos.process') }}</el-button>
+            <el-button type="primary" plain @click="onProcess(row)">{{ t('todos.process') }}</el-button>
           </template>
         </el-table-column>
       </el-table>

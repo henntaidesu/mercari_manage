@@ -114,13 +114,12 @@
           </template>
         </el-table-column>
 
-        <el-table-column :label="t('common.operate')" width="170" align="center" header-align="center" fixed="right">
+        <el-table-column :label="t('common.operate')" width="200" align="center" header-align="center" fixed="right">
           <template #default="{ row }">
             <el-button
               v-if="actionForKind(row.kind) === 'open'"
               type="primary"
-              link
-              size="small"
+              plain
               :disabled="!hasTargetUrl(row)"
               @click="onOpenTarget(row)"
             >
@@ -129,8 +128,7 @@
             <el-button
               v-else-if="actionForKind(row.kind) === 'detail'"
               type="primary"
-              link
-              size="small"
+              plain
               @click="onViewDetail(row)"
             >
               {{ t('notifications.viewDetail') }}
@@ -138,8 +136,7 @@
             <el-button
               v-if="!row.is_read"
               type="success"
-              link
-              size="small"
+              plain
               :loading="markReadLoadingIds.has(row.id)"
               @click="onMarkRead(row)"
             >
@@ -148,8 +145,7 @@
             <el-button
               v-else
               type="info"
-              link
-              size="small"
+              plain
               :loading="markReadLoadingIds.has(row.id)"
               @click="onMarkUnread(row)"
             >

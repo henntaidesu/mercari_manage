@@ -262,8 +262,14 @@ async def fetch_transaction_detail(
     todo_id: int,
     *,
     progress_job_id: Optional[str] = None,
+    force_headless: bool = False,
 ) -> Dict[str, Any]:
-    """打开有头浏览器到 transaction 页 → MITM 等两个 API → 解析返回。"""
+    """打开有头浏览器到 transaction 页 → MITM 等两个 API → 解析返回。
+
+    ``force_headless``：批量预缓存（「从煤炉同步」后为无缓存的待发货待办补抓详情）场景用。
+    待发货待办默认强制有头+前台可见，便于用户手动核对；但同步时若逐条弹出前台浏览器
+    会非常干扰，故此参数为 True 时即便待发货也静默无头运行。
+    """
     report = make_sync_reporter(progress_job_id)
     report("resolve_todo", "正在准备煤炉账号…")
     todo = TodoItemModel.find_by_id(id=int(todo_id))
@@ -290,10 +296,15 @@ async def fetch_transaction_detail(
     # 待发货待办：强制有头 + 前台可见的持久化浏览器，便于用户在浏览器内亲自核对发货；
     # 其余类型沿用默认（由 WEB_DRIVE_AUTOMATION_HEADLESS 决定，通常无头静默）。
     is_wait_shipping = _is_wait_shipping_todo(todo)
-    headless_override = False if is_wait_shipping else None
-    minimized_override = False if is_wait_shipping else None
-    if is_wait_shipping:
-        log.info("[txdetail] 待发货待办 → 打开有头持久化浏览器 account_id=%s", aid)
+    if force_headless:
+        # 同步后的批量预缓存：即便待发货也静默无头，避免逐条弹出前台浏览器
+        headless_override = True
+        minimized_override = True
+    else:
+        headless_override = False if is_wait_shipping else None
+        minimized_override = False if is_wait_shipping else None
+        if is_wait_shipping:
+            log.info("[txdetail] 待发货待办 → 打开有头持久化浏览器 account_id=%s", aid)
 
     report("open_browser", f"正在打开交易页（{item_id}）…")
     async with mitm_automation_browser(
@@ -904,6 +915,34 @@ def get_cached_transaction_detail(todo_id: int) -> Dict[str, Any]:
     if qr_path and not data.get("qr_image_url"):
         data["qr_image_url"] = qr_path
     return data
+
+
+def list_uncached_wait_shipping_todo_ids(account_id: int) -> List[int]:
+    """返回某账号下「待发货」且尚无交易详情缓存的待办 id（供「从煤炉同步」后批量补抓详情）。
+
+    判定「无缓存」：``detail_synced_at IS NULL``（fetch_transaction_detail 成功后才会写入）。
+    仅含未软删 + 有 item_id 的待办（无 item_id 无法打开交易页）。
+    """
+    try:
+        rows = DatabaseManager().execute_query(
+            "SELECT [id], [kind], [title] FROM [todo_items] "
+            "WHERE [account_id]=? AND [is_delete]=0 "
+            "AND [detail_synced_at] IS NULL "
+            "AND [item_id] IS NOT NULL AND TRIM([item_id]) <> '' "
+            "ORDER BY [mercari_updated] DESC",
+            (int(account_id),),
+        )
+    except Exception as exc:
+        log.warning("[txdetail] 查询待发货未缓存待办失败 account_id=%s: %s", account_id, exc)
+        return []
+    ids: List[int] = []
+    for row in rows or []:
+        tid, kind, title = row
+        kind = (kind or "").strip()
+        title = (title or "").strip()
+        if kind in _WAIT_SHIPPING_KINDS or title == _WAIT_SHIPPING_TITLE:
+            ids.append(int(tid))
+    return ids
 
 
 async def _qr_code_exists(page: Any, *, timeout: int = 3000) -> bool:

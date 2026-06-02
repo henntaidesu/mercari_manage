@@ -124,6 +124,11 @@
   font-size: 13px;
   color: var(--el-text-color-regular, #c0c4cc);
 }
+/* 编辑商品弹窗：弹窗整体下移，留出上下边距 */
+:deep(.product-dialog .el-dialog) {
+  margin-top: 7vh !important;
+  margin-bottom: 7vh;
+}
 /* 编辑商品弹窗：左侧表单，右侧商品图片区（组合商品再追加组成明细 aside） */
 .product-edit-dialog-layout {
   display: flex;
@@ -132,7 +137,8 @@
 }
 .product-edit-dialog-layout--with-aside {
   flex-direction: row;
-  align-items: flex-start;
+  /* 以左侧表单（详情）为基准高度，右侧两栏随之拉伸 */
+  align-items: stretch;
   gap: 20px;
 }
 .product-edit-dialog-layout--with-aside .product-edit-dialog-layout__form {
@@ -140,11 +146,18 @@
   width: 580px;
   max-width: 580px;
 }
+/* 左侧表单决定整体高度；过高时表单自身滚动（不超出视口） */
+.product-edit-dialog-layout--with-aside .product-edit-dialog-layout__form {
+  max-height: 70vh;
+  overflow-y: auto;
+  padding-right: 6px;
+}
 .product-edit-dialog-layout__form {
   flex: 1 1 auto;
   min-width: 0;
 }
 .product-edit-dialog-layout__aside {
+  position: relative;
   flex: 0 0 280px;
   width: 280px;
   max-width: 100%;
@@ -159,8 +172,26 @@
   flex: 0 0 300px;
   width: 300px;
 }
+/* 关键：aside 内容绝对定位填满整栏，使本栏不因内容多而撑高，
+   从而 align-self:stretch 让其高度恒等于左侧表单（详情）高度，
+   内容超出时在内部滚动。 */
+.product-edit-dialog-layout__aside--images > .inventory-images-aside-block,
+.product-edit-dialog-layout__aside--combined > .combined-edit-aside-inner {
+  position: absolute;
+  top: 12px;
+  right: 14px;
+  bottom: 14px;
+  left: 14px;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
 .inventory-images-aside-block :deep(.el-form-item) {
   margin-bottom: 0;
+  flex: 1 1 auto;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
 }
 .inventory-images-aside-block :deep(.el-form-item__label) {
   padding-right: 0;
@@ -171,6 +202,25 @@
 }
 .inventory-images-aside-block :deep(.el-form-item__content) {
   margin-left: 0 !important;
+  flex: 1 1 auto;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  /* 覆盖 Element Plus 默认的 flex-wrap:wrap，否则纵向布局时子项会换“列”到右侧 */
+  flex-wrap: nowrap;
+  /* 覆盖 Element Plus 默认的 align-items:center，避免纵向布局时网格被横向收缩/居中 */
+  align-items: stretch;
+  overflow: hidden;
+}
+/* 图片过多时，网格区域内部滚动，不再撑高整个弹窗 */
+.inventory-images-aside-block .inventory-images-grid--combined {
+  width: 100%;
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  align-content: flex-start;
+  justify-content: flex-start;
+  padding-right: 4px;
 }
 .inventory-images-aside-header {
   display: flex;
@@ -178,6 +228,10 @@
   align-items: center;
   gap: 8px 12px;
   margin-bottom: 12px;
+  flex: 0 0 auto;
+}
+.inventory-images-aside-block .inventory-images-reorder-hint {
+  flex: 0 0 auto;
 }
 .inventory-images-aside-header__label {
   font-size: 14px;
@@ -197,6 +251,7 @@
   font-weight: 600;
   color: #e6edf7;
   margin-bottom: 6px;
+  flex: 0 0 auto;
 }
 .combined-edit-aside-sub {
   font-size: 12px;
@@ -211,8 +266,11 @@
   display: flex;
   flex-direction: column;
   gap: 10px;
-  max-height: min(52vh, 520px);
+  /* 滚动区域填满整栏高度，使其与编辑框（左侧表单）一样高 */
+  flex: 1 1 auto;
+  min-height: 0;
   overflow-y: auto;
+  padding-right: 4px;
 }
 .combined-edit-aside-item {
   display: flex;
@@ -357,6 +415,10 @@
   text-align: center;
 }
 @media (max-width: 768px) {
+  /* 移动端三栏纵向堆叠：取消绝对定位与限高，整个弹窗内容自然滚动 */
+  :deep(.product-dialog .el-dialog) {
+    margin-bottom: 6vh;
+  }
   .product-edit-dialog-layout--with-aside {
     flex-direction: column;
   }
@@ -364,17 +426,39 @@
     flex: 1 1 auto;
     width: 100%;
     max-width: none;
+    max-height: none;
+    overflow-y: visible;
+    padding-right: 0;
   }
   .product-edit-dialog-layout__aside {
+    position: static;
     flex: none;
     width: 100%;
+    overflow: visible;
   }
   .product-edit-dialog-layout__aside--images {
     flex: none;
     width: 100%;
   }
+  /* 还原绝对定位的内容容器为常规流式布局 */
+  .product-edit-dialog-layout__aside--images > .inventory-images-aside-block,
+  .product-edit-dialog-layout__aside--combined > .combined-edit-aside-inner {
+    position: static;
+    inset: auto;
+  }
+  .inventory-images-aside-block :deep(.el-form-item),
+  .inventory-images-aside-block :deep(.el-form-item__content) {
+    flex: 0 0 auto;
+    overflow: visible;
+  }
+  .inventory-images-aside-block .inventory-images-grid--combined {
+    flex: 0 0 auto;
+    overflow: visible;
+  }
   .combined-edit-aside-list {
+    flex: 0 0 auto;
     max-height: none;
+    overflow: visible;
   }
 }
 
