@@ -409,9 +409,10 @@ async def send_transaction_message(
     *,
     progress_job_id: Optional[str] = None,
 ) -> Dict[str, Any]:
-    """在已开的主 profile 浏览器内填回复并点击「取引メッセージを送る」。
+    """在主 profile 浏览器内填回复并点击「取引メッセージを送る」。
 
-    要求 ``fetch_transaction_detail`` 已先打开过对应账号的交易页（否则会话不存在/不在目标 URL）。
+    若对应账号的浏览器尚未打开（如待回复面板走缓存、未开浏览器），会自动打开交易页再发送；
+    已打开（如刚点过「处理/刷新抓取」）则直接复用。待回复（IncomingMessage）发送成功后软删待办并关浏览器。
     """
     report = make_sync_reporter(progress_job_id)
     report("resolve_todo", "正在准备发送消息…")
@@ -432,8 +433,21 @@ async def send_transaction_message(
     report("attach_browser", "正在连接已打开的浏览器交易页…")
     try:
         page = await mgr.active_tab_page(auto_key)
-    except Exception as exc:
-        raise RuntimeError("浏览器未打开或已关闭，请先点「处理」打开交易页") from exc
+    except Exception:
+        page = None
+
+    if page is None:
+        # 浏览器未打开（待回复面板走缓存、未开浏览器）：自动打开交易页。
+        # 进入上下文即打开并导航；退出不关闭，浏览器保持打开供下方填表/点发送。
+        # 待回复（IncomingMessage）发送成功后由下方收尾逻辑显式关闭。
+        report("open_browser", f"正在打开交易页（{item_id}）…")
+        url = f"https://jp.mercari.com/transaction/{item_id}"
+        try:
+            async with mitm_automation_browser(aid, start_url=url):
+                pass
+            page = await mgr.active_tab_page(auto_key)
+        except Exception as exc:
+            raise RuntimeError("无法打开交易页，请重试") from exc
 
     report("locate_textarea", "正在定位回复输入框…")
     # 找到回复 textarea：按多种 placeholder 取 OR 选择器，谁先可见就用谁

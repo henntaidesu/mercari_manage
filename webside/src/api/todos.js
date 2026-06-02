@@ -21,9 +21,9 @@ export const todosApi = {
   /** 关闭交易详情 dialog 时关掉对应账号的 __auto 浏览器（fire-and-forget） */
   closeDetailBrowser: (accountId, axiosConfig = {}) =>
     http.post(`/use_web/todos/close-detail-browser/${encodeURIComponent(accountId)}`, {}, { timeout: 0, ...axiosConfig }),
-  /** 在已开浏览器内填回复并点击「取引メッセージを送る」 */
+  /** 填回复并点击「取引メッセージを送る」；浏览器未开时后端会自动打开交易页再发送（故不设超时） */
   sendTransactionMessage: (todoId, text, opts = {}, axiosConfig = {}) =>
-    http.post(`/use_web/todos/${encodeURIComponent(todoId)}/send-message`, { text, ...opts }, { timeout: 60000, ...axiosConfig }),
+    http.post(`/use_web/todos/${encodeURIComponent(todoId)}/send-message`, { text, ...opts }, { timeout: 0, ...axiosConfig }),
   /** 对买家某条消息发送 emoji 反应（reaction_index = 在 is_buyer 消息中的索引） */
   sendMessageReaction: (todoId, payload, axiosConfig = {}) =>
     http.post(`/use_web/todos/${encodeURIComponent(todoId)}/send-reaction`, payload, { timeout: 60000, ...axiosConfig }),
