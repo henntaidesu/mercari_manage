@@ -1086,6 +1086,24 @@ export default defineComponent({
       shipConfirmVisible.value = false
     }
 
+    // ─── 条形码/已发行码场景：详情页「确认发送」按钮（らくらく×セブン等，无需扫码） ───
+    // 先弹系统二次确认，确认后复用 onShipConfirmSubmit：在煤炉点
+    // 「商品を発送したので、発送通知をする」→ 二次确认「発送しました」→ 出库/软删 todo。
+    async function onConfirmShipFromBarcode() {
+      const id = currentRow.value?.id
+      if (!id) return
+      try {
+        await ElMessageBox.confirm(
+          t('todos.confirmShipMessage'),
+          t('todos.confirmShipTitle'),
+          { type: 'warning', confirmButtonText: t('todos.confirmShipOk'), cancelButtonText: t('common.cancel') },
+        )
+      } catch {
+        return
+      }
+      await onShipConfirmSubmit()
+    }
+
     // ─── 已发行二维码后修改发货方式：点「商品サイズや発送方法を修正する」+ 二次确认「変更する」→ 清除二维码 ───
     async function onReviseShippingAfterQr() {
       if (!currentRow.value?.id) return
@@ -1435,6 +1453,7 @@ export default defineComponent({
       shipConfirmInfo,
       onShipConfirmSubmit,
       onShipConfirmCancel,
+      onConfirmShipFromBarcode,
       onClickShippingChangeMethod,
       onReviseShippingAfterQr,
       changeMethodVisible,

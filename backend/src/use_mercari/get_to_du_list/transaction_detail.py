@@ -323,8 +323,9 @@ async def fetch_transaction_detail(
             start_url=url,
             since_ms=since_ms,
         )
-        # 同步发货二维码：交易页若带二维码（含在 App/其他平台已完成发货）→ 抓取保存；
-        # 若页面确无二维码（别处取消/重置了发货）→ 后续清除本地已存的二维码，回到选择发送状态。
+        # 同步发货码（QR 二维码 / らくらく×セブン等返回的条形码，二者通用同一处理）：
+        # 交易页若带发货码（含在 App/其他平台已完成发货）→ 抓取保存；
+        # 若页面确无发货码（别处取消/重置了发货）→ 后续清除本地已存的，回到选择发送状态。
         synced_qr_url: Optional[str] = None
         qr_checked = False
         qr_present = False
@@ -831,8 +832,10 @@ async def push_remote_camera_frame(
     }
 
 
-# 交易ページ上の発送用QR画像（発行後に表示される）
-_QR_CODE_IMG_SELECTOR = 'img[data-testid="qr-code"]'
+# 交易ページ上の発送用コード画像（発行後に表示される）。
+# QRコード（2次元コード）は data-testid="qr-code"、らくらくメルカリ便×セブン-イレブン等で
+# 返るバーコードは data-testid="bar-code"。两者都要匹配。
+_QR_CODE_IMG_SELECTOR = 'img[data-testid="qr-code"], img[data-testid="bar-code"]'
 
 
 def _persist_transaction_detail(todo_id: int, data: Dict[str, Any]) -> None:
@@ -967,7 +970,7 @@ def list_uncached_detail_todo_ids(account_id: int) -> List[int]:
 
 
 async def _qr_code_exists(page: Any, *, timeout: int = 3000) -> bool:
-    """快速判断交易页上是否存在发货二维码图片（已发行）。"""
+    """快速判断交易页上是否存在发货码图片（已发行）。兼容 QR 二维码与条形码。"""
     try:
         await page.locator(_QR_CODE_IMG_SELECTOR).first.wait_for(
             state="visible", timeout=timeout
@@ -980,9 +983,12 @@ async def _qr_code_exists(page: Any, *, timeout: int = 3000) -> bool:
 async def _save_qr_code_image(
     page: Any, *, item_id: str, todo_id: int, timeout: int = 8000
 ) -> Optional[str]:
-    """把交易页上的发货二维码图片（img[data-testid="qr-code"]）下载到本地，返回 /imges 路径。
+    """把交易页上的发货码图片下载到本地，返回 /imges 路径。
 
-    ``timeout``：等待二维码出现的毫秒数。发行后流程用默认 8s；刷新抓取/同步场景
+    兼容 QR 二维码（data-testid="qr-code"）与らくらく×セブン-イレブン等返回的条形码
+    （data-testid="bar-code"）——见 ``_QR_CODE_IMG_SELECTOR``。
+
+    ``timeout``：等待发货码出现的毫秒数。发行后流程用默认 8s；刷新抓取/同步场景
     传较短值（页面已加载，有就立刻拿到，没有则快速返回 None）。
     """
     try:

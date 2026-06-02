@@ -277,7 +277,7 @@
                 {{ t('todos.changeShippingMethod') }}
               </el-button>
             </div>
-            <!-- 已发行二维码：发货模块只展示二维码 -->
+            <!-- 已发行二维码/条形码：发货模块展示码 + 确认发送按钮 -->
             <template v-if="detail.qr_image_url">
               <div class="detail-qr-wrap">
                 <el-image
@@ -287,6 +287,16 @@
                   fit="contain"
                   class="detail-qr-img"
                 />
+              </div>
+              <div class="detail-shipping-actions">
+                <el-button
+                  type="primary"
+                  size="default"
+                  :loading="shipConfirmLoading"
+                  @click="onConfirmShipFromBarcode"
+                >
+                  {{ t('todos.confirmShip') }}
+                </el-button>
               </div>
             </template>
             <!-- 未发行：当前状态 + 选择尺寸 + 修改发货方式 -->
