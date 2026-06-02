@@ -488,10 +488,32 @@ export default defineComponent({
     ]
     const REACTION_EMOJI_BY_KEY = Object.fromEntries(REACTION_OPTIONS.map((o) => [o.key, o.emoji]))
     const reactionOptions = REACTION_OPTIONS
+    // 煤炉接口/页面返回的反应是 emoji 短名（如 red_heart.svg → "red_heart"），
+    // 与 picker 内部 key（heart/smile/...）不一致，这里统一映射到 emoji。
+    const REACTION_ALIAS_TO_EMOJI = {
+      red_heart: '❤️',
+      heart: '❤️',
+      smiling_face_with_smiling_eyes: '😊',
+      smiling_face: '😊',
+      smile: '😊',
+      grinning_squinting_face: '😆',
+      laughing: '😆',
+      laugh: '😆',
+      folded_hands: '🙏',
+      pray: '🙏',
+      party_popper: '🎉',
+      tada: '🎉',
+      party: '🎉',
+    }
     function emojiFor(key) {
       if (!key) return ''
-      // 后端有可能直接返回 emoji 字符；这里两边都兼容
-      return REACTION_EMOJI_BY_KEY[key] || key
+      const raw = String(key).trim()
+      if (REACTION_EMOJI_BY_KEY[raw]) return REACTION_EMOJI_BY_KEY[raw]
+      const alias = REACTION_ALIAS_TO_EMOJI[raw.toLowerCase()]
+      if (alias) return alias
+      // 已是 emoji 字符（非 ASCII）直接显示；纯 ASCII 短名（未知反应）不显示文本
+      const hasNonAscii = Array.from(raw).some((ch) => ch.codePointAt(0) > 127)
+      return hasNonAscii ? raw : ''
     }
 
     // 当前待办是否是「评价买家」类型 → 切换为取引評価表单
