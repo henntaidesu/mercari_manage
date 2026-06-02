@@ -27,6 +27,7 @@ from ...ssl_mitm_proxy.runner import default_mitm_proxy_url, start_mitm_proxy
 from .manager import (
     EdgeWebDriveManager,
     automation_headless_enabled,
+    force_headed_debug_enabled,
     get_web_drive_manager,
 )
 from .paths import mercari_account_key
@@ -345,6 +346,9 @@ async def mitm_automation_browser(
     target_url = (start_url or "").strip()
     use_minimized = _default_minimized() if minimized is None else bool(minimized)
     use_headless = automation_headless_enabled() if headless is None else bool(headless)
+    # 全局调试开关：强制有头时，无视入参 headless=True，一律有头
+    if force_headed_debug_enabled():
+        use_headless = False
 
     # 每次进入都清掉上一轮残留的「需重新登录」标记；若本轮再次跳转登录页，
     # 监听器 / 一次性检查会重新落标。这样支持用户在 /mercari-accounts 改回 active

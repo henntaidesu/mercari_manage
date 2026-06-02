@@ -13,6 +13,22 @@ from src.use_web.image_storage import ensure_image_dir
 from src.API import router as v2_router
 from src.app_paths import backend_root
 
+# ─────────────────────────────────────────────────────────────────────────
+# 全局调试开关：强制所有自动化浏览器「有头」
+#   False（默认）= 走正常无头逻辑（受 WEB_DRIVE_AUTOMATION_HEADLESS 环境变量控制，默认无头）
+#   True          = 无视环境变量与各处 headless=True 入参，所有自动化浏览器一律有头，方便肉眼 DEBUG
+# 改这一处即可全局生效（启动时通过 set_force_headed_debug 应用）。
+# 注：环境变量 WEB_DRIVE_FORCE_HEADED_DEBUG=1 也可临时开启，便于不改码调试。
+WEB_DRIVE_FORCE_HEADED_DEBUG = False
+
+
+def _resolve_force_headed_debug() -> bool:
+    env = os.environ.get("WEB_DRIVE_FORCE_HEADED_DEBUG")
+    if env is not None:
+        return env.strip().lower() in ("1", "true", "yes", "on")
+    return WEB_DRIVE_FORCE_HEADED_DEBUG
+
+
 app = FastAPI(title="mercari V2 订单管理", version="2.0.0")
 
 app.add_middleware(
@@ -38,6 +54,17 @@ async def startup():
     except TypeError:
         logging.basicConfig(level=logging.INFO, format=_fmt)
     init_database()
+
+    # 应用「强制有头调试」全局开关（在任何浏览器启动前设定）
+    from src.web_drive.core.manager import set_force_headed_debug
+
+    _force_headed = _resolve_force_headed_debug()
+    set_force_headed_debug(_force_headed)
+    if _force_headed:
+        logging.getLogger(__name__).warning(
+            "[web_drive] 强制有头调试已开启：所有自动化浏览器将以有头方式启动"
+        )
+
     if os.environ.get("SSL_MITM_AUTO_START", "1").strip().lower() not in ("0", "false", "no", "off"):
         from src.ssl_mitm_proxy.runner import start_mitm_proxy
 

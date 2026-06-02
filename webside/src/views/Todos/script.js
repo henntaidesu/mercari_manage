@@ -1360,7 +1360,7 @@ export default defineComponent({
       }
       reactionLoading.value = true
       try {
-        await txOverlay.run({
+        const result = await txOverlay.run({
           title: t('todos.sendingReaction'),
           consoleTag: '[发送反应]',
           pollFn: (jobId) => todosApi.getSyncProgress(jobId),
@@ -1375,6 +1375,11 @@ export default defineComponent({
         // 本地立即把反应贴到对应消息上,避免再抓一次煤炉
         message.reaction = reactionKey
         ElMessage.success(t('todos.reactionSent', { emoji: REACTION_EMOJI_BY_KEY[reactionKey] || reactionKey }))
+        if (result?.completed) {
+          // 待回复（IncomingMessage）：后端已软删 + 关浏览器，前端关 dialog + 刷列表
+          detailDialogVisible.value = false
+          load()
+        }
       } catch (e) {
         if (!e?.response) ElMessage.error(e?.message || t('todos.reactionFailed'))
       } finally {

@@ -395,7 +395,7 @@
                   <el-popover
                     v-if="canReactToMessages && m.is_buyer && !m.reaction"
                     :width="280"
-                    placement="bottom-start"
+                    placement="bottom-end"
                     trigger="click"
                     popper-class="reaction-popover"
                   >

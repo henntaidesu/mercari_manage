@@ -1895,22 +1895,31 @@ async def send_message_reaction_by_index(
         todo_id,
     )
 
-    # ── Step 2: 在同一条消息卡片内定位 picker 的第 emoji_idx 个 emoji 按钮 ──
-    # 煤炉的 picker 是 5 个 ``<button><img/></button>``，没有稳定 aria-label
-    # 也没有可读文本，只能按位置取。这些 button 都嵌在 ``[data-testid="ds4-comment"]``
-    # 卡片内部（XPath: .../div[3]/div/button[N]/img），因此用「卡片祖先 + 直接子级 img」过滤。
+    # ── Step 2: 在弹出的 picker 内定位第 emoji_idx 个 emoji 按钮 ──
+    # 煤炉点「+」后会渲染一个 ``[data-testid="reaction-menu"]``，里面是 5 个
+    # ``<button data-testid="reaction-button"><img src=".../reactions/<key>.svg"></button>``。
+    # 注意：该 picker 是 ``[data-testid="ds4-comment"]`` 卡片的「兄弟节点」（同在
+    # ``div.commentGroup item`` 包裹层内），并不在卡片内部，所以不能在 ds4-comment 里找。
+    # picker 顺序与 SUPPORTED_REACTIONS 的 index 一一对应：
+    #   button[1]=red_heart / button[2]=smile / button[3]=big_smile / button[4]=pray / button[5]=waiwai
     report("pick_emoji", f"正在选择 emoji（{emoji_char}）…")
     await asyncio.sleep(0.3)
-    parent_comment = target_btn.locator('xpath=ancestor::*[@data-testid="ds4-comment"][1]')
-    # ``button:has(> img)`` 排除掉 add-reaction-button（其子节点是 svg 不是 img）
-    # 也排除掉头像（头像是 <a> + <picture><img>，不是 <button>）
-    emoji_btns = parent_comment.locator('button:has(> img)')
+    # 优先：相对刚点击的「+」按钮，取其容器的后继兄弟 reaction-menu 里的 reaction-button
+    emoji_btns = target_btn.locator(
+        'xpath=../following-sibling::*[@data-testid="reaction-menu"]'
+        '//button[@data-testid="reaction-button"]'
+    )
     try:
         await emoji_btns.first.wait_for(state="visible", timeout=4000)
-    except Exception as exc:
-        raise RuntimeError(
-            f"未找到 emoji picker 按钮（点击「+」后弹出层未出现；当前 URL: {page.url}）"
-        ) from exc
+    except Exception:
+        # 回落：全局取可见的 reaction-button（同一时刻只会弹出一个 picker）
+        emoji_btns = page.locator('[data-testid="reaction-button"]')
+        try:
+            await emoji_btns.first.wait_for(state="visible", timeout=3000)
+        except Exception as exc:
+            raise RuntimeError(
+                f"未找到 emoji picker 按钮（点击「+」后弹出层未出现；当前 URL: {page.url}）"
+            ) from exc
 
     total_emojis = await emoji_btns.count()
     if total_emojis < len(SUPPORTED_REACTIONS):
@@ -1934,6 +1943,26 @@ async def send_message_reaction_by_index(
     )
     await asyncio.sleep(0.5)
 
+    # 待回复（IncomingMessage）：回复了表情即视为待办完成
+    # → 软删 todo + 关浏览器（与「发送文本回复」一致）
+    kind = (todo.kind or "").strip()
+    completed = False
+    if kind == "IncomingMessage":
+        report("finalize", "已发送反应，正在收尾并关闭浏览器…")
+        try:
+            todo.is_delete = 1
+            todo.synced_at = int(time.time() * 1000)
+            todo.save()
+            log.info("[reaction] IncomingMessage 已软删 todo_id=%s", todo_id)
+        except Exception as exc:
+            log.warning("[reaction] 软删 todo 失败: %s", exc)
+        try:
+            await mgr.close_session(auto_key, force=True)
+            log.info("[reaction] IncomingMessage 已关闭主浏览器 account_id=%s", aid)
+        except Exception as exc:
+            log.warning("[reaction] 关浏览器失败: %s", exc)
+        completed = True
+
     report("done", "反应表情已发送")
     return {
         "todo_id": int(todo_id),
@@ -1944,6 +1973,7 @@ async def send_message_reaction_by_index(
         "emoji_index": emoji_idx,
         "message_id": message_id,
         "sent": True,
+        "completed": completed,
     }
 
 

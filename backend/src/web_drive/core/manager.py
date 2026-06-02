@@ -38,6 +38,24 @@ def get_web_drive_manager() -> "EdgeWebDriveManager":
     return _manager
 
 
+# ── 全局调试开关：强制所有自动化浏览器有头（DEBUG）──
+# True  = 无视环境变量与各处 headless=True 入参，全部以「有头」启动，方便肉眼调试；
+# False = 走正常无头逻辑（默认）。
+# 由 main.py 在启动时通过 set_force_headed_debug() 设定。
+_FORCE_HEADED_DEBUG = False
+
+
+def set_force_headed_debug(enabled: bool) -> None:
+    """设置全局「强制有头调试」开关（main.py 启动时调用）。"""
+    global _FORCE_HEADED_DEBUG
+    _FORCE_HEADED_DEBUG = bool(enabled)
+
+
+def force_headed_debug_enabled() -> bool:
+    """是否开启了「强制有头调试」。开启时所有自动化浏览器一律有头。"""
+    return _FORCE_HEADED_DEBUG
+
+
 def automation_headless_enabled() -> bool:
     """所有自动化任务（除 /mercari-accounts 用户手动外）是否切真·无头浏览器。
 
@@ -47,7 +65,11 @@ def automation_headless_enabled() -> bool:
     不生效范围：``/use_web/web-drive/sessions/open``（前端 /mercari-accounts 手动按钮，恒有头）。
 
     设 ``WEB_DRIVE_AUTOMATION_HEADLESS=0`` 可改回有头+最小化（调试观察浏览器用）。
+
+    另：``set_force_headed_debug(True)``（见 main.py 全局开关）会强制返回 False（有头）。
     """
+    if _FORCE_HEADED_DEBUG:
+        return False
     v = (os.environ.get("WEB_DRIVE_AUTOMATION_HEADLESS") or "1").strip().lower()
     return v in ("1", "true", "yes", "on")
 
@@ -412,6 +434,9 @@ class EdgeWebDriveManager:
         start_minimized: bool = False,
         block_images: bool = False,
     ) -> Dict[str, Any]:
+        # 全局调试开关：强制有头时，最底层兜底——无论调用方传入什么，一律有头
+        if _FORCE_HEADED_DEBUG and headless:
+            headless = False
         s = self._prepare_async()
         async with s.lock:  # type: ignore[union-attr]
             self._prune_dead_sessions(s)
