@@ -442,7 +442,7 @@
                 v-model="detail.reply_draft"
                 type="textarea"
                 :autosize="{ minRows: 4, maxRows: 8 }"
-                :placeholder="t('todos.replyPlaceholder')"
+                :placeholder="replyPlaceholder"
               />
               <div class="detail-reply-actions">
                 <el-button size="small" @click="onResetReplyDefault">{{ t('todos.defaultReply') }}</el-button>

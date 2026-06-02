@@ -33,7 +33,13 @@ export default defineComponent({
       IncomingMessage: 'todos.kind.waitReply',
     }
 
+    // 待回复（IncomingMessage）默认回复：分两种状态
+    //  - 未发送（購入直後 / 待发货）：感谢购买 + 即将发货
     const DEFAULT_REPLY = 'ご購入いただきありがとうございます。これから発送の準備をさせていただきます。設定した期日内に発送予定ですので今しばらくお待ちください。取引終了までよろしくお願いいたします。'
+    //  - 已发送（発送済み）：发送完了 + 等待收货评价
+    const DEFAULT_REPLY_SHIPPED = '商品を発送いたしました。到着まで今しばらくお待ちください。商品が届きましたらご確認後に受け取り評価をお願いいたします。'
+    // 已发送状态下输入框 placeholder（与煤炉一致）
+    const REPLY_PLACEHOLDER_SHIPPED = 'お待たせしていた商品の発送が完了しました。到着まで今しばらくお待ちください。'
     const DEFAULT_REVIEW = 'この度はお取引ありがとうございました。また機会がありましたらよろしくお願いします。'
 
     // 「発送をしてください」（待发货）待办：处理时按商品 ID 反查本地库存图片与关联订单号
@@ -533,6 +539,21 @@ export default defineComponent({
     const canReactToMessages = computed(() => {
       return (currentRow.value?.kind || '').trim() === 'IncomingMessage'
     })
+
+    // 待回复：交易是否已发货。shipment_status 为 fillin/shipping 表示待发货（未发送），
+    // 其它非空值（shipped/done 等）视为已发送。
+    const isShippedState = computed(() => {
+      const s = String(detail.shipment_status || '').trim().toLowerCase()
+      return !!s && !['fillin', 'shipping'].includes(s)
+    })
+    // 默认回复文本：已发送 → 发送完了模板；未发送 → 购入直後模板
+    const replyDefaultText = computed(() =>
+      isShippedState.value ? DEFAULT_REPLY_SHIPPED : DEFAULT_REPLY,
+    )
+    // 回复输入框 placeholder：已发送时提示发送完了模板，否则用通用文案
+    const replyPlaceholder = computed(() =>
+      isShippedState.value ? REPLY_PLACEHOLDER_SHIPPED : t('todos.replyPlaceholder'),
+    )
 
     // 选择尺寸 dialog（不再走 MITM 抓取，纯前端硬编码列表）
     const shippingDialogVisible = ref(false)
@@ -1264,7 +1285,7 @@ export default defineComponent({
     }
 
     function onResetReplyDefault() {
-      detail.reply_draft = DEFAULT_REPLY
+      detail.reply_draft = replyDefaultText.value
     }
 
     async function onSendReply() {
@@ -1492,6 +1513,8 @@ export default defineComponent({
       isReviewedSeller,
       isWaitReply,
       canReactToMessages,
+      isShippedState,
+      replyPlaceholder,
       shippingDialogVisible,
       shippingConfirmLoading,
       shippingPickedIdx,
