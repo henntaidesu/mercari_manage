@@ -16,13 +16,13 @@ import logging
 import time
 from typing import Any, Dict, Optional
 
-from ...db_manage.database import DatabaseManager
-from ...db_manage.models.mercari_account import MercariAccountModel
-from ...ssl_mitm_proxy.capture_config import (
+from ....db_manage.database import DatabaseManager
+from ....db_manage.models.mercari_account import MercariAccountModel
+from ....ssl_mitm_proxy.capture_config import (
     clear_aggregated_desired_prices_response_file,
     clear_item_get_response_file,
 )
-from ...web_drive.core.mitm_session import mitm_automation_browser
+from ....web_drive.core.mitm_session import mitm_automation_browser
 from .desired_price_capture import (
     build_desired_price_page_url,
     build_offer_list,
@@ -210,7 +210,7 @@ async def sync_desired_price_from_mercari(
             "offers": [...],  # 多条降价请求列表(便于前端展示)
         }
     """
-    from ..sync.sync_progress import make_sync_reporter
+    from ...sync.sync_progress import make_sync_reporter
     report = make_sync_reporter(progress_job_id)
     report("resolve_account", "正在准备煤炉账号…")
     iid = str(item_id or "").strip()

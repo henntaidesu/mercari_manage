@@ -17,11 +17,11 @@ import logging
 import time
 from typing import Any, Dict, List, Optional, Sequence
 
-from ...db_manage.database import DatabaseManager
-from ...db_manage.models.mercari_account import MercariAccountModel
-from ...web_drive.core.manager import EdgeWebDriveManager
-from ...web_drive.core.mitm_session import mitm_automation_browser
-from ...web_drive.core.paths import mercari_account_key
+from ....db_manage.database import DatabaseManager
+from ....db_manage.models.mercari_account import MercariAccountModel
+from ....web_drive.core.manager import EdgeWebDriveManager
+from ....web_drive.core.mitm_session import mitm_automation_browser
+from ....web_drive.core.paths import mercari_account_key
 from .desired_price_capture import build_desired_price_page_url
 
 log = logging.getLogger(__name__)
@@ -208,7 +208,7 @@ async def decide_desired_price(
     打开 /item/{item_id}/desired_price (持久化主 profile + MITM),
     accept 点「売る」 / reject 点「売らない」。完成后关闭浏览器。
     """
-    from ..sync.sync_progress import make_sync_reporter
+    from ...sync.sync_progress import make_sync_reporter
     report = make_sync_reporter(progress_job_id)
     report("resolve_account", "正在准备煤炉账号…")
     iid = str(item_id or "").strip()

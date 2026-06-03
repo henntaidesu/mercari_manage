@@ -12,9 +12,9 @@ import logging
 from functools import partial
 from typing import Any, Dict, Optional, Sequence, Tuple
 
-from ...ssl_mitm_proxy.capture_config import read_bundle_purchase_response
-from ...web_drive.core.manager import EdgeWebDriveManager
-from ...web_drive.core.mitm_session import wait_mitm_capture
+from ....ssl_mitm_proxy.capture_config import read_bundle_purchase_response
+from ....web_drive.core.manager import EdgeWebDriveManager
+from ....web_drive.core.mitm_session import wait_mitm_capture
 
 log = logging.getLogger(__name__)
 

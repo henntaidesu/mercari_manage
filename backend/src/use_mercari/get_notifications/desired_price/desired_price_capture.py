@@ -16,12 +16,12 @@ from datetime import datetime, timezone
 from functools import partial
 from typing import Any, Dict, List, Optional
 
-from ...ssl_mitm_proxy.capture_config import (
+from ....ssl_mitm_proxy.capture_config import (
     read_aggregated_desired_prices_response,
     read_item_get_response,
 )
-from ...web_drive.core.manager import EdgeWebDriveManager
-from ...web_drive.core.mitm_session import wait_mitm_capture
+from ....web_drive.core.manager import EdgeWebDriveManager
+from ....web_drive.core.mitm_session import wait_mitm_capture
 
 log = logging.getLogger(__name__)
 

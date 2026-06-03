@@ -10,9 +10,9 @@ from __future__ import annotations
 import logging
 from typing import Any, Dict, List
 
-from ...ssl_mitm_proxy.capture_config import read_notification_response
-from ...web_drive.core.manager import EdgeWebDriveManager
-from ...web_drive.core.mitm_session import wait_mitm_capture
+from ....ssl_mitm_proxy.capture_config import read_notification_response
+from ....web_drive.core.manager import EdgeWebDriveManager
+from ....web_drive.core.mitm_session import wait_mitm_capture
 
 log = logging.getLogger(__name__)
 

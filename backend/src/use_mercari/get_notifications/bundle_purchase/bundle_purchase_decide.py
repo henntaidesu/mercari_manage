@@ -16,11 +16,11 @@ import logging
 import time
 from typing import Any, Dict, List, Optional
 
-from ...db_manage.database import DatabaseManager
-from ...db_manage.models.mercari_account import MercariAccountModel
-from ...web_drive.core.manager import EdgeWebDriveManager
-from ...web_drive.core.mitm_session import mitm_automation_browser
-from ...web_drive.core.paths import mercari_account_key
+from ....db_manage.database import DatabaseManager
+from ....db_manage.models.mercari_account import MercariAccountModel
+from ....web_drive.core.manager import EdgeWebDriveManager
+from ....web_drive.core.mitm_session import mitm_automation_browser
+from ....web_drive.core.paths import mercari_account_key
 from .bundle_purchase_capture import (
     build_bundle_offer_url,
     detect_decided_state_on_page,
@@ -340,7 +340,7 @@ async def decide_bundle_purchase(
     accept 填表 + 点「依頼を承諾する」；reject 直接点「依頼を断る」。
     完成后关闭浏览器。**不使用队列**。
     """
-    from ..sync.sync_progress import make_sync_reporter
+    from ...sync.sync_progress import make_sync_reporter
     report = make_sync_reporter(progress_job_id)
     report("resolve_account", "正在准备煤炉账号…")
     bid = str(bundle_id or "").strip()

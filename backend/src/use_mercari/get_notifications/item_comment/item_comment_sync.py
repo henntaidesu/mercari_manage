@@ -15,9 +15,9 @@ import logging
 import time
 from typing import Any, Dict, Optional
 
-from ...db_manage.models.mercari_account import MercariAccountModel
-from ...ssl_mitm_proxy.capture_config import clear_item_get_response_file
-from ...web_drive.core.mitm_session import mitm_automation_browser
+from ....db_manage.models.mercari_account import MercariAccountModel
+from ....ssl_mitm_proxy.capture_config import clear_item_get_response_file
+from ....web_drive.core.mitm_session import mitm_automation_browser
 from .item_comment_capture import (
     build_item_page_url,
     capture_item_get_via_mitm_session,
@@ -60,7 +60,7 @@ async def sync_item_comments_from_mercari(
             "comments": [{id, user_id, user_name, user_photo, message, created_ms}, ...],
         }
     """
-    from ..sync.sync_progress import make_sync_reporter
+    from ...sync.sync_progress import make_sync_reporter
     report = make_sync_reporter(progress_job_id)
     report("resolve_account", "正在准备煤炉账号…")
     iid = str(item_id or "").strip()
