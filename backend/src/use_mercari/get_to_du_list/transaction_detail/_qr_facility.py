@@ -109,6 +109,31 @@ async def _extract_shipping_facility(page: Any) -> Dict[str, str]:
         out["shipping_facility_image_url"] = image_url
     return out
 
+# お届け先（買い手の配送先住所）：配送の方法が「未定」(=非匿名配送、らくらく/ゆうゆう
+# メルカリ便ではない) のとき、交易ページに買い手の住所が表示される（匿名配送では非表示）。
+# SSR HTML の `[data-testid="transaction:delivery-address"]` 配下の <p> 行を集約する。
+# 「お届け先」見出しは <span> なので拾わない。住所が無い（匿名配送）なら空文字を返す。
+_DELIVERY_ADDRESS_JS = """
+() => {
+  const root = document.querySelector('[data-testid="transaction:delivery-address"]');
+  if (!root) return '';
+  const lines = Array.from(root.querySelectorAll('p'))
+    .map(p => (p.innerText || '').trim())
+    .filter(Boolean);
+  return lines.join('\\n');
+}
+"""
+
+async def _extract_delivery_address(page: Any) -> Optional[str]:
+    """从交易页提取「お届け先」(买家收货地址)。仅「未定」(非匿名)发货方式时存在；无则返回 None。"""
+    try:
+        text = await page.evaluate(_DELIVERY_ADDRESS_JS)
+    except Exception as exc:
+        log.debug("[shipping] 提取お届け先失败: %s", exc)
+        return None
+    text = (text or "").strip()
+    return text or None
+
 def _persist_shipping_facility(todo_id: int, fac: Dict[str, str]) -> None:
     """把发送场所信息合并进 todo_items.detail_json（不覆盖其它字段）。"""
     if not fac:

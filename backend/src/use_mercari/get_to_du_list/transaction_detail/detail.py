@@ -14,7 +14,7 @@ from ...sync.sync_progress import make_sync_reporter
 from ._cache import _clear_qr_image, _persist_transaction_detail
 from ._captures import _wait_for_both_captures
 from ._common import _WAIT_REPLY_KINDS, _is_wait_shipping_todo, _parse_messages, _parse_shipping_info
-from ._qr_facility import _extract_shipping_facility, _qr_code_exists, _save_qr_code_image
+from ._qr_facility import _extract_delivery_address, _extract_shipping_facility, _qr_code_exists, _save_qr_code_image
 
 log = logging.getLogger(__name__)
 
@@ -57,6 +57,12 @@ async def fetch_transaction_detail(
     # 待发货待办：强制有头 + 前台可见的持久化浏览器，便于用户在浏览器内亲自核对发货；
     # 其余类型沿用默认（由 WEB_DRIVE_AUTOMATION_HEADLESS 决定，通常无头静默）。
     is_wait_shipping = _is_wait_shipping_todo(todo)
+    kind = (getattr(todo, "kind", "") or "").strip()
+    # 该待办「关键 API」（仅控制截获等待循环的提前返回）：
+    #   待回复→必须等到 transaction_messages；
+    #   待发货→不强制等某接口：メルカリ便会发 shipping/get_info，但「未定」(非匿名) 方式
+    #     根本不发起 shipping API，お届け先 改从页面 DOM 抓取，强制等 shipping 只会白等满超时。
+    require_api = "messages" if kind in _WAIT_REPLY_KINDS else None
     if force_headless:
         # 同步后的批量预缓存：即便待发货也静默无头，避免逐条弹出前台浏览器
         headless_override = True
@@ -80,12 +86,14 @@ async def fetch_transaction_detail(
             auto_key=main_key,
             start_url=url,
             since_ms=since_ms,
+            require=require_api,
         )
         # 同步发货码（QR 二维码 / らくらく×セブン等返回的条形码，二者通用同一处理）：
         # 交易页若带发货码（含在 App/其他平台已完成发货）→ 抓取保存；
         # 若页面确无发货码（别处取消/重置了发货）→ 后续清除本地已存的，回到选择发送状态。
         synced_qr_url: Optional[str] = None
         synced_facility: Dict[str, str] = {}
+        synced_recipient: Optional[str] = None
         qr_checked = False
         qr_present = False
         try:
@@ -98,8 +106,10 @@ async def fetch_transaction_detail(
                 )
                 # 同步「発送場所」信息（标题/说明/图标），供前端在发货码旁展示
                 synced_facility = await _extract_shipping_facility(qr_page)
+            # お届け先（未定/非匿名方式时页面才有）：与是否发行二维码无关，始终尝试抓取
+            synced_recipient = await _extract_delivery_address(qr_page)
         except Exception as exc:
-            log.debug("[txdetail] 同步发货二维码失败 todo_id=%s: %s", todo_id, exc)
+            log.debug("[txdetail] 同步发货二维码/お届け先失败 todo_id=%s: %s", todo_id, exc)
 
     if shipping is None and messages is None:
         log.warning("[txdetail] 两个 API 均未截获 todo_id=%s", todo_id)
@@ -162,15 +172,22 @@ async def fetch_transaction_detail(
                         pass
         except Exception:
             pass
+    # お届け先（买家收货地址）：仅「未定」(非匿名)方式页面才有；抓到即填，匿名(メルカリ便)
+    # 则为 None。仅在 capture_ok（页面确已加载）时才会写库，故无需额外保守回退。
+    result["recipient_address"] = synced_recipient or None
     # 缓存有效性判定：只有真正截获到「该类型关键数据」时才写缓存并置 detail_synced_at；
     # 否则跳过——若仍标记为已缓存，则该待办会被永久当作「已缓存的空详情」：前端一直显示
     # 「待抓取」，且 list_uncached_detail_todo_ids 不再返回它，后续「从煤炉同步」批量预缓存
     # 也不会重试。跳过缓存后下次同步会重新抓取。
     #   - 待回复（IncomingMessage）：关键数据是消息流 → 须截获 transaction_messages；
-    #   - 其余（含待发货）：截获到 shipping 或 messages 任一即视为本次抓取成功。
-    kind = (getattr(todo, "kind", "") or "").strip()
-    if kind in _WAIT_REPLY_KINDS:
+    #   - 待发货：メルカリ便→关键数据是发货信息(shipping/get_info)；未定/非匿名→お届け先
+    #     (页面 DOM)。两者任一拿到即视为成功；否则发货区永远空白却被当作「已缓存的空详情」
+    #     永不重试（前端长期显示「待抓取」/「—」），跳过缓存以便下次同步重试。
+    #   - 其余：截获到 shipping 或 messages 任一即视为本次抓取成功。
+    if require_api == "messages":
         capture_ok = messages is not None
+    elif is_wait_shipping:
+        capture_ok = (shipping is not None) or bool(result.get("recipient_address"))
     else:
         capture_ok = page_loaded
     if capture_ok:

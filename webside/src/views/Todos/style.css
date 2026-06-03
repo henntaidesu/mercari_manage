@@ -422,6 +422,22 @@
   gap: 8px;
   flex-wrap: wrap;
 }
+/* お届け先（未定/非匿名方式时的买家收货地址） */
+.detail-recipient {
+  display: flex;
+  gap: 8px;
+  align-items: baseline;
+  padding: 0 0 10px;
+  font-size: 13px;
+}
+.detail-recipient-text {
+  margin: 0;
+  font-family: inherit;
+  white-space: pre-wrap;
+  word-break: break-word;
+  line-height: 1.6;
+  color: var(--el-text-color-primary);
+}
 
 /* ─── 选择尺寸 dialog ─── */
 .shipping-dialog-hint {

@@ -320,7 +320,12 @@
             <template v-else>
               <div class="detail-shipping-status">
                 <span class="detail-label">{{ t('todos.currentStatus') }}</span>
-                <span class="detail-value">{{ detail.current_shipping_status || dash }}</span>
+                <span class="detail-value">{{ detail.current_shipping_status || (detail.recipient_address ? t('todos.shippingUndecided') : dash) }}</span>
+              </div>
+              <!-- お届け先（配送方法「未定」/ 非匿名时煤炉页面才有的买家收货地址） -->
+              <div v-if="detail.recipient_address" class="detail-recipient">
+                <span class="detail-label">{{ t('todos.deliveryAddress') }}</span>
+                <pre class="detail-recipient-text">{{ detail.recipient_address }}</pre>
               </div>
               <div class="detail-shipping-actions">
                 <el-tooltip

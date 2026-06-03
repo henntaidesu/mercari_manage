@@ -33,11 +33,17 @@ async def _wait_for_both_captures(
     start_url: str,
     since_ms: int,
     timeout: int = _WAIT_TIMEOUT_SEC,
+    require: Optional[str] = None,
 ) -> Tuple[Optional[Dict[str, Any]], Optional[Dict[str, Any]]]:
     """同一轮询循环里等两个文件，避免互相干扰的 reload。
 
     每次迭代都会检查实时登录跳转监听器是否触发；命中则提前抛
     ``MercariLoginRequiredError``，不再等满 timeout。
+
+    ``require``：该待办「关键 API」名（``"shipping"`` / ``"messages"`` / ``None``）。
+    宽限提前返回（``_AFTER_FIRST_GRACE_SEC``）仅在关键 API 已到手后才生效；否则即便
+    次要 API 先到，也继续等满总超时——关键 API 可能只是比次要 API 慢（待发货的
+    shipping/get_info 常晚于 transaction_messages）。``None`` 时维持旧行为（任一即可）。
     """
     aid_for_login = mercari_id_from_account_key(auto_key)
     deadline = time.monotonic() + timeout
@@ -59,9 +65,16 @@ async def _wait_for_both_captures(
         # 两个都截获 → 立刻进入下一步，不等满超时
         if shipping is not None and messages is not None:
             return shipping, messages
-        # 只截获其一 → 记录首次命中时刻，仅再等 _AFTER_FIRST_GRACE_SEC；
-        # 超过仍只有一个，说明另一个本就不会发起，用现有结果继续（避免空等总超时）
-        if shipping is not None or messages is not None:
+        # 关键 API 是否已到手：require=None 时任一即算（旧行为）；指定时须命中对应 API。
+        got_required = (
+            require is None
+            or (require == "shipping" and shipping is not None)
+            or (require == "messages" and messages is not None)
+        )
+        # 关键 API 已到手、仅缺次要 API → 记录首次命中时刻，仅再等 _AFTER_FIRST_GRACE_SEC；
+        # 超过仍缺次要的，说明它本就不会发起，用现有结果继续（避免空等总超时）。
+        # 关键 API 仍缺时不在此提前返回——继续等满总超时让它有机会到达。
+        if got_required and (shipping is not None or messages is not None):
             now = time.monotonic()
             if first_capture_at is None:
                 first_capture_at = now

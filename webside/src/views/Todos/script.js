@@ -462,6 +462,8 @@ export default defineComponent({
         product_name: '',
         shipping_method_name: null,
         sender_address: null,
+        // お届け先（买家收货地址）：仅「未定」(非匿名)发货方式时煤炉页面才展示
+        recipient_address: null,
         current_shipping_status: null,
         shipment_status: null,
         has_size_location_btn: false,
