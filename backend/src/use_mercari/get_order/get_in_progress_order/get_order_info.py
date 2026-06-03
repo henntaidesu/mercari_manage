@@ -30,7 +30,7 @@ from ....ssl_mitm_proxy.capture_config import (
 )
 from ....web_drive.core.mitm_session import mitm_automation_browser
 from ....use_web.system.cost_expenses.units.cost_expenses_helpers import deduct_packaging_total_from_order_net_income
-from ...sync_progress import make_sync_reporter
+from ...sync.sync_progress import make_sync_reporter
 
 _TRANSACTION_EVIDENCE_GET_PATH = "https://api.mercari.jp/transaction_evidences/get"
 

@@ -19,7 +19,7 @@ from ...listing.units.post_to_macket import (
     DEFAULT_PAGE_LOAD_TIMEOUT_MS,
     _click_by_texts,
 )
-from ....use_mercari.sync_progress import make_sync_reporter
+from ....use_mercari.sync.sync_progress import make_sync_reporter
 
 log = logging.getLogger(__name__)
 
@@ -124,7 +124,7 @@ async def delete_mercari_item(
         LISTINGS_PAGE_URL,
         sync_on_sale_from_listings_browser_page,
     )
-    from ....use_mercari.sync_data import _resolve_account_and_seller
+    from ....use_mercari.sync.sync_data import _resolve_account_and_seller
     from ....ssl_mitm_proxy.capture_config import clear_on_sale_list_response_file
 
     report = make_sync_reporter(progress_job_id)

@@ -22,11 +22,11 @@ from .get_order.description_mgmt_ids import (
     _inventory_id_exists,
     _resolve_inventory_id_by_bundle_title,
 )
-from .on_sale_item_detail_sync import (
+from .on_sale.on_sale_item_detail_sync import (
     _is_matome_listing_bundle_by_title_and_description,
     parse_listing_description_tokens_with_quantity,
 )
-from .on_sale_items_sync import recalculate_and_persist_inventory_on_sale_quantity
+from .on_sale.on_sale_items_sync import recalculate_and_persist_inventory_on_sale_quantity
 
 log = logging.getLogger(__name__)
 

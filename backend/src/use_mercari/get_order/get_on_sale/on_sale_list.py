@@ -427,8 +427,8 @@ async def sync_on_sale_from_listings_browser_page(
         ),
     )
 
-    from ...on_sale_item_detail_sync import auto_fetch_details_for_inserted_items
-    from ...on_sale_items_sync import apply_on_sale_list_sync
+    from ...on_sale.on_sale_item_detail_sync import auto_fetch_details_for_inserted_items
+    from ...on_sale.on_sale_items_sync import apply_on_sale_list_sync
 
     items, meta = await _expand_on_sale_listings_until_end(page, seller_key)
     stats = apply_on_sale_list_sync(seller_key, items, meta)

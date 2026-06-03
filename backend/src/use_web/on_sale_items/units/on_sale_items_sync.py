@@ -14,19 +14,19 @@ from ....web_drive.core.account_serial_queue import (
 )
 from ....web_drive.core.manager import get_web_drive_manager
 from ....web_drive.core.paths import mercari_account_key
-from ....use_mercari.on_sale_item_detail_sync import fetch_detail_and_sync_inventory
-from ....use_mercari.on_sale_items_sync import sync_on_sale_items_from_mercari
-from ....use_mercari.on_sale_sync_progress import (
+from ....use_mercari.on_sale.on_sale_item_detail_sync import fetch_detail_and_sync_inventory
+from ....use_mercari.on_sale.on_sale_items_sync import sync_on_sale_items_from_mercari
+from ....use_mercari.on_sale.on_sale_sync_progress import (
     clear_on_sale_sync_progress,
     get_on_sale_sync_progress,
 )
-from ....use_mercari.sync_progress import clear_sync_progress
-from ....use_mercari.sync_lock import (
+from ....use_mercari.sync.sync_progress import clear_sync_progress
+from ....use_mercari.sync.sync_lock import (
     LABEL_FULL,
     begin_or_conflict as sync_lock_begin,
     end as sync_lock_end,
 )
-from ....use_mercari.sync_data import (
+from ....use_mercari.sync.sync_data import (
     resolve_account_id_by_seller_id,
     resolve_enabled_account_ids,
 )

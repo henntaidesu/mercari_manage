@@ -27,10 +27,10 @@ from ....use_mercari.get_to_du_list.todolist_sync import sync_todos_from_mercari
 from ....use_mercari.get_notifications.notification_sync import (
     sync_notifications_from_mercari,
 )
-from ....use_mercari.on_sale_items_sync import sync_on_sale_items_from_mercari
-from ....use_mercari.sync_data import batch_refresh_orders_info, sync_new_data
-from ....use_mercari.sync_progress import clear_sync_progress, set_sync_progress_page
-from ....use_mercari.sync_lock import (
+from ....use_mercari.on_sale.on_sale_items_sync import sync_on_sale_items_from_mercari
+from ....use_mercari.sync.sync_data import batch_refresh_orders_info, sync_new_data
+from ....use_mercari.sync.sync_progress import clear_sync_progress, set_sync_progress_page
+from ....use_mercari.sync.sync_lock import (
     LABEL_FULL,
     begin_or_conflict as sync_lock_begin,
     end as sync_lock_end,

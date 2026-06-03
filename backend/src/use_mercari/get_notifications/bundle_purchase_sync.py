@@ -217,7 +217,7 @@ async def sync_bundle_purchase_from_mercari(
     打开 ``https://jp.mercari.com/bundle_offer/{bundle_id}``（经 MITM 代理），
     等待 ``/v1/bundlePurchases/{bundle_id}`` 响应落盘后入库。
     """
-    from ..sync_progress import make_sync_reporter
+    from ..sync.sync_progress import make_sync_reporter
     report = make_sync_reporter(progress_job_id)
     report("resolve_account", "正在准备煤炉账号…")
     bid = str(bundle_id or "").strip()

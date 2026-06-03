@@ -340,7 +340,7 @@ async def decide_bundle_purchase(
     accept 填表 + 点「依頼を承諾する」；reject 直接点「依頼を断る」。
     完成后关闭浏览器。**不使用队列**。
     """
-    from ..sync_progress import make_sync_reporter
+    from ..sync.sync_progress import make_sync_reporter
     report = make_sync_reporter(progress_job_id)
     report("resolve_account", "正在准备煤炉账号…")
     bid = str(bundle_id or "").strip()

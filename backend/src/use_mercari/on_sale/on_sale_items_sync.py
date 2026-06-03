@@ -22,7 +22,7 @@ from .on_sale_item_detail_sync import (
     relink_inventory_from_persisted_listing,
 )
 from .on_sale_sync_progress import make_on_sale_sync_reporter
-from ..sync_data import _resolve_account_and_seller
+from ..sync.sync_data import _resolve_account_and_seller
 from ...db_manage.models.on_sale_item import OnSaleItemModel
 from ...db_manage.database import DatabaseManager
 from ...ssl_mitm_proxy.capture_config import (

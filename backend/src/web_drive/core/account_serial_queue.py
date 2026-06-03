@@ -182,7 +182,7 @@ async def run_mercari_serial_async(
 
 def resolve_mercari_account_id(account_id: Optional[int]) -> int:
     """与 ``sync_new_data`` 等一致：解析最终使用的煤炉账号主键。"""
-    from ...use_mercari.sync_data import _resolve_account_and_seller
+    from ...use_mercari.sync.sync_data import _resolve_account_and_seller
 
     aid, _ = _resolve_account_and_seller(account_id)
     return int(aid)

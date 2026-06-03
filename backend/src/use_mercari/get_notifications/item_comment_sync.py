@@ -60,7 +60,7 @@ async def sync_item_comments_from_mercari(
             "comments": [{id, user_id, user_name, user_photo, message, created_ms}, ...],
         }
     """
-    from ..sync_progress import make_sync_reporter
+    from ..sync.sync_progress import make_sync_reporter
     report = make_sync_reporter(progress_job_id)
     report("resolve_account", "正在准备煤炉账号…")
     iid = str(item_id or "").strip()

@@ -11,7 +11,7 @@ from .....db_manage.models.todo_item import TodoItemModel
 from .....web_drive.core.manager import get_web_drive_manager
 from .....web_drive.core.mitm_session import mitm_automation_browser
 from .....web_drive.core.paths import mercari_account_key
-from ....sync_progress import make_sync_reporter
+from ....sync.sync_progress import make_sync_reporter
 from .._common import _is_wait_shipping_todo
 from .._ui import _click_visible_button_by_text
 from .qr_scan import _SCAN_OK_TEXT

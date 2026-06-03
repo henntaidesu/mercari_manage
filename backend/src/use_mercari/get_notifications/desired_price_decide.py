@@ -208,7 +208,7 @@ async def decide_desired_price(
     打开 /item/{item_id}/desired_price (持久化主 profile + MITM),
     accept 点「売る」 / reject 点「売らない」。完成后关闭浏览器。
     """
-    from ..sync_progress import make_sync_reporter
+    from ..sync.sync_progress import make_sync_reporter
     report = make_sync_reporter(progress_job_id)
     report("resolve_account", "正在准备煤炉账号…")
     iid = str(item_id or "").strip()

@@ -10,7 +10,7 @@ from ....use_mercari.get_notifications.bundle_purchase_sync import (
     _resolve_account_id,
     sync_bundle_purchase_from_mercari,
 )
-from ....use_mercari.sync_progress import clear_sync_progress
+from ....use_mercari.sync.sync_progress import clear_sync_progress
 from ....web_drive.core.account_serial_queue import (
     queue_key_for_mercari_account,
     run_mercari_serial_async,

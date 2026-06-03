@@ -11,11 +11,11 @@ from ....use_mercari.get_notifications.notification_sync import (
     resolve_enabled_account_ids,
     sync_notifications_from_mercari,
 )
-from ....use_mercari.sync_progress import (
+from ....use_mercari.sync.sync_progress import (
     clear_sync_progress,
     get_sync_progress,
 )
-from ....use_mercari.sync_lock import (
+from ....use_mercari.sync.sync_lock import (
     LABEL_FULL,
     begin_or_conflict as sync_lock_begin,
     end as sync_lock_end,

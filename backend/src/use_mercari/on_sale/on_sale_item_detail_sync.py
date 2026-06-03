@@ -28,7 +28,7 @@ from ..get_order.mercari_item_get import (
     fetch_mercari_item_get,
     fetch_mercari_item_get_in_browser_session,
 )
-from ..sync_progress import make_sync_reporter
+from ..sync.sync_progress import make_sync_reporter
 
 _MERCARI_ID_SEP_RE = re.compile(r"[\n,，、\s]+")
 

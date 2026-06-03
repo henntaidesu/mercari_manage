@@ -44,7 +44,7 @@ from ...use_mercari.get_notifications.item_comment_post import post_item_comment
 from ...use_mercari.get_notifications.item_comment_sync import (
     sync_item_comments_from_mercari,
 )
-from ...use_mercari.sync_progress import clear_sync_progress, get_sync_progress
+from ...use_mercari.sync.sync_progress import clear_sync_progress, get_sync_progress
 from .units.bundle_purchase_models import (
     BundlePurchaseDecideRequest,
     BundlePurchaseSyncRequest,

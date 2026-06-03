@@ -210,7 +210,7 @@ async def sync_desired_price_from_mercari(
             "offers": [...],  # 多条降价请求列表(便于前端展示)
         }
     """
-    from ..sync_progress import make_sync_reporter
+    from ..sync.sync_progress import make_sync_reporter
     report = make_sync_reporter(progress_job_id)
     report("resolve_account", "正在准备煤炉账号…")
     iid = str(item_id or "").strip()

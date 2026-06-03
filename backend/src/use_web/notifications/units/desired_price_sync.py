@@ -10,7 +10,7 @@ from ....use_mercari.get_notifications.desired_price_sync import (
     _resolve_account_id,
     sync_desired_price_from_mercari,
 )
-from ....use_mercari.sync_progress import clear_sync_progress
+from ....use_mercari.sync.sync_progress import clear_sync_progress
 from .desired_price_models import DesiredPriceSyncRequest
 
 

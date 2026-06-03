@@ -10,7 +10,7 @@ from ....db_manage.database import DatabaseManager
 from ....db_manage.models.todo_item import TodoItemModel
 from ....ssl_mitm_proxy.capture_config import clear_shipping_info_response_file, clear_transaction_messages_response_file
 from ....web_drive.core.mitm_session import mitm_automation_browser
-from ...sync_progress import make_sync_reporter
+from ...sync.sync_progress import make_sync_reporter
 from ._cache import _clear_qr_image, _persist_transaction_detail
 from ._captures import _wait_for_both_captures
 from ._common import _WAIT_REPLY_KINDS, _is_wait_shipping_todo, _parse_messages, _parse_shipping_info

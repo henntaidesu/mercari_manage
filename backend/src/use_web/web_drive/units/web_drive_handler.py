@@ -258,7 +258,7 @@ async def delete_on_sale_item(body: DeleteMercariItemBody):
     from ....web_drive.core.paths import mercari_id_from_account_key
     from ....web_drive.delete.units.delete_order import delete_mercari_item as _do_delete
     from ....ssl_mitm_proxy.runner import default_mitm_proxy_url
-    from ....use_mercari.sync_progress import clear_sync_progress
+    from ....use_mercari.sync.sync_progress import clear_sync_progress
 
     item_id = (body.item_id or "").strip()
     if not item_id:
@@ -335,7 +335,7 @@ async def revise_on_sale_item(body: ReviseMercariItemBody):
     from ....web_drive.core.paths import mercari_id_from_account_key
     from ....web_drive.revise.units.revise_order import revise_mercari_item as _do_revise
     from ....ssl_mitm_proxy.runner import default_mitm_proxy_url
-    from ....use_mercari.sync_progress import clear_sync_progress
+    from ....use_mercari.sync.sync_progress import clear_sync_progress
 
     item_id = (body.item_id or "").strip()
     if not item_id:
@@ -413,7 +413,7 @@ async def resume_on_sale_item(body: ResumeMercariItemBody):
     from ....web_drive.core.paths import mercari_id_from_account_key
     from ....web_drive.resume.units.resume_order import resume_mercari_item as _do_resume
     from ....ssl_mitm_proxy.runner import default_mitm_proxy_url
-    from ....use_mercari.sync_progress import clear_sync_progress
+    from ....use_mercari.sync.sync_progress import clear_sync_progress
 
     item_id = (body.item_id or "").strip()
     if not item_id:
@@ -500,7 +500,7 @@ async def suspend_on_sale_item(body: SuspendMercariItemBody):
     from ....web_drive.core.paths import mercari_id_from_account_key
     from ....web_drive.suspend.units.suspend_order import suspend_mercari_item as _do_suspend
     from ....ssl_mitm_proxy.runner import default_mitm_proxy_url
-    from ....use_mercari.sync_progress import clear_sync_progress
+    from ....use_mercari.sync.sync_progress import clear_sync_progress
 
     item_id = (body.item_id or "").strip()
     if not item_id:

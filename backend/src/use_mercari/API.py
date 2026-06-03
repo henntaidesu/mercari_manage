@@ -22,18 +22,18 @@ from ..web_drive.core.account_serial_queue import (
 )
 from ..web_drive.core.manager import get_web_drive_manager
 from ..web_drive.core.paths import mercari_account_key
-from .sync_data import (
+from .sync.sync_data import (
     batch_refresh_orders_info,
     history_sync_precheck,
     resolve_enabled_account_ids,
     sync_new_data,
     sync_open_orders,
 )
-from .sync_progress import (
+from .sync.sync_progress import (
     clear_sync_progress,
     get_sync_progress,
 )
-from .sync_lock import (
+from .sync.sync_lock import (
     LABEL_FULL,
     begin_or_conflict as sync_lock_begin,
     end as sync_lock_end,

@@ -10,7 +10,7 @@ from ....db_manage.models.todo_item import TodoItemModel
 from ....web_drive.core.manager import get_web_drive_manager
 from ....web_drive.core.paths import mercari_account_key
 from ...get_order.get_in_progress_order.get_order_info import apply_item_info_to_order
-from ...sync_progress import make_sync_reporter
+from ...sync.sync_progress import make_sync_reporter
 
 log = logging.getLogger(__name__)
 

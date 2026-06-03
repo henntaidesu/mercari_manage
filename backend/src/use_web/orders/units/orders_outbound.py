@@ -13,8 +13,8 @@ from ....use_mercari.get_order.description_mgmt_ids import (
     refresh_inventory_pending_outbound_qty,
 )
 from ....use_mercari.get_order.get_in_progress_order.get_order_info import apply_item_info_to_order
-from ....use_mercari.sync_data import resolve_account_id_by_seller_id
-from ....use_mercari.sync_progress import (
+from ....use_mercari.sync.sync_data import resolve_account_id_by_seller_id
+from ....use_mercari.sync.sync_progress import (
     clear_sync_progress,
     get_sync_progress,
 )

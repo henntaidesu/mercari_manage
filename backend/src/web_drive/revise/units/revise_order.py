@@ -24,7 +24,7 @@ from ...delete.units.delete_order import (
     mercari_item_path_segment,
     _page_for_session,
 )
-from ....use_mercari.sync_progress import make_sync_reporter
+from ....use_mercari.sync.sync_progress import make_sync_reporter
 
 log = logging.getLogger(__name__)
 

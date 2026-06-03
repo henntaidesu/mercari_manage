@@ -144,7 +144,7 @@ async def post_item_comment(
     发送完成后**不关闭**浏览器:用户可能在弹窗里继续发评论,浏览器需保持开启,
     直到前端弹窗关闭/页面卸载时显式调 ``/item-comment/close``。
     """
-    from ..sync_progress import make_sync_reporter
+    from ..sync.sync_progress import make_sync_reporter
     report = make_sync_reporter(progress_job_id)
     report("resolve_account", "正在准备发送评论…")
     iid = str(item_id or "").strip()

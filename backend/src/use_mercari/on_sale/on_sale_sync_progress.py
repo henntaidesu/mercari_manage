@@ -5,7 +5,7 @@
 """
 from __future__ import annotations
 
-from ..sync_progress import (
+from ..sync.sync_progress import (
     clear_sync_progress as clear_on_sale_sync_progress,
     get_sync_progress as get_on_sale_sync_progress,
     make_sync_reporter as make_on_sale_sync_reporter,

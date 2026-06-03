@@ -8,7 +8,7 @@ from fastapi import HTTPException
 from ....db_manage.database import DatabaseManager
 from ....db_manage.models.on_sale_item import OnSaleItemModel
 from ....db_manage.models.warehouse import WarehouseModel
-from ....use_mercari.on_sale_items_sync import _is_active_on_sale
+from ....use_mercari.on_sale.on_sale_items_sync import _is_active_on_sale
 from ....use_mercari.get_order.description_mgmt_ids import (
     parse_management_ids_from_description,
 )
