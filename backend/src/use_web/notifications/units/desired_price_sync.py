@@ -6,7 +6,7 @@ from typing import Any, Dict
 
 from fastapi import HTTPException
 
-from ....use_mercari.get_notifications.desired_price_sync import (
+from ....use_mercari.get_notifications.desired_price.desired_price_sync import (
     _resolve_account_id,
     sync_desired_price_from_mercari,
 )

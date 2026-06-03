@@ -31,17 +31,17 @@ from typing import Any, Dict, Optional
 
 from fastapi import APIRouter, HTTPException
 
-from ...use_mercari.get_notifications.bundle_purchase_decide import (
+from ...use_mercari.get_notifications.bundle_purchase.bundle_purchase_decide import (
     BundleAlreadyDecidedError,
     decide_bundle_purchase,
 )
-from ...use_mercari.get_notifications.desired_price_decide import (
+from ...use_mercari.get_notifications.desired_price.desired_price_decide import (
     DesiredPriceAlreadyDecidedError,
     decide_desired_price,
 )
-from ...use_mercari.get_notifications.item_comment_close import close_account_browser
-from ...use_mercari.get_notifications.item_comment_post import post_item_comment
-from ...use_mercari.get_notifications.item_comment_sync import (
+from ...use_mercari.get_notifications.item_comment.item_comment_close import close_account_browser
+from ...use_mercari.get_notifications.item_comment.item_comment_post import post_item_comment
+from ...use_mercari.get_notifications.item_comment.item_comment_sync import (
     sync_item_comments_from_mercari,
 )
 from ...use_mercari.sync.sync_progress import clear_sync_progress, get_sync_progress

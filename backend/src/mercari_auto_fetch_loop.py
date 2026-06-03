@@ -23,7 +23,7 @@ from typing import Any, Dict, List, Optional, Tuple
 
 from .db_manage.models.mercari_account import MercariAccountModel
 from .db_manage.models.system_log import SystemLogModel
-from .use_mercari.get_notifications.notification_sync import sync_notifications_from_mercari
+from .use_mercari.get_notifications.notification.notification_sync import sync_notifications_from_mercari
 from .use_mercari.get_to_du_list.todolist_sync import sync_todos_from_mercari
 from .use_mercari.on_sale.on_sale_items_sync import sync_on_sale_items_from_mercari
 from .use_mercari.sync.sync_data import sync_new_data

@@ -24,7 +24,7 @@ from ....web_drive.core.account_serial_queue import (
 from ....web_drive.core.manager import get_web_drive_manager
 from ....web_drive.core.paths import mercari_account_key
 from ....use_mercari.get_to_du_list.todolist_sync import sync_todos_from_mercari
-from ....use_mercari.get_notifications.notification_sync import (
+from ....use_mercari.get_notifications.notification.notification_sync import (
     sync_notifications_from_mercari,
 )
 from ....use_mercari.on_sale.on_sale_items_sync import sync_on_sale_items_from_mercari
