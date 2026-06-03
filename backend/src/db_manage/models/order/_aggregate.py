@@ -1,0 +1,224 @@
+# -*- coding: utf-8 -*-
+"""订单聚合/筛选查询：金额汇总 / 包材费用 / owner 分账 / 列表过滤"""
+
+from typing import Any, Dict, List, Optional, Tuple
+
+
+class _AggregateMixin:
+
+    @classmethod
+    def _build_list_filter(
+        cls,
+        keyword: Optional[str] = None,
+        status: Optional[str] = None,
+        start_ts: Optional[int] = None,
+        end_ts: Optional[int] = None,
+        owner_user_id: Optional[int] = None,
+    ) -> Tuple[str, List[Any]]:
+        base_sql = """
+            FROM [orders] o
+            WHERE 1=1
+        """
+        params: List[Any] = []
+        if keyword:
+            base_sql += (
+                " AND (o.order_no LIKE ? OR o.customer_name LIKE ? "
+                "OR IFNULL(o.data_user, '') LIKE ? "
+                "OR IFNULL(o.remark, '') LIKE ? "
+                "OR IFNULL(o.description, '') LIKE ?)"
+            )
+            kw = f"%{keyword}%"
+            params += [kw, kw, kw, kw, kw]
+        if status:
+            base_sql += " AND o.status = ?"
+            params.append(status)
+        if start_ts is not None:
+            base_sql += (
+                " AND COALESCE(o.order_updated_at, o.purchase_time, o.order_date) >= ?"
+            )
+            params.append(int(start_ts))
+        if end_ts is not None:
+            base_sql += (
+                " AND COALESCE(o.order_updated_at, o.purchase_time, o.order_date) <= ?"
+            )
+            params.append(int(end_ts))
+        if owner_user_id is not None and int(owner_user_id) > 0:
+            base_sql += """
+                AND EXISTS (
+                    SELECT 1 FROM [order_outbound_lines] l
+                    INNER JOIN [inventory] p ON p.id = l.inventory_id
+                    WHERE l.[order_no] = o.[order_no]
+                      AND p.[owner_user_id] = ?
+                )
+            """
+            params.append(int(owner_user_id))
+        return base_sql, params
+
+
+    @classmethod
+    def aggregate_sums(
+        cls,
+        keyword: Optional[str] = None,
+        status: Optional[str] = None,
+        start_ts: Optional[int] = None,
+        end_ts: Optional[int] = None,
+        owner_user_id: Optional[int] = None,
+    ) -> Dict[str, Any]:
+        """
+        与列表相同的筛选条件下，对全量匹配行求和（非当前页）。
+
+        统计口径：status=cancelled 的订单不计入 total_count / sum_amount /
+        sum_service_fee / sum_shipping_fee / sum_net_income（与列表筛选无关，列表仍可只看已取消）。
+
+        若指定 owner_user_id，则金额类字段按该归属在单内的拆分比例累加（与订单列表展示一致）。
+        """
+        if owner_user_id is not None and int(owner_user_id) > 0:
+            return cls._aggregate_sums_with_owner_money_split(
+                keyword=keyword,
+                status=status,
+                start_ts=start_ts,
+                end_ts=end_ts,
+                owner_user_id=int(owner_user_id),
+            )
+        db = cls().db
+        base_sql, params = cls._build_list_filter(
+            keyword=keyword,
+            status=status,
+            start_ts=start_ts,
+            end_ts=end_ts,
+            owner_user_id=owner_user_id,
+        )
+        base_sql += " AND o.status != 'cancelled'"
+        sql = f"""
+            SELECT
+                COUNT(*),
+                COALESCE(SUM(o.amount), 0),
+                COALESCE(SUM(o.service_fee), 0),
+                COALESCE(SUM(o.shipping_fee), 0),
+                COALESCE(SUM(o.net_income), 0)
+            {base_sql}
+        """
+        row = db.execute_query(sql, tuple(params))[0]
+        return {
+            "total_count": int(row[0]),
+            "sum_amount": int(row[1]),
+            "sum_service_fee": int(row[2]),
+            "sum_shipping_fee": int(row[3]),
+            "sum_net_income": int(row[4]),
+        }
+
+
+    @classmethod
+    def aggregate_packaging_expense_yen(
+        cls,
+        keyword: Optional[str] = None,
+        status: Optional[str] = None,
+        start_ts: Optional[int] = None,
+        end_ts: Optional[int] = None,
+        owner_user_id: Optional[int] = None,
+    ) -> int:
+        """
+        与 aggregate_sums 相同订单筛选下，「包装材料」支出合计（quantity * unit_price，日元整数）。
+
+        已取消订单排除；若指定 owner_user_id，仅统计 cost_expenses.owner 与该用户
+        display_name / username 一致的明细行（与列表按归属筛选时口径一致）。
+        """
+        db = cls().db
+        base_sql, params = cls._build_list_filter(
+            keyword=keyword,
+            status=status,
+            start_ts=start_ts,
+            end_ts=end_ts,
+            owner_user_id=owner_user_id,
+        )
+        base_sql = base_sql.replace(
+            "FROM [orders] o",
+            "FROM [orders] o\n"
+            "            INNER JOIN [cost_expenses] e ON e.[order_no] = o.[order_no] AND e.[type] = '包装材料'",
+            1,
+        )
+        base_sql += " AND o.status != 'cancelled'"
+        qparams: List[Any] = list(params)
+        oid = int(owner_user_id or 0)
+        if oid > 0:
+            base_sql += """
+                AND EXISTS (
+                    SELECT 1 FROM [users] u
+                    WHERE u.[id] = ?
+                      AND TRIM(COALESCE(e.[owner], '')) != ''
+                      AND (
+                          TRIM(COALESCE(e.[owner], '')) = TRIM(COALESCE(u.[display_name], ''))
+                          OR TRIM(COALESCE(e.[owner], '')) = TRIM(COALESCE(u.[username], ''))
+                      )
+                )
+            """
+            qparams.append(oid)
+        sql = f"""
+            SELECT COALESCE(SUM(COALESCE(e.[quantity], 0) * COALESCE(e.[unit_price], 0)), 0)
+            {base_sql}
+        """
+        row = db.execute_query(sql, tuple(qparams))[0]
+        try:
+            return max(0, int(row[0] or 0))
+        except (TypeError, ValueError):
+            return 0
+
+
+    @classmethod
+    def _aggregate_sums_with_owner_money_split(
+        cls,
+        keyword: Optional[str] = None,
+        status: Optional[str] = None,
+        start_ts: Optional[int] = None,
+        end_ts: Optional[int] = None,
+        owner_user_id: int = 0,
+    ) -> Dict[str, Any]:
+        from ...use_web.orders.units.order_goods_ratio import split_order_money_for_owner_user
+
+        db = cls().db
+        base_sql, params = cls._build_list_filter(
+            keyword=keyword,
+            status=status,
+            start_ts=start_ts,
+            end_ts=end_ts,
+            owner_user_id=int(owner_user_id),
+        )
+        base_sql += " AND o.status != 'cancelled'"
+        sql = f"""
+            SELECT o.order_no, o.amount, o.service_fee, o.shipping_fee, o.net_income
+            {base_sql}
+        """
+        rows = db.execute_query(sql, tuple(params))
+        oid = int(owner_user_id)
+        tc = 0
+        sa = ss = sh = sn = 0
+        for r in rows:
+            if not r or len(r) < 5:
+                continue
+            ono, amt, sf, ship, ni = r[0], r[1], r[2], r[3], r[4]
+            parts = split_order_money_for_owner_user(
+                str(ono or "").strip(),
+                oid,
+                amt,
+                sf,
+                ship,
+                ni,
+            )
+            tc += 1
+            sa += int(parts.get("amount") or 0)
+            pv = parts.get("service_fee")
+            if pv is not None:
+                ss += int(pv)
+            pv = parts.get("shipping_fee")
+            if pv is not None:
+                sh += int(pv)
+            pv = parts.get("net_income")
+            if pv is not None:
+                sn += int(pv)
+        return {
+            "total_count": tc,
+            "sum_amount": sa,
+            "sum_service_fee": ss,
+            "sum_shipping_fee": sh,
+            "sum_net_income": sn,
+        }

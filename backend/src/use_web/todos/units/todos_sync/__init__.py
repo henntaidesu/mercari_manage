@@ -1,0 +1,48 @@
+# -*- coding: utf-8 -*-
+"""待办事项 HTTP 层包。
+
+原单文件 ``todos_sync.py`` 已按职责拆分（同步 / 详情 / 处理动作）；``__init__``
+重新导出全部端点函数，保持 ``from .units.todos_sync import X`` 旧导入不变。
+"""
+
+from .sync import sync_todos
+from .detail import (
+    fetch_todo_transaction_detail,
+    get_cached_todo_transaction_detail,
+    todos_sync_progress,
+)
+from .actions import (
+    camera_frame_endpoint,
+    change_shipping_method_endpoint,
+    close_detail_browser,
+    confirm_change_shipping_method_endpoint,
+    confirm_shipping_selection_endpoint,
+    finalize_post_shipping_endpoint,
+    post_shipping_info_endpoint,
+    qr_scanner_frame_endpoint,
+    revise_shipping_after_qr_endpoint,
+    send_message_reaction_endpoint,
+    send_transaction_message_endpoint,
+    start_shipping_class_endpoint,
+    submit_transaction_review_endpoint,
+)
+
+__all__ = [
+    "sync_todos",
+    "todos_sync_progress",
+    "fetch_todo_transaction_detail",
+    "get_cached_todo_transaction_detail",
+    "send_transaction_message_endpoint",
+    "revise_shipping_after_qr_endpoint",
+    "start_shipping_class_endpoint",
+    "confirm_shipping_selection_endpoint",
+    "submit_transaction_review_endpoint",
+    "change_shipping_method_endpoint",
+    "confirm_change_shipping_method_endpoint",
+    "send_message_reaction_endpoint",
+    "close_detail_browser",
+    "post_shipping_info_endpoint",
+    "finalize_post_shipping_endpoint",
+    "qr_scanner_frame_endpoint",
+    "camera_frame_endpoint",
+]
