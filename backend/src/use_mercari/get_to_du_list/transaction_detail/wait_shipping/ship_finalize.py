@@ -154,12 +154,96 @@ async def _has_tracking_number(page: Any, *, body_text: Optional[str] = None) ->
     except Exception:
         return False
 
+async def _run_post_ship_steps(page: Any, report: Any, todo_id: int) -> Dict[str, Any]:
+    """在给定页面上执行：勾选确认 → 発送通知 → 二次确认「発送しました」 → 等待发送成功。
+
+    不做任何 reload —— 页面已处于「待发送通知」状态（扫码/控え确认后），直接操作。
+    返回 ``{ticked, confirmed, shipped_ok, success_signal}``。
+    """
+    # ── Step 1: 確認チェックボックスにチェック（「ご依頼主様控えを切り取りました」等） ──
+    report("check_confirm", "正在勾选确认项…")
+    ticked = await _tick_ship_confirm_checkboxes(page)
+    if ticked == 0:
+        log.warning(
+            "[postship] 確認チェックボックスが見つからず（当前 URL: %s）。"
+            "そのまま発送通知ボタンを試行します。",
+            page.url,
+        )
+    await asyncio.sleep(0.2)
+
+    # ── Step 2: 「商品を発送したので、発送通知をする」 ──
+    report("click_notify", "正在点击「発送通知をする」…")
+    if not await _click_visible_button_by_text(page, _NOTIFY_SHIP_BUTTON_TEXT, timeout_ms=8000):
+        raise RuntimeError(
+            f"未找到/未能点击「{_NOTIFY_SHIP_BUTTON_TEXT}」按钮（当前 URL: {page.url}）"
+        )
+    log.info("[postship] 点击「%s」", _NOTIFY_SHIP_BUTTON_TEXT)
+
+    # ── Step 3: 二次确认ダイアログ「発送しました」 ──
+    # 通知ボタン押下後にモーダルが開く。アニメーション完了を待ってから、
+    # 可視・有効なボタンだけをクリック（非表示の複製を踏まないように）
+    report("click_shipped", "正在点击二次确认「発送しました」…")
+    await asyncio.sleep(0.6)
+    confirmed = await _click_visible_button_by_text(
+        page, _SHIPPED_CONFIRM_BUTTON_TEXT, timeout_ms=8000,
+    )
+    if confirmed:
+        log.info("[postship] 点击二次确认「%s」 完成发货通知", _SHIPPED_CONFIRM_BUTTON_TEXT)
+    else:
+        log.warning(
+            "[postship] 二次确认「%s」按钮未出现/未能点击。URL: %s",
+            _SHIPPED_CONFIRM_BUTTON_TEXT, page.url,
+        )
+
+    # ── Step 4: 数据発送＋页面再読込を待つ。発送成功の判定 ──
+    #   - ゆうゆう/汎用：「購入者の受取をお待ちください」が出れば成功
+    #   - らくらくメルカリ便：発送通知後にページ再読込で「送り状番号」(ヤマト追跡番号)が
+    #     表示されれば成功（発送前は出ない）。data-partner-id="tracking-number" を優先。
+    report("waiting_reload", "已发送，正在等待页面刷新与发送完成…")
+    await asyncio.sleep(3)  # クリック後の送信・再読込待ち（要件）
+    shipped_ok = False
+    success_signal = ""
+    deadline = time.monotonic() + 15
+    while time.monotonic() < deadline:
+        try:
+            text = await page.inner_text("body")
+        except Exception:
+            text = ""
+        if _SHIP_SUCCESS_TEXT in text:
+            shipped_ok = True
+            success_signal = _SHIP_SUCCESS_TEXT
+            break
+        # らくらくメルカリ便：送り状番号(追跡番号)が出れば発送完了とみなす
+        if await _has_tracking_number(page, body_text=text):
+            shipped_ok = True
+            success_signal = "送り状番号"
+            break
+        await asyncio.sleep(0.5)
+    if shipped_ok:
+        log.info("[postship] 检测到成功标志「%s」 发送成功 todo=%s", success_signal, todo_id)
+    else:
+        log.warning(
+            "[postship] 未检测到发送成功标志（购入者受取待ち/送り状番号）(可能仍在处理)。URL: %s",
+            page.url,
+        )
+    return {
+        "ticked": ticked,
+        "confirmed": confirmed,
+        "shipped_ok": shipped_ok,
+        "success_signal": success_signal,
+    }
+
 async def finalize_post_shipping(
     todo_id: int,
     *,
     progress_job_id: Optional[str] = None,
 ) -> Dict[str, Any]:
-    """ユーザーの二次確認後：確認チェック → 発送通知 → 「発送しました」を順にクリック。"""
+    """确认发送：勾选确认 → 発送通知 → 「発送しました」二次确认。
+
+    **不刷新页面**：页面已处于「待发送通知」状态（扫码/控え确认后再 reload 会丢失该状态），
+    故优先复用已打开浏览器的当前页面直接操作；仅当浏览器未打开时才用 mitm_automation_browser
+    打开并导航到交易页作为兜底。
+    """
     report = make_sync_reporter(progress_job_id)
     report("resolve_todo", "正在准备发货确认…")
     todo = TodoItemModel.find_by_id(id=int(todo_id))
@@ -171,88 +255,42 @@ async def finalize_post_shipping(
         raise ValueError("该待办无关联 item_id，无法打开交易页")
     url = f"https://jp.mercari.com/transaction/{item_id}"
 
-    # 点「确认发送」不依赖已打开的浏览器：mitm_automation_browser 已开则复用并 reload
-    # 到交易页，未开则自动启动（待发货走有头）；退出不关闭，保持持久化浏览器。
-    is_wait_shipping = _is_wait_shipping_todo(todo)
-    headless_override = False if is_wait_shipping else None
-    minimized_override = False if is_wait_shipping else None
-    report("open_browser", f"正在打开交易页（{item_id}）…")
+    mgr = get_web_drive_manager()
+    auto_key = mercari_account_key(aid)
     ticked = 0
     confirmed = False
     shipped_ok = False
-    success_signal = ""
-    async with mitm_automation_browser(
-        aid,
-        start_url=url,
-        headless=headless_override,
-        minimized=minimized_override,
-    ) as (mgr, auto_key):
+
+    # ── 优先：复用已打开浏览器的当前页面，直接点击（不 reload）。──
+    page = None
+    try:
         page = await mgr.active_tab_page(auto_key)
+    except Exception:
+        page = None
 
-        # ── Step 1: 確認チェックボックスにチェック（「ご依頼主様控えを切り取りました」等） ──
-        report("check_confirm", "正在勾选确认项…")
-        ticked = await _tick_ship_confirm_checkboxes(page)
-        if ticked == 0:
-            log.warning(
-                "[postship] 確認チェックボックスが見つからず（当前 URL: %s）。"
-                "そのまま発送通知ボタンを試行します。",
-                page.url,
-            )
-        await asyncio.sleep(0.2)
-
-        # ── Step 2: 「商品を発送したので、発送通知をする」 ──
-        report("click_notify", "正在点击「発送通知をする」…")
-        if not await _click_visible_button_by_text(page, _NOTIFY_SHIP_BUTTON_TEXT, timeout_ms=8000):
-            raise RuntimeError(
-                f"未找到/未能点击「{_NOTIFY_SHIP_BUTTON_TEXT}」按钮（当前 URL: {page.url}）"
-            )
-        log.info("[postship] 点击「%s」", _NOTIFY_SHIP_BUTTON_TEXT)
-
-        # ── Step 3: 二次确认ダイアログ「発送しました」 ──
-        # 通知ボタン押下後にモーダルが開く。アニメーション完了を待ってから、
-        # 可視・有効なボタンだけをクリック（非表示の複製を踏まないように）
-        report("click_shipped", "正在点击二次确认「発送しました」…")
-        await asyncio.sleep(0.6)
-        confirmed = await _click_visible_button_by_text(
-            page, _SHIPPED_CONFIRM_BUTTON_TEXT, timeout_ms=8000,
-        )
-        if confirmed:
-            log.info("[postship] 点击二次确认「%s」 完成发货通知", _SHIPPED_CONFIRM_BUTTON_TEXT)
-        else:
-            log.warning(
-                "[postship] 二次确认「%s」按钮未出现/未能点击。URL: %s",
-                _SHIPPED_CONFIRM_BUTTON_TEXT, page.url,
-            )
-
-        # ── Step 4: 数据発送＋页面再読込を待つ。発送成功の判定 ──
-        #   - ゆうゆう/汎用：「購入者の受取をお待ちください」が出れば成功
-        #   - らくらくメルカリ便：発送通知後にページ再読込で「送り状番号」(ヤマト追跡番号)が
-        #     表示されれば成功（発送前は出ない）。data-partner-id="tracking-number" を優先。
-        report("waiting_reload", "已发送，正在等待页面刷新与发送完成…")
-        await asyncio.sleep(3)  # クリック後の送信・再読込待ち（要件）
-        deadline = time.monotonic() + 15
-        while time.monotonic() < deadline:
-            try:
-                text = await page.inner_text("body")
-            except Exception:
-                text = ""
-            if _SHIP_SUCCESS_TEXT in text:
-                shipped_ok = True
-                success_signal = _SHIP_SUCCESS_TEXT
-                break
-            # らくらくメルカリ便：送り状番号(追跡番号)が出れば発送完了とみなす
-            if await _has_tracking_number(page, body_text=text):
-                shipped_ok = True
-                success_signal = "送り状番号"
-                break
-            await asyncio.sleep(0.5)
-        if shipped_ok:
-            log.info("[postship] 检测到成功标志「%s」 发送成功 todo=%s", success_signal, todo_id)
-        else:
-            log.warning(
-                "[postship] 未检测到发送成功标志（购入者受取待ち/送り状番号）(可能仍在处理)。URL: %s",
-                page.url,
-            )
+    if page is not None:
+        log.info("[postship] 复用已打开页面直接操作（不刷新）account_id=%s", aid)
+        steps = await _run_post_ship_steps(page, report, int(todo_id))
+        ticked = int(steps.get("ticked", 0) or 0)
+        confirmed = bool(steps.get("confirmed"))
+        shipped_ok = bool(steps.get("shipped_ok"))
+    else:
+        # ── 兜底：浏览器未打开 → 打开并导航到交易页（待发货走有头），再操作。──
+        is_wait_shipping = _is_wait_shipping_todo(todo)
+        headless_override = False if is_wait_shipping else None
+        minimized_override = False if is_wait_shipping else None
+        report("open_browser", f"正在打开交易页（{item_id}）…")
+        async with mitm_automation_browser(
+            aid,
+            start_url=url,
+            headless=headless_override,
+            minimized=minimized_override,
+        ) as (mgr2, key):
+            page = await mgr2.active_tab_page(key)
+            steps = await _run_post_ship_steps(page, report, int(todo_id))
+            ticked = int(steps.get("ticked", 0) or 0)
+            confirmed = bool(steps.get("confirmed"))
+            shipped_ok = bool(steps.get("shipped_ok"))
 
     # ── Step 5: 成功确认后才软删除本地 todo（列表から消す） ──
     if shipped_ok:
