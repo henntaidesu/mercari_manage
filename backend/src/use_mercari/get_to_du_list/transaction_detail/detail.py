@@ -14,7 +14,7 @@ from ...sync.sync_progress import make_sync_reporter
 from ._cache import _clear_qr_image, _persist_transaction_detail
 from ._captures import _wait_for_both_captures
 from ._common import _WAIT_REPLY_KINDS, _is_wait_shipping_todo, _parse_messages, _parse_shipping_info
-from ._qr_facility import _extract_delivery_address, _extract_shipping_facility, _qr_code_exists, _save_qr_code_image
+from ._qr_facility import _extract_delivery_address, _extract_post_ship_ready, _extract_shipping_facility, _qr_code_exists, _save_qr_code_image
 
 log = logging.getLogger(__name__)
 
@@ -94,6 +94,7 @@ async def fetch_transaction_detail(
         synced_qr_url: Optional[str] = None
         synced_facility: Dict[str, str] = {}
         synced_recipient: Optional[str] = None
+        post_ship: Dict[str, Any] = {"ready": False, "confirm_code": None, "tracking_no": None}
         qr_checked = False
         qr_present = False
         try:
@@ -108,8 +109,11 @@ async def fetch_transaction_detail(
                 synced_facility = await _extract_shipping_facility(qr_page)
             # お届け先（未定/非匿名方式时页面才有）：与是否发行二维码无关，始终尝试抓取
             synced_recipient = await _extract_delivery_address(qr_page)
+            # 待发送通知状态（ゆうパケットポスト等：シール読み取り済みで发送通知待ち）
+            if not qr_present:
+                post_ship = await _extract_post_ship_ready(qr_page)
         except Exception as exc:
-            log.debug("[txdetail] 同步发货二维码/お届け先失败 todo_id=%s: %s", todo_id, exc)
+            log.debug("[txdetail] 同步发货二维码/お届け先/发送通知状态失败 todo_id=%s: %s", todo_id, exc)
 
     if shipping is None and messages is None:
         log.warning("[txdetail] 两个 API 均未截获 todo_id=%s", todo_id)
@@ -175,6 +179,11 @@ async def fetch_transaction_detail(
     # お届け先（买家收货地址）：仅「未定」(非匿名)方式页面才有；抓到即填，匿名(メルカリ便)
     # 则为 None。仅在 capture_ok（页面确已加载）时才会写库，故无需额外保守回退。
     result["recipient_address"] = synced_recipient or None
+    # 待发送通知状态（前端据此显示「确认发送」按钮，点后走 finalize_post_shipping）：
+    # 仅在未发行二维码图时有效（二维码场景由 qr_image_url 分支处理）。
+    result["post_ship_ready"] = bool(post_ship.get("ready")) and not synced_qr_url
+    result["ship_confirm_code"] = post_ship.get("confirm_code")
+    result["ship_tracking_no"] = post_ship.get("tracking_no")
     # 缓存有效性判定：只有真正截获到「该类型关键数据」时才写缓存并置 detail_synced_at；
     # 否则跳过——若仍标记为已缓存，则该待办会被永久当作「已缓存的空详情」：前端一直显示
     # 「待抓取」，且 list_uncached_detail_todo_ids 不再返回它，后续「从煤炉同步」批量预缓存

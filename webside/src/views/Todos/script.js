@@ -468,6 +468,10 @@ export default defineComponent({
         shipment_status: null,
         has_size_location_btn: false,
         has_change_method_btn: false,
+        // 待发送通知状态（ゆうパケットポスト等：シール读取已完成，待勾选+发送通知）
+        post_ship_ready: false,
+        ship_confirm_code: '',
+        ship_tracking_no: '',
         // 发行后保存到本地的发货二维码图片（/imges/...）
         qr_image_url: '',
         // 发送场所信息（发货码上方「○○から発送」标题/说明/设施图标 URL，煤炉 CDN）

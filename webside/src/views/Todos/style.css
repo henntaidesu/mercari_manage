@@ -422,6 +422,20 @@
   gap: 8px;
   flex-wrap: wrap;
 }
+/* 待发送通知（ゆうパケットポスト等）信息块 */
+.detail-postship {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 10px 12px;
+  border: 1px solid var(--el-border-color);
+  border-radius: 8px;
+  background: var(--el-fill-color-light);
+  font-size: 13px;
+}
+.detail-postship-hint {
+  color: var(--el-text-color-secondary);
+}
 /* お届け先（未定/非匿名方式时的买家收货地址） */
 .detail-recipient {
   display: flex;

@@ -269,7 +269,7 @@
             <!-- 已发行二维码/条形码时：确认发送 + 修改发货方式 并排放到标题右上角 -->
             <div class="detail-section-head">
               <div class="detail-section-title">{{ t('todos.section.shipping') }}</div>
-              <div v-if="detail.qr_image_url" class="detail-section-head-actions">
+              <div v-if="detail.qr_image_url || detail.post_ship_ready" class="detail-section-head-actions">
                 <el-button
                   type="primary"
                   size="default"
@@ -312,6 +312,21 @@
                   fit="contain"
                   class="detail-qr-img"
                 />
+              </div>
+            </template>
+            <!-- 待发送通知（ゆうパケットポスト等：シール读取已完成，仅需勾选+発送通知）。
+                 「确认发送」按钮在上方头部，点后由后端自动勾选并发送通知。 -->
+            <template v-else-if="detail.post_ship_ready">
+              <div class="detail-postship">
+                <div class="detail-postship-hint">{{ t('todos.postShipReadyHint') }}</div>
+                <div v-if="detail.ship_confirm_code" class="detail-row">
+                  <span class="detail-label">{{ t('todos.shipConfirmCode') }}</span>
+                  <span class="detail-value">{{ detail.ship_confirm_code }}</span>
+                </div>
+                <div v-if="detail.ship_tracking_no" class="detail-row">
+                  <span class="detail-label">{{ t('todos.shipTrackingNo') }}</span>
+                  <span class="detail-value">{{ detail.ship_tracking_no }}</span>
+                </div>
               </div>
             </template>
             <!-- 未发行：发货方式卡片 + お届け先 + 发货/修改 按钮（全部置于表单卡片中）-->

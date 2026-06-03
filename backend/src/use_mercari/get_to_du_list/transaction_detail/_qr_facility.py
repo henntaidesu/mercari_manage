@@ -134,6 +134,45 @@ async def _extract_delivery_address(page: Any) -> Optional[str]:
     text = (text or "").strip()
     return text or None
 
+# 発送通知待ち状態（ゆうパケットポスト等のシール読み取り済み／専用箱控え切り取り済みで、
+# あとは「梱包した商品に発送用シールを貼りました」等にチェック→「商品を発送したので、発送通知
+# をする」を押すだけ）。data-testid="acknowledge-checkbox" の有無＋発送通知ボタンの有無で判定し、
+# ポスト発送確認符号・追跡番号も拾う。
+_POST_SHIP_READY_JS = """
+() => {
+  const body = document.body ? (document.body.innerText || '') : '';
+  const hasCheckbox = !!document.querySelector('[data-testid="acknowledge-checkbox"]');
+  const notifyBtn = Array.from(document.querySelectorAll('button'))
+    .some(b => (b.innerText || '').includes('発送通知をする'));
+  const ready = hasCheckbox || notifyBtn;
+  let code = '';
+  let m = body.match(/発送確認符号[\\s:：]*([A-Za-z0-9]+)/);
+  if (m) code = m[1];
+  let tracking = '';
+  m = body.match(/追跡番号[\\s:：]*([0-9\\-]+)/);
+  if (m) tracking = m[1];
+  return { ready, code, tracking };
+}
+"""
+
+async def _extract_post_ship_ready(page: Any) -> Dict[str, Any]:
+    """检测交易页是否处于「待发送通知」状态（シール贴付/控え切り取りのチェック＋発送通知ボタン）。
+
+    返回 ``{ready, confirm_code, tracking_no}``；抓取失败时 ready=False。
+    """
+    try:
+        data = await page.evaluate(_POST_SHIP_READY_JS)
+    except Exception as exc:
+        log.debug("[shipping] 提取发送通知待ち状态失败: %s", exc)
+        return {"ready": False, "confirm_code": None, "tracking_no": None}
+    if not isinstance(data, dict):
+        return {"ready": False, "confirm_code": None, "tracking_no": None}
+    return {
+        "ready": bool(data.get("ready")),
+        "confirm_code": (data.get("code") or "").strip() or None,
+        "tracking_no": (data.get("tracking") or "").strip() or None,
+    }
+
 def _persist_shipping_facility(todo_id: int, fac: Dict[str, str]) -> None:
     """把发送场所信息合并进 todo_items.detail_json（不覆盖其它字段）。"""
     if not fac:
