@@ -93,6 +93,7 @@ def _attach_inventory_by_item_id(items: list) -> None:
             IFNULL(i.[name], ''),
             i.[quantity],
             i.[on_sale_quantity],
+            i.[pending_outbound_qty],
             TRIM(IFNULL(i.[barcode], '')),
             {_wh_w},
             IFNULL(w.[location], ''),
@@ -107,11 +108,11 @@ def _attach_inventory_by_item_id(items: list) -> None:
     rows = db.execute_query(sql)
     by_mid: Dict[str, list] = {}
     wanted = set(raw)
-    for mids_raw, iid, iname, qty, osq, barcode, wname, wloc, img, img_front, img_back, images_json in rows:
+    for mids_raw, iid, iname, qty, osq, pend, barcode, wname, wloc, img, img_front, img_back, images_json in rows:
         mids = _split_mercari_item_ids(mids_raw)
         if not mids:
             continue
-        payload = (iid, iname, qty, osq, barcode, wname, wloc, img, img_front, img_back, images_json)
+        payload = (iid, iname, qty, osq, pend, barcode, wname, wloc, img, img_front, img_back, images_json)
         for k in mids:
             if k in wanted:
                 by_mid.setdefault(k, []).append(payload)
@@ -125,15 +126,16 @@ def _attach_inventory_by_item_id(items: list) -> None:
         if hits:
             first = hits[0]
             row["inventory_id"] = int(first[0]) if first[0] is not None else None
-            # first: (iid, iname, qty, osq, barcode, wname, wloc)
+            # first: (iid, iname, qty, osq, pend, barcode, wname, wloc, ...)
             row["inventory_quantity"] = _to_int(first[2], 0)
             row["inventory_on_sale_quantity"] = _to_int(first[3], 0)
+            row["inventory_pending_outbound_qty"] = _to_int(first[4], 0)
             loc_parts = []
             mgmt_id_parts = []
             barcode_parts = []
             inventory_name_parts = []
             inventory_lines = []
-            for iid, iname, qty, osq, barcode, wname, wloc, img, img_front, img_back, images_json in hits:
+            for iid, iname, qty, osq, pend, barcode, wname, wloc, img, img_front, img_back, images_json in hits:
                 loc_name = str(wname or "").strip() or str(wloc or "").strip() or "-"
                 loc_parts.append(
                     f"#{int(iid)} {loc_name} x{int(osq) if osq is not None else 0}"
@@ -174,6 +176,7 @@ def _attach_inventory_by_item_id(items: list) -> None:
             row["inventory_id"] = None
             row["inventory_quantity"] = None
             row["inventory_on_sale_quantity"] = None
+            row["inventory_pending_outbound_qty"] = None
             row["inventory_match_count"] = 0
             row["inventory_locations_text"] = None
             row["inventory_mgmt_ids_text"] = None
@@ -197,33 +200,33 @@ def _attach_description_mgmt_hints(items: list) -> None:
         row["description_mgmt_ids_text"] = "、".join(str(i) for i in ids) if ids else None
 
 
-def _is_on_sale_zero_stock_alert(row: dict) -> bool:
-    """与前端一致：status=on_sale 且 inventory_quantity<=0 或 None 时标红。
-    前端 Number(null)==0，故 null 也视为缺货预警。
+def _is_on_sale_over_listed_alert(row: dict) -> bool:
+    """上架超过库存预警（与库存页一致）：绑定库存的「在售 + 待出 > 库存(总持有)」时标红。
+
+    需已匹配到库存（inventory_quantity 非 None）；未绑定库存的 listing 不在此预警。
     """
-    status = str(row.get("status") or "").strip()
-    if status != "on_sale":
+    qty = row.get("inventory_quantity")
+    if qty is None:
         return False
-    raw = row.get("inventory_quantity")
-    if raw is None:
-        # 未匹配到库存记录，前端 Number(null)==0 → 标红
-        return True
     try:
-        return float(raw) <= 0
+        q = float(qty)
+        osq = float(row.get("inventory_on_sale_quantity") or 0)
+        pend = float(row.get("inventory_pending_outbound_qty") or 0)
     except (TypeError, ValueError):
         return False
+    return (osq + pend) > q
 
 
 def _on_sale_sort_key(row: dict) -> tuple:
     """
     在售列表排序键（全表维度）：
-    1) 标红项优先（on_sale 且 inventory_quantity<=0）
+    1) 标红项优先（绑定库存「在售 + 待出 > 库存」）
     2) 其余按更新时间倒序
     3) 再按创建时间倒序
     4) 最后按 id 倒序兜底，保证稳定
     """
     return (
-        0 if _is_on_sale_zero_stock_alert(row) else 1,
+        0 if _is_on_sale_over_listed_alert(row) else 1,
         -int(row.get("updated") or 0),
         -int(row.get("created") or 0),
         -int(row.get("id") or 0),
@@ -236,8 +239,8 @@ def _sort_on_sale_items_for_alert(items: list[dict]) -> None:
     1) 先将标红项与非标红项拆分，保证标红组整体在前
     2) 各组内按更新时间/创建时间/id 倒序
     """
-    alerts = [r for r in items if _is_on_sale_zero_stock_alert(r)]
-    others = [r for r in items if not _is_on_sale_zero_stock_alert(r)]
+    alerts = [r for r in items if _is_on_sale_over_listed_alert(r)]
+    others = [r for r in items if not _is_on_sale_over_listed_alert(r)]
     # 组内倒序：这里复用原有 key，避免时间并列时不稳定
     alerts.sort(key=_on_sale_sort_key)
     others.sort(key=_on_sale_sort_key)

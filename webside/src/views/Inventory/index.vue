@@ -318,7 +318,7 @@
         </el-table-column>
         <el-table-column :label="t('inventory.listableColumn')" prop="listable_quantity" width="80" align="center" header-align="center" sortable="custom">
           <template #default="{ row }">
-            <el-tag :type="listableQuantity(row) > 0 ? 'success' : 'info'" size="small">
+            <el-tag :type="isInventoryOverListed(row) ? 'danger' : (listableQuantity(row) > 0 ? 'success' : 'info')" size="small">
               {{ listableQuantity(row) }}
             </el-tag>
           </template>

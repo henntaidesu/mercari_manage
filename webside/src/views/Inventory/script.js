@@ -1620,15 +1620,33 @@ export default defineComponent({
       return isInventoryNoOwner(row) || isInventorySystemAdminOwner(row)
     }
 
-    /** 需标红顶置：无归属/归属系统管理员。
+    /** 上架超过库存：在售 + 待出 > 库存（物理总数），即可上架本应为负（被 clamp 到 0）。
+     *  典型成因：在煤炉手动多挂、同一库存绑定多条 listing、出品中又出库等，需下架多余或补库存。 */
+    function isInventoryOverListed(row) {
+      if (!row || typeof row !== 'object') return false
+      const qty = Number(row.quantity ?? 0)
+      const onSale = Number(row.on_sale_quantity ?? 0)
+      const pend = Number(row.pending_outbound_qty ?? 0)
+      if (![qty, onSale, pend].every(Number.isFinite)) return false
+      return onSale + pend > qty
+    }
+
+    /** 需标红顶置：无归属/归属系统管理员，或上架超过库存（在售+待出 > 库存）。
      *  注：新计数模型下「库存为 0 但有在售」属正常（库存数量已转移到在售上），不再标红。 */
     function isInventoryAlertRow(row) {
-      return isInventoryOwnerNeedsAlert(row)
+      return isInventoryOwnerNeedsAlert(row) || isInventoryOverListed(row)
     }
 
     /** 标红行原因列表（已本地化），供 tooltip 悬停展示 */
     function inventoryAlertReasons(row) {
       const reasons = []
+      if (isInventoryOverListed(row)) {
+        reasons.push(t('inventory.alertReasonOverListed', {
+          onSale: Number(row.on_sale_quantity ?? 0),
+          pending: Number(row.pending_outbound_qty ?? 0),
+          stock: Number(row.quantity ?? 0),
+        }))
+      }
       if (isInventoryNoOwner(row)) {
         reasons.push(t('inventory.alertReasonNoOwner'))
       } else if (isInventorySystemAdminOwner(row)) {
@@ -3829,6 +3847,7 @@ export default defineComponent({
       onInventorySortChange,
       quantityTagType,
       listableQuantity,
+      isInventoryOverListed,
       thumbUrl,
       syncFormLegacyImageFieldsFromImages,
       inventoryImageDragFrom,

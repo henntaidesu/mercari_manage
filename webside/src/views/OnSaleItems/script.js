@@ -1,6 +1,6 @@
 import { defineComponent, ref, computed, onBeforeUnmount, onMounted, reactive } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { Download, Loading } from '@element-plus/icons-vue'
+import { Download, Loading, WarningFilled } from '@element-plus/icons-vue'
 import { useI18n } from 'vue-i18n'
 import { onSaleItemApi, mercariAccountApi, webDriveApi } from '@/api/index.js'
 import { parseMgmtIdsFromDescription, isCipherMgmtLine } from '@/utils/mgmtIdCipher.js'
@@ -134,12 +134,40 @@ export default defineComponent({
 
     const sellerFromAccounts = ref([])
 
-    // 注：新计数模型下「商品在售但关联库存为 0」属正常情况（库存数量已转移到在售上），
-    // 故移除原「零库存仍在售」的整行标红与警告提示。
+    /** 上架超过库存预警：绑定库存的「在售 + 待出 > 库存(总持有)」时标红。
+     *  新计数模型下「库存为 0 但在售」属正常；真正异常是出品+售出超过物理库存（可上架本应为负）。
+     *  未绑定库存（inventory_quantity 为 null）不在此预警。 */
+    function isOnSaleOverListed(row) {
+      if (!row || typeof row !== 'object') return false
+      const qty = row.inventory_quantity
+      if (qty == null || qty === '') return false
+      const q = Number(qty)
+      const onSale = Number(row.inventory_on_sale_quantity ?? 0)
+      const pend = Number(row.inventory_pending_outbound_qty ?? 0)
+      if (![q, onSale, pend].every(Number.isFinite)) return false
+      return onSale + pend > q
+    }
 
     const displayList = computed(() => {
       return Array.isArray(list.value) ? list.value : []
     })
+
+    function onSaleRowClassName({ row }) {
+      return isOnSaleOverListed(row) ? 'on-sale-stock-alert-row' : ''
+    }
+
+    /** 标红行原因列表（已本地化），与库存管理页一致，供 tooltip 悬停展示 */
+    function onSaleAlertReasons(row) {
+      const reasons = []
+      if (isOnSaleOverListed(row)) {
+        reasons.push(t('onSaleItems.alertReasonOverListed', {
+          onSale: Number(row.inventory_on_sale_quantity ?? 0),
+          pending: Number(row.inventory_pending_outbound_qty ?? 0),
+          stock: Number(row.inventory_quantity ?? 0),
+        }))
+      }
+      return reasons
+    }
 
     const sellerOptions = computed(() => {
       const m = new Map()
@@ -1058,6 +1086,7 @@ export default defineComponent({
       ElMessageBox,
       Download,
       Loading,
+      WarningFilled,
       useI18n,
       onSaleItemApi,
       mercariAccountApi,
@@ -1099,7 +1128,10 @@ export default defineComponent({
       filters,
       statusFilterOptions,
       sellerFromAccounts,
+      isOnSaleOverListed,
+      onSaleAlertReasons,
       displayList,
+      onSaleRowClassName,
       sellerOptions,
       listParams,
       expandKey,
