@@ -156,18 +156,9 @@ async def delete_mercari_item(
         edit_url,
     )
 
-    # 删除会同步清理 on_sale_items，故先按本地说明解析出「绑定的库存ID → 占用数量」，
-    # 删除完成后再据此扣减库存并重算在售。
-    bound_qty_map: Dict[int, int] = {}
-    try:
-        from ....use_mercari.inventory_stock_apply import (
-            resolve_bound_inventory_qty_map_for_item,
-        )
-
-        bound_qty_map = resolve_bound_inventory_qty_map_for_item(item_id)
-    except Exception:
-        log.exception("[delete_mercari_item] 解析绑定库存失败 item=%s", seg)
-
+    # 下架（在售-1, 库存+1）的库存对账由删除后触发的在售列表同步统一处理
+    # （sync_on_sale_from_listings_browser_page → apply_on_sale_list_sync → reconcile_listing_counts，
+    # 凭 on_sale_items.counted_on_sale 幂等），此处不再单独扣减库存，避免双重计数。
     result: Dict[str, Any] = {
         "account_key": account_key,
         "browser_key": auto_key,
@@ -254,19 +245,7 @@ async def delete_mercari_item(
 
     result["browser_closed"] = True
 
-    # 对删除前解析到的绑定库存ID进行「在售 + 库存」变更：扣减 quantity 并重算 on_sale_quantity
-    if bound_qty_map:
-        report("apply_inventory", "正在更新绑定库存的在售与库存…")
-        try:
-            from ....use_mercari.inventory_stock_apply import (
-                apply_inventory_change_for_item,
-            )
-
-            result["inventory"] = apply_inventory_change_for_item(
-                seg, reason=f"下架扣减库存 / {seg}", qty_map=bound_qty_map
-            )
-        except Exception:
-            log.exception("[delete_mercari_item] 更新绑定库存失败 item=%s", seg)
+    # 下架的「在售-1, 库存+1」已由上面的在售列表同步（reconcile_listing_counts）完成，此处不再处理。
     report(
         "done",
         (

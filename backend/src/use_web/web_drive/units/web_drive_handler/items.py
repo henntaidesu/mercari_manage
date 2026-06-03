@@ -202,18 +202,8 @@ async def resume_on_sale_item(body: ResumeMercariItemBody):
     if account_id is None:
         raise HTTPException(status_code=400, detail="无效的 account_key")
 
-    # 恢复上架前校验：绑定的库存ID数量归零/不足时禁止恢复（不打开浏览器，快速失败）
-    from .....use_mercari.inventory_stock_apply import (
-        check_bound_inventory_sufficient_for_resume,
-    )
-
-    check = check_bound_inventory_sufficient_for_resume(item_id)
-    if not check.get("ok"):
-        raise HTTPException(
-            status_code=400,
-            detail=check.get("message") or "绑定库存数量已归零，禁止恢复上架",
-        )
-
+    # 新计数模型下，恢复出售（stop → on_sale）不消耗库存（暂停期间该件仍占用「在售」名额），
+    # 故不再做「绑定库存数量是否充足」的前置校验。
     try:
         proxy: Optional[str] = None
         if body.use_mitm_proxy:

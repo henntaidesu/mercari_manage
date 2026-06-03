@@ -46,6 +46,7 @@ _ON_SALE_ITEM_LIST_KEYS: Tuple[str, ...] = (
     "listing_description",
     "synced_at",
     "is_delete",
+    "counted_on_sale",
 )
 
 
@@ -234,6 +235,15 @@ class OnSaleItemModel(BaseModel):
                 "default": None,
             },
             "is_delete": {
+                "type": "INTEGER",
+                "not_null": True,
+                "default": 0,
+            },
+            # 库存计数幂等标记：1=该 listing 当前已占用绑定库存 1 个「在售」名额
+            # （上架时 0→1 并 库存-1/在售+1；下架/售出时回退并置 0）。
+            # 注意：仅由 inventory_counters 维护，mercari_list_item_to_row 不写此列，
+            # 故 upsert 同步不会重置它（_update 只写变化字段）。
+            "counted_on_sale": {
                 "type": "INTEGER",
                 "not_null": True,
                 "default": 0,

@@ -160,17 +160,8 @@ async def resume_mercari_item(
     updated = _resume_local_on_sale_item([seg, raw_item_id])
     result["updated_rows"] = updated
 
-    # 对绑定的库存ID进行「在售 + 库存」变更：重算 on_sale_quantity 并扣减 quantity
-    report("apply_inventory", "正在更新绑定库存的在售与库存…")
-    try:
-        from ....use_mercari.inventory_stock_apply import apply_inventory_change_for_item
-
-        result["inventory"] = apply_inventory_change_for_item(
-            raw_item_id or seg, reason=f"恢复出售扣减库存 / {seg}"
-        )
-    except Exception:
-        log.exception("[resume_mercari_item] 更新绑定库存失败 item=%s", seg)
-
+    # 恢复出售（stop → on_sale）按新计数模型「不变」：商品一直挂在售（暂停也占用在售名额），
+    # 故此处不再改动库存/在售。on_sale_items.counted_on_sale 保持为 1，下次在售同步 reconcile 亦为无操作。
     report("done", "恢复出售完成")
     log.info(
         "[resume_mercari_item] 完成并已关闭浏览器 account=%s item=%s updated_rows=%s",

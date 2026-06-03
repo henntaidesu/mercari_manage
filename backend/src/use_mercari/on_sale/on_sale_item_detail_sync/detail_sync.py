@@ -174,16 +174,19 @@ def detail_sync_inventory_from_item_get_response(
                 """,
                 (merged_mid_text, int(iid)),
             )
-        from .on_sale_items_sync import recalculate_and_persist_inventory_on_sale_quantity
+        # 绑定写入后，按事件模型对账「在售/库存」（幂等，凭 counted_on_sale）：
+        # 该 listing 首次绑定且在售 → 库存-1, 在售+1。详情返回的在售数量从库存行读取
+        # （已由 reconcile 维护），不再全量重算覆盖。
+        from ...inventory_counters import reconcile_listing_counts
 
-        touched_inv: set[int] = set(int(x) for x in qty_by_inventory.keys())
-        for iid_raw, mids_raw, _osq_raw in current_rows:
-            mids = _split_mercari_item_ids(mids_raw)
-            if mid_api in mids:
-                touched_inv.add(int(iid_raw))
+        reconcile_listing_counts([str(mid_api)])
         recalc_by_inv: Dict[int, int] = {}
-        for inv_id in touched_inv:
-            recalc_by_inv[inv_id] = recalculate_and_persist_inventory_on_sale_quantity(inv_id)
+        for inv_id_k in qty_by_inventory.keys():
+            row_q = db.execute_query(
+                "SELECT COALESCE([on_sale_quantity], 0) FROM [inventory] WHERE [id] = ? LIMIT 1",
+                (int(inv_id_k),),
+            )
+            recalc_by_inv[int(inv_id_k)] = int(row_q[0][0]) if row_q else 0
     except Exception as exc:
         sync["message"] = f"写入库存失败: {exc}"
         return {"api": resp, "sync": sync}

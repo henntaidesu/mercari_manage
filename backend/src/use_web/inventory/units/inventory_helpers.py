@@ -127,9 +127,8 @@ def _query_inventory_with_joins(where_sql: str = "", params: tuple = ()) -> list
     """
     rows = db.execute_query(sql, tuple(params))
     items = [_enrich_inventory_api_dict(_row_to_inventory_detail(r)) for r in rows]
-    from ....use_mercari.on_sale.on_sale_items_sync import enrich_inventory_rows_on_sale_quantity
-
-    enrich_inventory_rows_on_sale_quantity(items)
+    # 在售数量 on_sale_quantity 已改为事件驱动权威计数（见 use_mercari.inventory_counters），
+    # 列表直接返回库存行存储值，不再用 on_sale_items 全量重算覆盖。
     return items
 
 

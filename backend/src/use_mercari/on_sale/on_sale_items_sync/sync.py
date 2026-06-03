@@ -10,7 +10,6 @@ from ...sync.sync_data import _resolve_account_and_seller
 from ....db_manage.models.on_sale_item import OnSaleItemModel
 from ....ssl_mitm_proxy.capture_config import clear_on_sale_list_response_file
 from ....web_drive.core.mitm_session import mitm_automation_browser
-from .inventory_qty import _apply_inventory_on_sale_delta_by_item_ids, _is_active_on_sale
 from .row_mapping import mercari_list_item_to_row, upsert_on_sale_item_row
 
 
@@ -45,18 +44,8 @@ def apply_on_sale_list_sync(
     # API 未返回但本地仍存在（is_delete=0）→ 需软删除
     soft_deleted_ids = existed_id_set - incoming_ids
 
-    # 记录同步前各商品的状态，用于判断是否真正"从在售变非在售"
-    before_by_item_id: Dict[str, Dict[str, Any]] = {
-        str(r.item_id or "").strip(): {
-            "status": (str(getattr(r, "status", "") or "").strip() or None),
-            "is_delete": int(getattr(r, "is_delete", 0) or 0),
-        }
-        for r in existed_rows
-        if str(getattr(r, "item_id", "") or "").strip()
-    }
-
-    activated_item_ids: set[str] = set()    # 非在售 → 在售，需 +1
-    deactivated_item_ids: set[str] = set()  # 在售 → 非在售，需 -1
+    # 本次 upsert / 软删除涉及的所有煤炉商品 ID（同步后统一交由 inventory_counters 对账在售/库存）
+    touched_item_ids: set[str] = set()
 
     marked_deleted = 0
     restored = 0
@@ -86,13 +75,6 @@ def apply_on_sale_list_sync(
             row["is_delete"] = 0
             iid_key = str(row["item_id"]).strip()
 
-            old = before_by_item_id.get(iid_key) or {}
-            old_active = _is_active_on_sale(
-                old.get("status"),
-                int(old.get("is_delete", 0) or 0),
-            )
-            new_active = _is_active_on_sale(row.get("status"), 0)
-
             # 判断本次操作前是否已软删除（用于统计 restored）
             before_rec = OnSaleItemModel.find_all(
                 where="[item_id] = ?", params=(iid_key,), limit=1
@@ -105,20 +87,12 @@ def apply_on_sale_list_sync(
             if r == "inserted":
                 stats["inserted"] += 1
                 stats["inserted_item_ids"].append(iid_key)
-                # 新增且处于在售状态 → 补增库存计数
-                if new_active:
-                    activated_item_ids.add(iid_key)
+                touched_item_ids.add(iid_key)
             elif r == "updated":
                 stats["updated"] += 1
                 if was_deleted:
                     restored += 1
-                # 状态变化：在售 ↔ 暂停/其他
-                if old_active and not new_active:
-                    # on_sale → stop / 其他非在售状态
-                    deactivated_item_ids.add(iid_key)
-                elif not old_active and new_active:
-                    # stop / 其他 → on_sale（恢复在售）
-                    activated_item_ids.add(iid_key)
+                touched_item_ids.add(iid_key)
             else:
                 stats["skipped"] += 1
         except Exception as exc:
@@ -135,32 +109,23 @@ def apply_on_sale_list_sync(
         )
         params = (int(time.time()), seller_key, *sorted(soft_deleted_ids))
         marked_deleted = OnSaleItemModel().db.execute_update(sql, params)
+        touched_item_ids.update(soft_deleted_ids)
 
-        # 只有之前真正处于 on_sale 的商品才需要释放在售数量
-        # （已是 stop 的商品在上一次 on_sale→stop 同步时已扣减过，不再重复）
-        truly_deactivated_by_deletion = {
-            iid for iid in soft_deleted_ids
-            if _is_active_on_sale(
-                (before_by_item_id.get(iid) or {}).get("status"),
-                int((before_by_item_id.get(iid) or {}).get("is_delete", 0) or 0),
-            )
-        }
-        deactivated_item_ids.update(truly_deactivated_by_deletion)
-
-    # ── 同步 inventory.on_sale_quantity ─────────────────────────────── #
-    if deactivated_item_ids:
-        stats["inventory_on_sale_dec"] = _apply_inventory_on_sale_delta_by_item_ids(
-            deactivated_item_ids, -1
-        )
-    if activated_item_ids:
-        stats["inventory_on_sale_inc"] = _apply_inventory_on_sale_delta_by_item_ids(
-            activated_item_ids, +1
-        )
-
+    # ── 对账「在售 / 库存」计数（事件驱动，幂等凭 counted_on_sale）─────────── #
+    # 上架(新绑定 active) / 下架(消失) / 售出(消失且绑定库存有待出) 的转移统一在此处理；
+    # 暂停↔恢复不变。新增商品此刻可能尚未建立 inventory 绑定，绑定在随后的详情拉取
+    # （detail_sync）中建立并由其再次 reconcile。待出数量仍由订单管线派生维护。
+    #
     # 注意：不再从 inventory.mercari_item_id 中剥离“非出售中 / 当次未返回”的煤炉 ID。
     # 关联是由详情解析（管理番号 / バーコード）建立的强语义绑定；剥离仅对 INSERT 路径恢复，
     # UPDATE 路径（在售→暂停→在售、翻页漏抓后又返回）一旦剥离即永久丢失，导致整行误标红。
-    # 展示侧 list_on_sale_by_item_ids 已按 _is_active_on_sale 过滤非出售中，库存页二级表不受影响。
+    if touched_item_ids:
+        from ...inventory_counters import reconcile_listing_counts
+
+        rc = reconcile_listing_counts(touched_item_ids)
+        stats["inventory_on_sale_inc"] = rc.get("listed_inc", 0)
+        stats["inventory_on_sale_dec"] = rc.get("delisted", 0) + rc.get("sold_released", 0)
+        stats["reconcile"] = rc
 
     stats["marked_deleted"] = marked_deleted
     stats["restored"] = restored
