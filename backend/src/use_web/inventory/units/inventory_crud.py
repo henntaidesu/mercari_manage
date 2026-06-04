@@ -21,7 +21,7 @@ from .inventory_images import (
     _convert_image_payload,
     _resolve_paths_for_create,
 )
-from .inventory_combined import _parse_combined_items, _adjust_combined_source_stock
+from .inventory_combined import _parse_combined_items
 from .inventory_models import InventoryCreate, InventoryUpdate
 
 db = DatabaseManager()
@@ -98,7 +98,7 @@ def update_inventory(pid: int, data: InventoryUpdate, _claims: dict = Depends(re
     existing = db.execute_query(
         """
         SELECT image, image_front, image_back, images_json, warehouse_id, owner_user_id,
-               is_combined, combined_items, quantity
+               is_combined, combined_items
         FROM [inventory] WHERE id = ? LIMIT 1
         """,
         (pid,),
@@ -111,7 +111,6 @@ def update_inventory(pid: int, data: InventoryUpdate, _claims: dict = Depends(re
     old_owner_user_id = existing[0][5] if existing else None
     old_is_combined = int(existing[0][6] or 0) if existing else 0
     old_combined_items = existing[0][7] if existing else None
-    old_quantity = int(existing[0][8] or 0) if existing else 0
 
     old_paths = _legacy_paths_from_db_columns(old_front, old_image, old_back, old_images_json)
 
@@ -162,23 +161,17 @@ def update_inventory(pid: int, data: InventoryUpdate, _claims: dict = Depends(re
         set_sql = ", ".join([f"[{k}] = ?" for k in update_data.keys()])
         params = tuple(update_data.values()) + (pid,)
         try:
-            if old_is_combined and "quantity" in update_data:
-                new_quantity = int(update_data.get("quantity") or 0)
-                if new_quantity < 0:
-                    raise HTTPException(status_code=400, detail="库存数量不能小于0")
-                delta = new_quantity - old_quantity
-                with db.get_connection() as conn:
-                    cur = conn.cursor()
-                    cur.execute("BEGIN IMMEDIATE")
-                    _adjust_combined_source_stock(cur, _parse_combined_items(old_combined_items), delta)
-                    cur.execute(f"UPDATE [inventory] SET {set_sql} WHERE id = ?", params)
-                    conn.commit()
-            else:
-                db.execute_update(f"UPDATE [inventory] SET {set_sql} WHERE id = ?", params)
+            db.execute_update(f"UPDATE [inventory] SET {set_sql} WHERE id = ?", params)
         except HTTPException:
             raise
         except Exception:
             raise HTTPException(status_code=400, detail="更新失败，条形码可能重复")
+        # 组合商品库存（套数）变化会改变来源商品被「拉走」的件数，重算来源可上架（组合不扣减来源库存）。
+        if old_is_combined and "quantity" in update_data:
+            source_ids = [int(it["inventory_id"]) for it in _parse_combined_items(old_combined_items)]
+            if source_ids:
+                from ....use_mercari.inventory_counters import recompute_listable_quantity
+                recompute_listable_quantity(source_ids)
     inventory_items = _query_inventory_with_joins(" AND p.id = ? LIMIT 1", (pid,))
     if not inventory_items:
         raise HTTPException(status_code=400, detail="更新失败，条形码可能重复")

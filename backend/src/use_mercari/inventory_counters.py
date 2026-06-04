@@ -9,7 +9,8 @@
         - 下架/删除 或 售出（从在售消失）：在售 -1
   · 待出 pending_outbound_qty = 非终态订单且未出库的明细合计，由订单管线派生维护
         （见 description_mgmt_ids.refresh_inventory_pending_outbound_qty）。
-  · 可上架 listable_quantity = max(0, 库存 - 在售 - 待出)，落库的派生值，出品可否以此判断。
+  · 组合预留 = Σ(组合商品库存 × 每套该商品数量)，被组合商品拉走但不扣库存，仅在可上架中扣减。
+  · 可上架 listable_quantity = max(0, 库存 - 在售 - 待出 - 组合预留)，落库的派生值，出品可否以此判断。
 
 「在售」的增减统一由本模块在「在售列表同步」(sync.apply_on_sale_list_sync) 与「详情绑定」
 (detail_sync) 两处通过 ``reconcile_listing_counts`` 应用，并以 ``on_sale_items.counted_on_sale``
@@ -41,17 +42,36 @@ def _norm_keys(item_id: str) -> List[str]:
     return _mercari_id_lookup_keys(item_id)
 
 
+def _combined_reserved_sql_expr(inv_alias: str = "[inventory]") -> str:
+    """该商品被「组合商品」拉走（预留）的件数：Σ(组合商品库存 × 每套该商品数量)。
+
+    仅统计未软删的组合商品。组合商品不再扣减来源库存，改由本预留量在「可上架」中扣减、
+    并在库存页「组合」列展示。``inv_alias`` 为外层 inventory 行的引用（UPDATE 时为
+    ``[inventory]``，库存列表查询里别名为 ``p``）。
+    """
+    return (
+        "(SELECT COALESCE(SUM("
+        "COALESCE(cmb.[quantity], 0) * "
+        "CAST(json_extract(je.value, '$.quantity') AS INTEGER)), 0) "
+        "FROM [inventory] cmb, json_each(cmb.[combined_items]) je "
+        "WHERE COALESCE(cmb.[is_combined], 0) = 1 "
+        "AND COALESCE(cmb.[is_delete], 0) = 0 "
+        f"AND CAST(json_extract(je.value, '$.inventory_id') AS INTEGER) = {inv_alias}.[id])"
+    )
+
+
 def _listable_sql_expr() -> str:
-    """可上架 = max(0, 库存 - 在售 - 待出) 的 SQL 表达式（基于同表列）。"""
+    """可上架 = max(0, 库存 - 在售 - 待出 - 组合预留) 的 SQL 表达式（基于同表列）。"""
     return (
         "MAX(0, COALESCE([quantity], 0) "
         "- COALESCE([on_sale_quantity], 0) "
-        "- COALESCE([pending_outbound_qty], 0))"
+        "- COALESCE([pending_outbound_qty], 0) "
+        f"- {_combined_reserved_sql_expr()})"
     )
 
 
 def recompute_listable_quantity(inv_ids: Optional[Iterable[int]] = None) -> int:
-    """重算并落库 inventory.listable_quantity = max(0, 库存 - 在售 - 待出)。
+    """重算并落库 inventory.listable_quantity = max(0, 库存 - 在售 - 待出 - 组合预留)。
 
     inv_ids 为空时重算全表；返回受影响行数。
     """

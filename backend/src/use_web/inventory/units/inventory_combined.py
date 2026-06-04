@@ -62,44 +62,26 @@ def _normalize_combined_components(components: list[CombinedInventoryComponent])
     return items
 
 
-def _adjust_combined_source_stock(cur, items: list[dict], combo_delta: int) -> None:
-    """combo_delta > 0 消耗原商品；combo_delta < 0 回补原商品。"""
-    if combo_delta == 0 or not items:
+def _validate_combined_sources(items: list[dict]) -> None:
+    """校验组合来源商品：必须存在且自身不是组合商品（组合商品不再扣减来源库存，仅做合法性校验）。"""
+    if not items:
         return
     ids = [int(item["inventory_id"]) for item in items]
     placeholders = ",".join("?" for _ in ids)
-    cur.execute(
-        f"SELECT id, quantity, is_combined FROM [inventory] WHERE id IN ({placeholders})",
+    rows = db.execute_query(
+        f"SELECT id, is_combined FROM [inventory] WHERE id IN ({placeholders}) AND COALESCE(is_delete, 0) = 0",
         tuple(ids),
     )
-    rows = {int(r[0]): {"quantity": int(r[1] or 0), "is_combined": int(r[2] or 0)} for r in cur.fetchall()}
-    if len(rows) != len(ids):
+    found = {int(r[0]): int(r[1] or 0) for r in rows}
+    if len(found) != len(set(ids)):
         raise HTTPException(status_code=400, detail="组合商品包含不存在的商品")
-    for item in items:
-        source_id = int(item["inventory_id"])
-        per_combo_qty = int(item["quantity"])
-        row = rows[source_id]
-        if row["is_combined"]:
+    for source_id, is_comb in found.items():
+        if is_comb:
             raise HTTPException(status_code=400, detail="组合商品不能再次作为组合来源")
-        change = per_combo_qty * abs(combo_delta)
-        if combo_delta > 0 and row["quantity"] < change:
-            raise HTTPException(status_code=400, detail=f"管理番号 {source_id} 库存不足，当前库存：{row['quantity']}")
-        op = "-" if combo_delta > 0 else "+"
-        cur.execute(
-            f"UPDATE [inventory] SET quantity = COALESCE(quantity, 0) {op} ? WHERE id = ?",
-            (change, source_id),
-        )
-        # 来源库存数量变化后，同步重算其「可上架」= 库存 - 在售 - 待出
-        cur.execute(
-            "UPDATE [inventory] SET [listable_quantity] = "
-            "MAX(0, COALESCE([quantity],0) - COALESCE([on_sale_quantity],0) - COALESCE([pending_outbound_qty],0)) "
-            "WHERE id = ?",
-            (source_id,),
-        )
 
 
 def create_combined_inventory(data: CombinedInventoryCreate, _claims: dict = Depends(require_auth)):
-    """将一件或多件库存商品组合成一个新的库存商品，并扣减来源库存（单 SKU 时通过 components 数量表示每套几件）。"""
+    """将一件或多件库存商品组合成一个新的库存商品（组合商品不扣减来源库存，来源被「拉走」的件数仅作展示与可上架扣减）。"""
     combo_quantity = int(data.quantity or 0)
     if combo_quantity <= 0:
         raise HTTPException(status_code=400, detail="组合商品库存数量必须大于0")
@@ -109,6 +91,7 @@ def create_combined_inventory(data: CombinedInventoryCreate, _claims: dict = Dep
         raise HTTPException(status_code=400, detail="商品归属用户不存在")
 
     items = _normalize_combined_components(data.components)
+    _validate_combined_sources(items)
     paths = _resolve_paths_for_combined_create(data)
     img_cols = _sync_image_columns_from_paths(paths)
     barcode = f"COMBO-{int(time.time() * 1000)}"
@@ -119,7 +102,6 @@ def create_combined_inventory(data: CombinedInventoryCreate, _claims: dict = Dep
         with db.get_connection() as conn:
             cur = conn.cursor()
             cur.execute("BEGIN IMMEDIATE")
-            _adjust_combined_source_stock(cur, items, combo_quantity)
             cur.execute(
                 """
                 INSERT INTO [inventory] (
@@ -157,6 +139,10 @@ def create_combined_inventory(data: CombinedInventoryCreate, _claims: dict = Dep
         raise
     except Exception:
         raise HTTPException(status_code=400, detail="组合商品创建失败")
+
+    # 组合商品新增后，来源商品被「拉走」的件数变化，重算其可上架（库存不变）。
+    from ....use_mercari.inventory_counters import recompute_listable_quantity
+    recompute_listable_quantity([int(item["inventory_id"]) for item in items])
 
     inventory_items = _query_inventory_with_joins(" AND p.id = ? LIMIT 1", (new_id,))
     return inventory_items[0] if inventory_items else {"id": new_id}

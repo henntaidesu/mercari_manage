@@ -316,6 +316,14 @@
             <span v-else class="cell-muted">{{ Number(row.pending_outbound_qty || 0) }}</span>
           </template>
         </el-table-column>
+        <el-table-column :label="t('inventory.combinedColumn')" prop="combined_quantity" width="80" align="center" header-align="center" sortable="custom">
+          <template #default="{ row }">
+            <el-tag v-if="Number(row.combined_quantity || 0) > 0" type="info" size="small">
+              {{ Number(row.combined_quantity || 0) }}
+            </el-tag>
+            <span v-else class="cell-muted">{{ Number(row.combined_quantity || 0) }}</span>
+          </template>
+        </el-table-column>
         <el-table-column :label="t('inventory.listableColumn')" prop="listable_quantity" width="80" align="center" header-align="center" sortable="custom">
           <template #default="{ row }">
             <el-tag :type="isInventoryOverListed(row) ? 'danger' : (listableQuantity(row) > 0 ? 'success' : 'info')" size="small">
@@ -507,6 +515,26 @@
                 :min="0"
                 :max="999999"
                 :step="1"
+                :controls="false"
+                style="width: 100%"
+                disabled
+              />
+            </el-form-item>
+          </el-col>
+          <el-col v-if="form.id" :xs="24" :sm="12">
+            <el-form-item :label="t('inventory.combinedColumn')">
+              <el-input-number
+                :model-value="Number(form.combined_quantity || 0)"
+                :controls="false"
+                style="width: 100%"
+                disabled
+              />
+            </el-form-item>
+          </el-col>
+          <el-col v-if="form.id" :xs="24" :sm="12">
+            <el-form-item :label="t('inventory.listableColumn')">
+              <el-input-number
+                :model-value="listableQuantity(form)"
                 :controls="false"
                 style="width: 100%"
                 disabled
@@ -873,6 +901,60 @@
             </div>
             <div v-if="!combinedEditDetailLoading && combinedEditDetailRows.length === 0" class="combined-edit-aside-empty">
               {{ t('inventory.noCombinedItemsParsed') }}
+            </div>
+          </div>
+          </div>
+        </aside>
+        <aside
+          v-if="showUsedInCombos"
+          class="product-edit-dialog-layout__aside product-edit-dialog-layout__aside--combined"
+          v-loading="usedInCombosLoading"
+        >
+          <div class="combined-edit-aside-inner">
+          <div class="combined-edit-aside-title">{{ t('inventory.usedInCombosTitle') }}</div>
+          <div class="combined-edit-aside-list">
+            <div
+              v-for="row in usedInCombosRows"
+              :key="row.combined_id"
+              class="combined-edit-aside-item"
+            >
+              <div class="combined-edit-aside-item__thumb">
+                <el-image
+                  v-if="inventoryRowPrimaryImage(row)"
+                  class="combined-edit-aside-item__img"
+                  :src="thumbUrl(inventoryRowPrimaryImage(row))"
+                  :preview-src-list="combinedAsideImagePreviewList(row)"
+                  :hide-on-click-modal="true"
+                  :preview-teleported="true"
+                  :z-index="4000"
+                  fit="cover"
+                  referrerpolicy="no-referrer"
+                >
+                  <template #error>
+                    <span class="combined-edit-aside-item__img-fallback">-</span>
+                  </template>
+                </el-image>
+                <div v-else class="combined-edit-aside-item__img-placeholder">{{ t('inventory.noImage') }}</div>
+              </div>
+              <div class="combined-edit-aside-item__body">
+                <div class="combined-edit-aside-item__title-row">
+                  <div class="combined-edit-aside-item__title">
+                    {{ t('inventory.mgmtPrefix') }} {{ row.combined_id }} · {{ row.name || '—' }}
+                  </div>
+                  <el-button
+                    class="combined-edit-aside-item__jump"
+                    size="small"
+                    type="primary"
+                    link
+                    @click="openUsedInComboEdit(row)"
+                  >{{ t('inventory.viewCombinedProduct') }}</el-button>
+                </div>
+                <div class="combined-edit-aside-item__meta">
+                  <span>{{ t('inventory.perSet') }} <strong>{{ row.per_combo_quantity }}</strong></span>
+                  <span>{{ t('inventory.combinedSetsLabel') }} <strong>{{ row.combo_quantity }}</strong></span>
+                  <span>{{ t('inventory.combinedReservedLabel') }} <strong>{{ row.reserved_quantity }}</strong></span>
+                </div>
+              </div>
             </div>
           </div>
           </div>

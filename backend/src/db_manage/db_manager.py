@@ -363,6 +363,49 @@ class DBManager:
             print(f"[错误] product_type_category_mappings 主键迁移失败: {e}")
             return False
 
+    def _migrate_restore_combined_source_stock(self) -> bool:
+        """一次性：历史「组合商品」创建时曾扣减来源库存。改为「组合不扣库存、仅展示拉走件数」后，
+        把曾被扣减的来源库存补回（每个来源 += Σ 组合商品库存 × 每套件数，含已软删的组合）。
+        用 config 标记保证只执行一次（重复执行会重复加库存）。"""
+        db = self.db
+        if not db.table_exists("inventory") or not db.table_exists("config"):
+            return True
+        FLAG = "combined_source_stock_restored"
+        if ConfigEntryModel.get_value(FLAG):
+            return True
+        try:
+            db.execute_update(
+                """
+                UPDATE [inventory]
+                SET [quantity] = COALESCE([quantity], 0) + (
+                    SELECT COALESCE(SUM(
+                        COALESCE(cmb.[quantity], 0) *
+                        CAST(json_extract(je.value, '$.quantity') AS INTEGER)
+                    ), 0)
+                    FROM [inventory] cmb, json_each(cmb.[combined_items]) je
+                    WHERE COALESCE(cmb.[is_combined], 0) = 1
+                      AND CAST(json_extract(je.value, '$.inventory_id') AS INTEGER) = [inventory].[id]
+                )
+                WHERE COALESCE([is_combined], 0) = 0
+                  AND [id] IN (
+                    SELECT DISTINCT CAST(json_extract(je2.value, '$.inventory_id') AS INTEGER)
+                    FROM [inventory] cmb2, json_each(cmb2.[combined_items]) je2
+                    WHERE COALESCE(cmb2.[is_combined], 0) = 1
+                  )
+                """
+            )
+        except Exception as e:
+            print(f"[错误] 组合来源库存补回迁移失败: {e}")
+            return False
+        try:
+            from ..use_mercari.inventory_counters import recompute_listable_quantity
+            recompute_listable_quantity(None)
+        except Exception as e:
+            print(f"[WARN] 组合迁移后重算可上架失败: {e}")
+        ConfigEntryModel.set_value(FLAG, "1")
+        print("[OK] 组合来源库存已补回（组合改为不扣减库存，仅展示拉走件数）")
+        return True
+
     def _get_all_models(self) -> List[Type[BaseModel]]:
         """按依赖顺序返回所有模型类"""
         return [
@@ -452,6 +495,8 @@ class DBManager:
         if not self._migrate_warehouses_name_nullable():
             return False
         if not self._migrate_warehouses_drop_shelf_code_unique():
+            return False
+        if not self._migrate_restore_combined_source_stock():
             return False
         return True
 

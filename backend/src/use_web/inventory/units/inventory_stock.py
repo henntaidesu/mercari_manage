@@ -5,8 +5,8 @@ from fastapi import HTTPException
 
 from ....db_manage.database import DatabaseManager
 
+from ....use_mercari.inventory_counters import _listable_sql_expr
 from .inventory_helpers import _inventory_exists
-from .inventory_combined import _parse_combined_items, _adjust_combined_source_stock
 from .inventory_models import StockInRequest
 
 db = DatabaseManager()
@@ -22,12 +22,6 @@ def stock_in_inventory(pid: int, data: StockInRequest):
         with db.get_connection() as conn:
             cur = conn.cursor()
             cur.execute("BEGIN IMMEDIATE")
-            cur.execute("SELECT is_combined, combined_items FROM [inventory] WHERE id = ? LIMIT 1", (pid,))
-            meta = cur.fetchone()
-            if not meta:
-                raise HTTPException(status_code=404, detail="商品不存在")
-            if int(meta[0] or 0):
-                _adjust_combined_source_stock(cur, _parse_combined_items(meta[1]), int(data.quantity))
             cur.execute(
                 "UPDATE [inventory] SET quantity = COALESCE(quantity, 0) + ? WHERE id = ?",
                 (data.quantity, pid),
@@ -35,9 +29,7 @@ def stock_in_inventory(pid: int, data: StockInRequest):
             if cur.rowcount <= 0:
                 raise HTTPException(status_code=500, detail="库存更新失败")
             cur.execute(
-                "UPDATE [inventory] SET [listable_quantity] = "
-                "MAX(0, COALESCE([quantity],0) - COALESCE([on_sale_quantity],0) - COALESCE([pending_outbound_qty],0)) "
-                "WHERE id = ?",
+                f"UPDATE [inventory] SET [listable_quantity] = {_listable_sql_expr()} WHERE id = ?",
                 (pid,),
             )
             if data.warehouse_id:
@@ -77,14 +69,12 @@ def stock_out_inventory(pid: int, data: StockInRequest):
         with db.get_connection() as conn:
             cur = conn.cursor()
             cur.execute("BEGIN IMMEDIATE")
-            cur.execute("SELECT is_combined, combined_items, quantity FROM [inventory] WHERE id = ? LIMIT 1", (pid,))
+            cur.execute("SELECT quantity FROM [inventory] WHERE id = ? LIMIT 1", (pid,))
             meta = cur.fetchone()
             if not meta:
                 raise HTTPException(status_code=404, detail="商品不存在")
-            if int(meta[2] or 0) < data.quantity:
-                raise HTTPException(status_code=400, detail=f"库存不足，当前库存：{int(meta[2] or 0)}")
-            if int(meta[0] or 0):
-                _adjust_combined_source_stock(cur, _parse_combined_items(meta[1]), -int(data.quantity))
+            if int(meta[0] or 0) < data.quantity:
+                raise HTTPException(status_code=400, detail=f"库存不足，当前库存：{int(meta[0] or 0)}")
             cur.execute(
                 "UPDATE [inventory] SET quantity = COALESCE(quantity, 0) - ? WHERE id = ?",
                 (data.quantity, pid),
@@ -92,9 +82,7 @@ def stock_out_inventory(pid: int, data: StockInRequest):
             if cur.rowcount <= 0:
                 raise HTTPException(status_code=500, detail="库存更新失败")
             cur.execute(
-                "UPDATE [inventory] SET [listable_quantity] = "
-                "MAX(0, COALESCE([quantity],0) - COALESCE([on_sale_quantity],0) - COALESCE([pending_outbound_qty],0)) "
-                "WHERE id = ?",
+                f"UPDATE [inventory] SET [listable_quantity] = {_listable_sql_expr()} WHERE id = ?",
                 (pid,),
             )
             if data.warehouse_id:

@@ -3,14 +3,18 @@
 from typing import Optional
 from fastapi import HTTPException
 
+from ....db_manage.database import DatabaseManager
 from ....db_manage.models.order_outbound_line import OrderOutboundLineModel
 from ....use_mercari.mgmt_id_cipher import decode_mgmt_id_cipher
 
 from .inventory_helpers import (
     _query_inventory_with_joins,
     _inventory_exists,
+    _inventory_paths_from_parsed_row,
     _sql_inventory_has_image_condition,
 )
+
+db = DatabaseManager()
 
 
 def list_inventory(
@@ -91,4 +95,42 @@ def list_inventory_pending_outbound_lines(pid: int):
     if not _inventory_exists(pid):
         raise HTTPException(status_code=404, detail="商品不存在")
     items = OrderOutboundLineModel.list_pending_for_inventory(pid)
+    return {"inventory_id": pid, "items": items}
+
+
+def list_inventory_used_in_combos(pid: int):
+    """反向查询：该商品被哪些「组合商品」引用（每套用量、套数、占用件数、图片）。
+
+    组合商品不扣减来源库存，本接口供库存编辑弹窗右侧「所属组合」展示。
+    """
+    if not _inventory_exists(pid):
+        raise HTTPException(status_code=404, detail="商品不存在")
+    rows = db.execute_query(
+        """
+        SELECT cmb.[id], cmb.[name], COALESCE(cmb.[quantity], 0) AS combo_quantity,
+               CAST(json_extract(je.value, '$.quantity') AS INTEGER) AS per_combo_quantity,
+               cmb.[image], cmb.[image_front], cmb.[image_back], cmb.[images_json]
+        FROM [inventory] cmb, json_each(cmb.[combined_items]) je
+        WHERE COALESCE(cmb.[is_combined], 0) = 1
+          AND COALESCE(cmb.[is_delete], 0) = 0
+          AND CAST(json_extract(je.value, '$.inventory_id') AS INTEGER) = ?
+        ORDER BY cmb.[id] DESC
+        """,
+        (pid,),
+    )
+    items = []
+    for r in rows or []:
+        per = int(r[3] or 0)
+        combo_qty = int(r[2] or 0)
+        images = _inventory_paths_from_parsed_row(
+            {"image_front": r[5], "image": r[4], "image_back": r[6], "images_json": r[7]}
+        )
+        items.append({
+            "combined_id": int(r[0]),
+            "name": r[1] or "",
+            "combo_quantity": combo_qty,
+            "per_combo_quantity": per,
+            "reserved_quantity": per * combo_qty,
+            "images": images,
+        })
     return {"inventory_id": pid, "items": items}

@@ -841,8 +841,19 @@ export default defineComponent({
     const combinedEditDetailRows = ref([])
     const combinedLinkImageDialogVisible = ref(false)
 
+    /** 编辑普通商品时右侧「所属组合」：该商品被哪些组合商品引用（反向） */
+    const usedInCombosLoading = ref(false)
+    const usedInCombosRows = ref([])
+
     const showCombinedEditDetail = computed(
       () => Boolean(form.value?.id) && Number(form.value?.is_combined || 0) === 1
+    )
+
+    const showUsedInCombos = computed(
+      () =>
+        Boolean(form.value?.id) &&
+        Number(form.value?.is_combined || 0) !== 1 &&
+        (Number(form.value?.combined_quantity || 0) > 0 || usedInCombosRows.value.length > 0)
     )
 
     /** 编辑商品：管理番号 → 末行暗号（-=~<> 五进制），与出品说明一致 */
@@ -869,8 +880,8 @@ export default defineComponent({
         COMBINED_EDIT_LAYOUT_GAP +
         PRODUCT_EDIT_IMAGES_ASIDE_WIDTH +
         40
-      if (showCombinedEditDetail.value) {
-        // 组合商品再追加一栏「组成明细」
+      if (showCombinedEditDetail.value || showUsedInCombos.value) {
+        // 组合商品追加「组成明细」；普通商品被组合引用时追加「所属组合」
         total += COMBINED_EDIT_LAYOUT_GAP + COMBINED_EDIT_ASIDE_WIDTH
       }
       return `min(${total}px, 98vw)`
@@ -1702,6 +1713,13 @@ export default defineComponent({
           if (va > vb) return 1 * mult
           return 0
         }
+        if (prop === 'combined_quantity') {
+          const va = Number(a.combined_quantity) || 0
+          const vb = Number(b.combined_quantity) || 0
+          if (va < vb) return -1 * mult
+          if (va > vb) return 1 * mult
+          return 0
+        }
         return 0
       }
 
@@ -1731,7 +1749,7 @@ export default defineComponent({
       return 'success'
     }
 
-    /** 可上架数量 = max(0, 库存 - 在售 - 待出)。优先用后端字段，缺失时本地兜底计算。 */
+    /** 可上架数量 = max(0, 库存 - 在售 - 待出 - 组合)。优先用后端字段，缺失时本地兜底计算。 */
     function listableQuantity(row) {
       if (!row || typeof row !== 'object') return 0
       if (row.listable_quantity != null && row.listable_quantity !== '') {
@@ -1741,7 +1759,8 @@ export default defineComponent({
       const q = Number(row.quantity ?? 0)
       const onSale = Number(row.on_sale_quantity ?? 0)
       const pend = Number(row.pending_outbound_qty ?? 0)
-      return Math.max(0, (Number.isFinite(q) ? q : 0) - (Number.isFinite(onSale) ? onSale : 0) - (Number.isFinite(pend) ? pend : 0))
+      const comb = Number(row.combined_quantity ?? 0)
+      return Math.max(0, (Number.isFinite(q) ? q : 0) - (Number.isFinite(onSale) ? onSale : 0) - (Number.isFinite(pend) ? pend : 0) - (Number.isFinite(comb) ? comb : 0))
     }
 
     /**
@@ -2198,6 +2217,35 @@ export default defineComponent({
       }
     }
 
+    /** 加载「所属组合」：该商品被哪些组合商品引用（仅普通商品时有意义） */
+    async function loadUsedInCombosForRow(row) {
+      usedInCombosRows.value = []
+      if (!row || !row.id || Number(row.is_combined || 0) === 1) return
+      usedInCombosLoading.value = true
+      try {
+        const res = await inventoryApi.usedInCombos(row.id)
+        usedInCombosRows.value = Array.isArray(res?.items) ? res.items : []
+      } catch {
+        usedInCombosRows.value = []
+      } finally {
+        usedInCombosLoading.value = false
+      }
+    }
+
+    /** 所属组合：点击跳转到该组合商品的编辑表单 */
+    async function openUsedInComboEdit(row) {
+      if (!row || !row.combined_id) {
+        ElMessage.warning(t('inventory.cannotLoadInventoryItem'))
+        return
+      }
+      try {
+        const product = await inventoryApi.get(row.combined_id)
+        openDialog(product)
+      } catch {
+        ElMessage.warning(t('inventory.cannotLoadInventoryItem'))
+      }
+    }
+
     function normalizeInventoryImagePath(raw) {
       return String(raw || '').trim()
     }
@@ -2253,6 +2301,8 @@ export default defineComponent({
       newCategoryName.value = ''
       combinedEditDetailRows.value = []
       combinedEditDetailLoading.value = false
+      usedInCombosRows.value = []
+      usedInCombosLoading.value = false
       form.value = row
         ? {
             id: row.id,
@@ -2283,7 +2333,9 @@ export default defineComponent({
             sale_type: row.sale_type || 'instant_buy',
             auction_duration: row.auction_duration || 'normal',
             is_combined: Number(row.is_combined || 0),
-            combined_items: row.combined_items ?? null
+            combined_items: row.combined_items ?? null,
+            combined_quantity: Number(row.combined_quantity ?? 0),
+            pending_outbound_qty: Number(row.pending_outbound_qty ?? 0)
           }
         : {
             id: null,
@@ -2314,7 +2366,9 @@ export default defineComponent({
             sale_type: 'instant_buy',
             auction_duration: 'normal',
             is_combined: 0,
-            combined_items: null
+            combined_items: null,
+            combined_quantity: 0,
+            pending_outbound_qty: 0
           }
       syncFormLegacyImageFieldsFromImages()
       syncQuantityEditFromForm()
@@ -2327,6 +2381,8 @@ export default defineComponent({
       dialogVisible.value = true
       if (row && Number(row.is_combined || 0) === 1) {
         loadCombinedEditDetailForRow(row)
+      } else if (row && row.id) {
+        loadUsedInCombosForRow(row)
       }
     }
 
@@ -2339,6 +2395,8 @@ export default defineComponent({
         combinedEditDetailRows.value = []
         combinedEditDetailLoading.value = false
         combinedLinkImageDialogVisible.value = false
+        usedInCombosRows.value = []
+        usedInCombosLoading.value = false
       }
     })
 
@@ -3250,6 +3308,8 @@ export default defineComponent({
         }
         delete payload.is_combined
         delete payload.combined_items
+        delete payload.combined_quantity
+        delete payload.pending_outbound_qty
         delete payload.sku
         // 出品设置：表单字段映射为库存列名后写入数据库（供自动出品逻辑使用）
         payload.listing_account_id =
@@ -3811,6 +3871,10 @@ export default defineComponent({
       combinedEditDetailRows,
       combinedLinkImageDialogVisible,
       showCombinedEditDetail,
+      usedInCombosLoading,
+      usedInCombosRows,
+      showUsedInCombos,
+      openUsedInComboEdit,
       editFormMgmtIdCipher,
       PRODUCT_EDIT_DIALOG_FORM_WIDTH,
       COMBINED_EDIT_ASIDE_WIDTH,

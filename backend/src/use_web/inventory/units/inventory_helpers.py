@@ -56,6 +56,7 @@ def _row_to_inventory_detail(row: tuple) -> dict:
         "inv_shelf_code",
         "product_type_name",
         "owner_user_name",
+        "combined_quantity",
     ]
     return dict(zip(keys, row))
 
@@ -107,17 +108,20 @@ def _legacy_paths_from_db_columns(front, legacy_image, back, images_json_raw) ->
 
 def _query_inventory_with_joins(where_sql: str = "", params: tuple = ()) -> list[dict]:
     from ....db_manage.models.warehouse import WarehouseModel
+    from ....use_mercari.inventory_counters import _combined_reserved_sql_expr
 
     select_cols = ", ".join([f"p.[{c}]" for c in INVENTORY_COLUMNS])
     wh_l = WarehouseModel.sql_display_label("w")
     wh_store = "COALESCE(NULLIF(TRIM(w.warehouse), ''), '默认仓库')"
+    combined_reserved = _combined_reserved_sql_expr("p")
     sql = f"""
         SELECT {select_cols}, c.name AS category_name, {wh_l} AS warehouse_name,
                {wh_store} AS inv_wh_name,
                NULLIF(TRIM(w.shelf_name), '') AS inv_shelf_name,
                w.name AS inv_shelf_code,
                ptcm.product_type AS product_type_name,
-               COALESCE(u.display_name, u.username) AS owner_user_name
+               COALESCE(u.display_name, u.username) AS owner_user_name,
+               {combined_reserved} AS combined_quantity
         FROM [inventory] p
         LEFT JOIN [categories] c ON c.id = p.category_id
         LEFT JOIN [warehouses] w ON w.id = p.warehouse_id
@@ -135,7 +139,9 @@ def _query_inventory_with_joins(where_sql: str = "", params: tuple = ()) -> list
         q = int(d.get("quantity") or 0)
         os_q = int(d.get("on_sale_quantity") or 0)
         pend = int(d.get("pending_outbound_qty") or 0)
-        listable = max(0, q - os_q - pend)
+        comb = int(d.get("combined_quantity") or 0)
+        d["combined_quantity"] = comb
+        listable = max(0, q - os_q - pend - comb)
         if int(d.get("listable_quantity") or 0) != listable:
             iid = int(d.get("id") or 0)
             if iid > 0:
