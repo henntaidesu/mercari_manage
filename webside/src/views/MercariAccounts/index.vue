@@ -38,13 +38,6 @@
                 :loading="browserLoadingKeys.has(browserKeyFor(row.id))"
                 @click="openBrowserForSavedAccount(row)"
               >{{ t('mercariAccounts.openBrowser') }}</el-button>
-              <el-button
-                size="small"
-                type="warning"
-                plain
-                :loading="cookieInjectKeys.has(browserKeyFor(row.id))"
-                @click="injectCookieForAccount(row)"
-              >{{ t('mercariAccounts.cookieInject') }}</el-button>
               <el-tooltip
                 :disabled="row.status === 'active' && !syncLockStore.locked"
                 :content="row.status !== 'active' ? t('mercariAccounts.syncDataDisabledHint') : syncLockStore.label"
@@ -241,6 +234,13 @@
               :loading="syncingIds.has(form.id)"
               @click="fetchHistoryFromForm"
             >{{ t('mercariAccounts.fetchHistory') }}</el-button>
+            <el-button
+              v-if="form.id"
+              type="warning"
+              plain
+              :loading="cookieInjectKeys.has(browserKeyFor(form.id))"
+              @click="injectCookieForAccount(form)"
+            >{{ t('mercariAccounts.cookieInject') }}</el-button>
             <el-button @click="dialogVisible = false">{{ t('common.cancel') }}</el-button>
             <el-button type="primary" :loading="submitting" @click="submit">{{ t('common.save') }}</el-button>
           </div>

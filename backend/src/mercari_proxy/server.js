@@ -42,6 +42,12 @@ const DROP_RESP_HEADERS = new Set([
   "content-encoding", "content-length", "transfer-encoding", "connection",
 ]);
 
+// 仅允许环回地址访问（含登录态注入，限制为本机）。
+function isLoopback(req) {
+  const a = (req.socket && req.socket.remoteAddress) || "";
+  return a === "127.0.0.1" || a === "::1" || a === "::ffff:127.0.0.1";
+}
+
 // ---------------- Cookie 注入暂存（一次性 token） ----------------
 const injectionStore = new Map(); // token -> { cookies: [{name,value,httpOnly}], expires: ms }
 
@@ -54,6 +60,10 @@ function pruneInjections() {
 
 const handler = async (req, res) => {
   try {
+    if (!isLoopback(req)) {
+      res.writeHead(403, { "content-type": "text/plain; charset=utf-8" });
+      return res.end("forbidden: loopback only");
+    }
     const PROXY_HOST = req.headers.host || `localhost:${PORT}`;
     const reqUrl = new URL(req.url, `http://${PROXY_HOST}`);
     const path = reqUrl.pathname;
@@ -223,6 +233,7 @@ if (SCHEME === "https") {
 
 // ---------------- WebSocket 代理：<BASE>/__pws__/<host>/<path> ----------------
 server.on("upgrade", (req, clientSock, head) => {
+  if (!isLoopback(req)) return clientSock.destroy();
   const wsPath = BASE && req.url.startsWith(BASE) ? req.url.slice(BASE.length) : req.url;
   const m = wsPath.match(/^\/__pws__\/([^/]+)(\/.*)?$/);
   if (!m) return clientSock.destroy();

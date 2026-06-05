@@ -3,7 +3,7 @@
 
 源自 github.com/Gosoki/mercari-proxy，改造为后端托管的子进程，随系统启停。
 - 独立 HTTPS 端口、根挂载（与原项目设计一致，SPA 导航/刷新/前进后退均正常）；
-- 默认监听 0.0.0.0:<MERCARI_PROXY_PORT>（默认 9610），支持本机与局域网/远程访问；
+- 默认仅监听 127.0.0.1:<MERCARI_PROXY_PORT>（默认 9610），仅本机可访问；
 - 自签证书使浏览器处于安全上下文（DPoP 所需），用户首次访问点「继续」即可；
 - ``register_injection`` 把账号 Cookie 以一次性 token 推送到 Node 进程内存，
   用户随后访问 ``/__boot?token=...`` 时写入本地浏览器。
@@ -34,7 +34,8 @@ def proxy_port() -> int:
 
 
 def bind_host() -> str:
-    return os.environ.get("MERCARI_PROXY_BIND_HOST", "0.0.0.0")
+    # 仅本机可访问（Cookie 注入含登录态，限制为环回地址）。
+    return os.environ.get("MERCARI_PROXY_BIND_HOST", "127.0.0.1")
 
 
 def proxy_scheme() -> str:
