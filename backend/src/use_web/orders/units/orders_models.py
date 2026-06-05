@@ -19,6 +19,7 @@ class OrderCreate(PydanticModel):
     request_class_display_name: Optional[str] = None
     shipping_fee: Optional[int] = None
     tracking_no: Optional[str] = None
+    ship_confirm_code: Optional[str] = None
     transaction_evidence_id: Optional[int] = None
     remark: Optional[str] = None
     description: Optional[str] = None
@@ -52,6 +53,7 @@ class OrderUpdate(PydanticModel):
     request_class_display_name: Optional[str] = None
     shipping_fee: Optional[int] = None
     tracking_no: Optional[str] = None
+    ship_confirm_code: Optional[str] = None
     transaction_evidence_id: Optional[int] = None
     remark: Optional[str] = None
     description: Optional[str] = None

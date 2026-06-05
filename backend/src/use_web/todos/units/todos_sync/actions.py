@@ -279,10 +279,11 @@ async def finalize_post_shipping_endpoint(
     if not aid:
         raise HTTPException(status_code=400, detail="待办事项缺少 account_id")
     jid = _validate_job_id(req.progress_job_id if req else None)
+    force = bool(getattr(req, "force", False)) if req else False
     try:
         return await run_mercari_serial_async(
             queue_key_for_mercari_account(aid),
-            lambda: finalize_post_shipping(int(todo_id), progress_job_id=jid),
+            lambda: finalize_post_shipping(int(todo_id), progress_job_id=jid, force=force),
             suppress_idle_close=True,
         )
     except ValueError as exc:

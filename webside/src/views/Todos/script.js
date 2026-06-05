@@ -1210,17 +1210,58 @@ export default defineComponent({
       }
     }
 
+    // 调用后端确认发送；force=true 跳过「发送确认符号/追跡番号」核验。
+    function runFinalizePostShipping(id, force) {
+      return txOverlay.run({
+        title: t('todos.finalizingShipping'),
+        consoleTag: '[发货通知]',
+        pollFn: (jobId) => todosApi.getSyncProgress(jobId),
+        actionFn: (jobId) => todosApi.finalizePostShipping(id, { progress_job_id: jobId, force }),
+      })
+    }
+
     async function onShipConfirmSubmit() {
       const id = currentRow.value?.id
       if (!id) return
       shipConfirmLoading.value = true
       try {
-        const result = await txOverlay.run({
-          title: t('todos.finalizingShipping'),
-          consoleTag: '[发货通知]',
-          pollFn: (jobId) => todosApi.getSyncProgress(jobId),
-          actionFn: (jobId) => todosApi.finalizePostShipping(id, { progress_job_id: jobId }),
-        })
+        let result = await runFinalizePostShipping(id, false)
+
+        // 核验不一致：缓存的发送确认符号/追跡番号 与 当前页面读到的不一致 → 提示用户，
+        // 让用户决定是否仍要发送（确认后带 force 重试，不一致则可取消，不会误发）。
+        if (result?.verify_mismatch) {
+          const ph = '—'
+          const lines = []
+          if (result.code_mismatch) {
+            lines.push(t('todos.shipVerifyCodeLine', {
+              cached: result.cached_confirm_code || ph,
+              page: result.page_confirm_code || ph,
+            }))
+          }
+          if (result.tracking_mismatch) {
+            lines.push(t('todos.shipVerifyTrackingLine', {
+              cached: result.cached_tracking_no || ph,
+              page: result.page_tracking_no || ph,
+            }))
+          }
+          try {
+            await ElMessageBox.confirm(
+              `${t('todos.shipVerifyMismatchMessage')}<br><br>${lines.join('<br>')}`,
+              t('todos.shipVerifyMismatchTitle'),
+              {
+                type: 'warning',
+                dangerouslyUseHTMLString: true,
+                confirmButtonText: t('todos.shipVerifyForceSend'),
+                cancelButtonText: t('common.cancel'),
+              },
+            )
+          } catch {
+            ElMessage.info(t('todos.shipVerifyCancelled'))
+            return
+          }
+          result = await runFinalizePostShipping(id, true)
+        }
+
         // 仅当后端检测到「購入者の受取をお待ちください」才算发送成功
         if (result?.shipped_ok) {
           ElMessage.success(t('todos.shipNotified'))

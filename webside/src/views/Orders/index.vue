@@ -572,6 +572,11 @@
               <el-input v-model="form.tracking_no" clearable placeholder="tracking_no" />
             </el-form-item>
           </el-col>
+          <el-col :xs="24" :sm="12" :md="6">
+            <el-form-item :label="t('orders.shipConfirmCode')">
+              <el-input v-model="form.ship_confirm_code" clearable placeholder="ship_confirm_code" />
+            </el-form-item>
+          </el-col>
         </el-row>
 
         <!-- 商品信息 -->

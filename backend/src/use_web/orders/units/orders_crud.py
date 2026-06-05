@@ -39,6 +39,7 @@ def create_order(data: OrderCreate):
         request_class_display_name=(data.request_class_display_name or "").strip() or None,
         shipping_fee=data.shipping_fee,
         tracking_no=(data.tracking_no or "").strip() or None,
+        ship_confirm_code=(data.ship_confirm_code or "").strip() or None,
         transaction_evidence_id=data.transaction_evidence_id,
         remark=data.remark,
         description=data.description,
@@ -89,6 +90,8 @@ def update_order(oid: int, data: OrderUpdate):
         item.shipping_fee = data.shipping_fee
     if "tracking_no" in data.model_fields_set:
         item.tracking_no = (data.tracking_no or "").strip() or None
+    if "ship_confirm_code" in data.model_fields_set:
+        item.ship_confirm_code = (data.ship_confirm_code or "").strip() or None
     if "transaction_evidence_id" in data.model_fields_set:
         item.transaction_evidence_id = data.transaction_evidence_id
     if "remark" in data.model_fields_set:

@@ -60,6 +60,8 @@ class TransactionActionRequest(PydanticModel):
     """无 body 的浏览器操作（拉详情/启动尺寸选择/修改发送方式）仍需透传 job_id。"""
 
     progress_job_id: Optional[str] = None
+    # 确认发送时跳过「发送确认符号/追跡番号」核验（用户在核验不一致提示后确认仍要发送）。
+    force: bool = False
 
 
 class SendMessageReactionRequest(PydanticModel):

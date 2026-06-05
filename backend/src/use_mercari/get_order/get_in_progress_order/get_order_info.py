@@ -283,6 +283,40 @@ def extract_order_info_fields(response: Dict[str, Any]) -> Dict[str, Any]:
     }
 
 
+def apply_post_ship_codes_to_order(
+    item_id: str,
+    *,
+    ship_confirm_code: Optional[str] = None,
+    tracking_no: Optional[str] = None,
+) -> Optional[str]:
+    """把「确认发送」时得到的 発送確認符号 / 追跡番号 写入订单（order_no == item_id）。
+
+    返回 None 表示成功（或无可写入值）；否则返回错误标识字符串。
+    transaction_evidences/get 不含発送確認符号，故由此处单独从待办缓存回填。
+    """
+    item_id = str(item_id or "").strip()
+    if not item_id:
+        return "empty_item_id"
+    code = (ship_confirm_code or "").strip()
+    tracking = (tracking_no or "").strip()
+    if not code and not tracking:
+        return None
+    rows = OrderModel.find_all(where="[order_no] = ?", params=(item_id,), limit=1)
+    if not rows:
+        return "order_not_found"
+    o = rows[0]
+    changed = False
+    if code:
+        o.ship_confirm_code = code
+        changed = True
+    if tracking:
+        o.tracking_no = tracking
+        changed = True
+    if changed and not o.save():
+        return "save_failed"
+    return None
+
+
 async def apply_item_info_to_order(
     item_id: str,
     account_id: Optional[int] = None,

@@ -12,9 +12,13 @@ from .....web_drive.core.manager import get_web_drive_manager
 from .....web_drive.core.mitm_session import mitm_automation_browser
 from .....web_drive.core.paths import mercari_account_key
 from ....sync.sync_progress import make_sync_reporter
-from ....get_order.get_in_progress_order.get_order_info import apply_item_info_to_order
+from ....get_order.get_in_progress_order.get_order_info import (
+    apply_item_info_to_order,
+    apply_post_ship_codes_to_order,
+)
 from .._common import _is_wait_shipping_todo
-from .._qr_facility import _persist_post_ship_ready
+from .._cache import get_cached_transaction_detail
+from .._qr_facility import _extract_post_ship_ready, _persist_post_ship_ready
 from .._ui import _click_visible_button_by_text
 from .qr_scan import _SCAN_OK_TEXT
 
@@ -224,6 +228,68 @@ async def _has_tracking_number(page: Any, *, body_text: Optional[str] = None) ->
     except Exception:
         return False
 
+def _norm_code(s: Optional[str]) -> str:
+    """発送確認符号の比較用正規化（空白除去 + 大文字化）。"""
+    return re.sub(r"\s+", "", (s or "")).upper()
+
+
+def _norm_tracking(s: Optional[str]) -> str:
+    """追跡番号の比較用正規化（数字以外を除去）。"""
+    return re.sub(r"\D", "", (s or ""))
+
+
+async def _detect_ship_code_mismatch(page: Any, todo_id: int) -> Optional[Dict[str, Any]]:
+    """「系统缓存(detail_json)」と「現在開いているページ」の 発送確認符号 / 追跡番号 を照合する。
+
+    戻り値:
+      - ``None``: 一致、または比較できる基準が無い（＝発送を止めない）
+      - ``dict``: 不一致。発送せずユーザーに確認を促すための情報（缓存値 / 页面值）を含む
+
+    判定方針: 「缓存にも页面にも値が在り、かつ食い違う」場合のみ不一致とする。
+    片方が空（ページ未描画 / 缓存無し）の場合は誤検知を避けるため止めない。
+    """
+    cached = get_cached_transaction_detail(int(todo_id))
+    cached_code = (cached.get("ship_confirm_code") or "").strip()
+    cached_tracking = (cached.get("ship_tracking_no") or "").strip()
+    if not cached_code and not cached_tracking:
+        return None  # 缓存に基準が無い → 照合しない
+
+    # 交易ページへ遷移直後は確認符号 / 追跡番号の描画にラグがあるため、出るまで少し待つ（最大 ~6s）。
+    page_code = ""
+    page_tracking = ""
+    deadline = time.monotonic() + 6
+    while True:
+        info = await _extract_post_ship_ready(page)
+        page_code = (info.get("confirm_code") or "").strip()
+        page_tracking = (info.get("tracking_no") or "").strip()
+        if page_code or page_tracking or time.monotonic() >= deadline:
+            break
+        await asyncio.sleep(0.4)
+
+    code_mismatch = bool(
+        cached_code and page_code and _norm_code(cached_code) != _norm_code(page_code)
+    )
+    tracking_mismatch = bool(
+        cached_tracking and page_tracking
+        and _norm_tracking(cached_tracking) != _norm_tracking(page_tracking)
+    )
+    if not (code_mismatch or tracking_mismatch):
+        return None
+
+    log.warning(
+        "[postship] 核验不一致 todo=%s 缓存(code=%s tracking=%s) 页面(code=%s tracking=%s)",
+        todo_id, cached_code, cached_tracking, page_code, page_tracking,
+    )
+    return {
+        "code_mismatch": code_mismatch,
+        "tracking_mismatch": tracking_mismatch,
+        "cached_confirm_code": cached_code,
+        "page_confirm_code": page_code,
+        "cached_tracking_no": cached_tracking,
+        "page_tracking_no": page_tracking,
+    }
+
+
 async def _run_post_ship_steps(page: Any, report: Any, todo_id: int) -> Dict[str, Any]:
     """在给定页面上执行：勾选确认 → 発送通知 → 二次确认「発送しました」 → 等待发送成功。
 
@@ -316,8 +382,13 @@ async def finalize_post_shipping(
     todo_id: int,
     *,
     progress_job_id: Optional[str] = None,
+    force: bool = False,
 ) -> Dict[str, Any]:
-    """确认发送：勾选确认 → 発送通知 → 「発送しました」二次确认。
+    """确认发送：核验 → 勾选确认 → 発送通知 → 「発送しました」二次确认。
+
+    **核验**：发送前对比「系统缓存的 発送確認符号/追跡番号」与「当前页面读到的值」，
+    不一致则**不发送**，返回 ``verify_mismatch=True`` 让前端提示用户确认。用户确认后
+    前端会带 ``force=True`` 重新调用以跳过核验直接发送。
 
     **不刷新页面**：页面已处于「待发送通知」状态（扫码/控え确认后再 reload 会丢失该状态），
     故优先复用已打开浏览器的当前页面直接操作；仅当浏览器未打开时才用 mitm_automation_browser
@@ -340,6 +411,17 @@ async def finalize_post_shipping(
     confirmed = False
     shipped_ok = False
 
+    def _mismatch_result(mismatch: Dict[str, Any]) -> Dict[str, Any]:
+        report("verify_mismatch", "发货信息核验不一致，已暂停发送，等待用户确认")
+        return {
+            "todo_id": int(todo_id),
+            "account_id": aid,
+            "success": False,
+            "shipped_ok": False,
+            "verify_mismatch": True,
+            **mismatch,
+        }
+
     # ── 优先：复用已打开浏览器的当前页面，直接点击（不 reload）。──
     page = None
     try:
@@ -349,6 +431,11 @@ async def finalize_post_shipping(
 
     if page is not None:
         log.info("[postship] 复用已打开页面直接操作（不刷新）account_id=%s", aid)
+        if not force:
+            report("verify", "正在核验发送确认符号 / 追跡番号…")
+            mismatch = await _detect_ship_code_mismatch(page, int(todo_id))
+            if mismatch:
+                return _mismatch_result(mismatch)
         steps = await _run_post_ship_steps(page, report, int(todo_id))
         ticked = int(steps.get("ticked", 0) or 0)
         confirmed = bool(steps.get("confirmed"))
@@ -366,6 +453,11 @@ async def finalize_post_shipping(
             minimized=minimized_override,
         ) as (mgr2, key):
             page = await mgr2.active_tab_page(key)
+            if not force:
+                report("verify", "正在核验发送确认符号 / 追跡番号…")
+                mismatch = await _detect_ship_code_mismatch(page, int(todo_id))
+                if mismatch:
+                    return _mismatch_result(mismatch)
             steps = await _run_post_ship_steps(page, report, int(todo_id))
             ticked = int(steps.get("ticked", 0) or 0)
             confirmed = bool(steps.get("confirmed"))
@@ -393,6 +485,22 @@ async def finalize_post_shipping(
             except Exception as exc:
                 order_refresh_error = f"exception:{exc}"
                 log.warning("[postship] 订单刷新异常: %s", exc)
+
+            # 把「确认发送」时的 発送確認符号 / 追跡番号 同步进订单（transaction_evidences/get 不含确认符号）。
+            # 放在订单刷新之后：刷新可能用接口值覆盖 tracking_no，这里再用确认发送时的实际值兜底/校正。
+            try:
+                cached = get_cached_transaction_detail(int(todo_id))
+                code_err = apply_post_ship_codes_to_order(
+                    item_id,
+                    ship_confirm_code=cached.get("ship_confirm_code"),
+                    tracking_no=cached.get("ship_tracking_no"),
+                )
+                if code_err:
+                    log.warning("[postship] 发送确认符号/追跡番号 写入订单失败: %s", code_err)
+                else:
+                    log.info("[postship] 已同步发送确认符号/追跡番号到订单 item_id=%s", item_id)
+            except Exception as exc:
+                log.warning("[postship] 同步发送确认符号/追跡番号异常: %s", exc)
         else:
             log.warning("[postship] todo 无 item_id，跳过订单刷新")
 

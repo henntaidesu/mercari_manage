@@ -109,6 +109,12 @@ class OrderModel(_AggregateMixin, _QueryMixin, BaseModel):
                 'not_null': False,
                 'default': None,
             },
+            # 発送確認符号（ゆうパケットポスト系：确认发送时从交易页读取，如 QR15TW）
+            'ship_confirm_code': {
+                'type': 'TEXT',
+                'not_null': False,
+                'default': None,
+            },
             # items/get data.transaction_evidence.id
             'transaction_evidence_id': {
                 'type': 'INTEGER',
