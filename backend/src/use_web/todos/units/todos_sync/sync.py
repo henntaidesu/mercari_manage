@@ -5,8 +5,8 @@ import logging
 from typing import Any, Dict, Optional
 from fastapi import HTTPException
 from .....use_mercari.get_to_du_list.todolist_sync import resolve_enabled_account_ids, sync_todos_from_mercari
-from .....use_mercari.get_to_du_list.transaction_detail import fetch_transaction_detail, list_uncached_detail_todo_ids
-from .....use_mercari.sync.sync_progress import clear_sync_progress, set_sync_progress
+from .....use_mercari.get_to_du_list.transaction_detail import precache_uncached_todo_details
+from .....use_mercari.sync.sync_progress import clear_sync_progress
 from .....use_mercari.sync.sync_lock import LABEL_FULL, begin_or_conflict as sync_lock_begin, end as sync_lock_end
 from .....web_drive.core.account_serial_queue import queue_key_for_mercari_account, run_mercari_serial_async
 from .....web_drive.core.manager import get_web_drive_manager
@@ -103,36 +103,18 @@ async def _precache_detail_todos(
     fetched = 0
     failed = 0
     for aid in account_ids:
-        todo_ids = list_uncached_detail_todo_ids(aid)
-        if not todo_ids:
-            continue
-        log.info(
-            "[todolist] 交易详情预缓存 account_id=%s 共 %d 条", aid, len(todo_ids)
-        )
         try:
-            for idx, tid in enumerate(todo_ids, start=1):
-                if jid:
-                    set_sync_progress(
-                        jid,
-                        "precache_detail",
-                        f"补抓交易详情（{idx}/{len(todo_ids)}）…",
-                    )
-                try:
-                    # 同账号多条复用同一浏览器会话（mitm_automation_browser 退出不关闭，
-                    # 仅刷新标签页）；串行队列保证不与其它操作抢占同一账号。
-                    await run_mercari_serial_async(
-                        queue_key_for_mercari_account(aid),
-                        lambda tid=tid: fetch_transaction_detail(
-                            int(tid), progress_job_id=jid, force_headless=True
-                        ),
-                        suppress_idle_close=True,
-                    )
-                    fetched += 1
-                except Exception as exc:  # noqa: BLE001 单条失败不阻断其余
-                    failed += 1
-                    log.warning(
-                        "[todolist] 交易详情预缓存失败 todo_id=%s: %s", tid, exc
-                    )
+            # 整账号补抓作为一个队列任务执行：同账号多条复用同一浏览器会话
+            # （mitm_automation_browser 退出不关闭，仅刷新标签页），串行队列保证不抢占。
+            f, fl = await run_mercari_serial_async(
+                queue_key_for_mercari_account(aid),
+                lambda aid=aid: precache_uncached_todo_details(aid, progress_job_id=jid),
+                suppress_idle_close=True,
+            )
+            fetched += f
+            failed += fl
+        except Exception as exc:  # noqa: BLE001 单账号失败不阻断其余账号
+            log.warning("[todolist] 交易详情预缓存(account_id=%s)失败: %s", aid, exc)
         finally:
             # 该账号补抓完毕，强制关闭其浏览器，避免与下一账号或后续操作重叠。
             try:

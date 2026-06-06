@@ -23,7 +23,7 @@ from ....web_drive.core.account_serial_queue import (
 )
 from ....web_drive.core.manager import get_web_drive_manager
 from ....web_drive.core.paths import mercari_account_key
-from ....use_mercari.get_to_du_list.todolist_sync import sync_todos_from_mercari
+from ....use_mercari.get_to_du_list.todolist_sync import sync_todos_with_details
 from ....use_mercari.get_notifications.notification.notification_sync import (
     sync_notifications_from_mercari,
 )
@@ -77,7 +77,7 @@ async def sync_account_all_data(aid: int, req: SyncAccountDataRequest) -> Dict[s
 
     # (key, 中文名, 构造协程的工厂)；每步都接入该账号的进度上报
     all_steps = [
-        ("todos", "待办事项", lambda: sync_todos_from_mercari(account_id=account_id, progress_job_id=jid)),
+        ("todos", "待办事项", lambda: sync_todos_with_details(account_id=account_id, progress_job_id=jid)),
         ("notifications", "通知", lambda: sync_notifications_from_mercari(account_id=account_id, progress_job_id=jid)),
         ("on_sale", "在售商品", lambda: sync_on_sale_items_from_mercari(account_id=account_id, progress_job_id=jid)),
         ("orders_list", "订单列表", lambda: sync_new_data(account_id=account_id, progress_job_id=jid)),

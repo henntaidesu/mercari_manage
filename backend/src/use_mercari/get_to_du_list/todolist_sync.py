@@ -259,3 +259,28 @@ async def sync_todos_from_mercari(
         ),
     )
     return stats
+
+
+async def sync_todos_with_details(
+    account_id: Optional[int] = None,
+    progress_job_id: Optional[str] = None,
+) -> Dict[str, Any]:
+    """同步待办列表后，对新到的「待发货/待回复/待评价」无缓存待办补抓交易详情。
+
+    与待办页「从煤炉同步」行为一致；供后台「自动数据获取」与单账号「同步数据」复用。
+    **必须在该账号串行队列内调用**（详情预缓存复用同一浏览器会话，不再单独入队）。
+    预缓存失败仅记录、不影响列表同步结果；返回的 stats 追加 detail_fetched / detail_failed。
+    """
+    # 延迟导入避免包加载期潜在的循环依赖
+    from .transaction_detail import precache_uncached_todo_details
+
+    stats = await sync_todos_from_mercari(
+        account_id=account_id, progress_job_id=progress_job_id
+    )
+    aid = int(stats.get("account_id") or 0)
+    fetched, failed = await precache_uncached_todo_details(
+        aid, progress_job_id=progress_job_id
+    )
+    stats["detail_fetched"] = int(fetched)
+    stats["detail_failed"] = int(failed)
+    return stats

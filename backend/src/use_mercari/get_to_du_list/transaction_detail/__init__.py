@@ -28,6 +28,7 @@ from ._cache import (
     get_cached_transaction_detail,
     list_uncached_detail_todo_ids,
 )
+from .precache import precache_uncached_todo_details
 
 # ── 待评价 ──
 from .review import submit_transaction_review
@@ -62,6 +63,7 @@ __all__ = [
     "fetch_transaction_detail",
     "get_cached_transaction_detail",
     "list_uncached_detail_todo_ids",
+    "precache_uncached_todo_details",
     "submit_transaction_review",
     "send_transaction_message",
     "SUPPORTED_REACTIONS",
