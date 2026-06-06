@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import os
+import shutil
 from typing import Any, Dict, List, Optional
 from ..interactive_tab_state import restore_tabs_to_context, save_snapshot_from_context
 from ..paths import profile_dir_for, profiles_root, validate_account_key
@@ -71,6 +72,23 @@ class _SessionsMixin:
         return out
 
 
+    async def _wipe_profile_dir(self, key: str) -> bool:
+        """删除该 profile 的磁盘目录（Cookie/LocalStorage/标签快照等随之清空）。
+
+        调用方须先 ``_close_session_unlocked`` 关闭会话并等待 Edge 释放文件句柄；
+        Windows 上偶有残留锁，重试几次，``ignore_errors`` 兜底避免抛错阻断启动。
+        """
+        path = os.path.join(profiles_root(), key)
+        if not os.path.isdir(path):
+            return False
+        for _ in range(3):
+            await asyncio.to_thread(shutil.rmtree, path, True)  # ignore_errors=True
+            if not os.path.isdir(path):
+                return True
+            await asyncio.sleep(self._profile_release_delay_sec())
+        return not os.path.isdir(path)
+
+
     async def open_session(
         self,
         account_key: str,
@@ -81,6 +99,7 @@ class _SessionsMixin:
         interactive: Optional[bool] = None,
         restore_tabs: Optional[bool] = None,
         start_minimized: bool = False,
+        fresh: bool = False,
     ) -> Dict[str, Any]:
         """
         :param interactive: 是否为「用户手动可见」会话（影响窗口前台 / 标签恢复行为）。
@@ -90,6 +109,8 @@ class _SessionsMixin:
         :param start_minimized: 启动时窗口最小化到任务栏（后台运行，不抢前台）。
             ``headless=True`` 时无效。``interactive=True`` 仍会生效，此时跳过
             ``--start-maximized``，改用 ``--start-minimized``。
+        :param fresh: 启动前先关闭并删除该 profile 磁盘目录（清空 Cookie/登录态/标签快照），
+            用于「新增账号」前重置 ``mercari_prepare``，确保打开的是未登录的全新页面。
         """
         key = validate_account_key(account_key)
         if interactive is None:
@@ -97,6 +118,9 @@ class _SessionsMixin:
         if restore_tabs is None:
             restore_tabs = bool(interactive and not headless)
         async with self._serialize_profile(key):
+            if fresh:
+                await self._close_session_unlocked(key, force=True)
+                await self._wipe_profile_dir(key)
             return await self._open_session_impl(
                 key,
                 headless=headless,

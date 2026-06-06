@@ -78,6 +78,8 @@ export default defineComponent({
       only_unread: true,
       // 默认不显示「点赞」类型；用户勾选后或主动按 kind=Like 过滤时才显示
       show_likes: false,
+      // 默认不显示「事务局消息」类型；用户勾选后或主动按 kind=PrivateMessage 过滤时才显示
+      show_private_messages: false,
     })
 
     const kindOptions = ref([])
@@ -97,10 +99,15 @@ export default defineComponent({
       if (kw) p.keyword = kw
       if (filters.value.kind) p.kind = filters.value.kind
       if (filters.value.only_unread) p.only_unread = true
-      // 用户没显式按 kind=Like 过滤且未勾选「显示点赞」时，排除 Like
+      // 用户没显式按对应 kind 过滤且未勾选「显示」时，默认排除 Like / PrivateMessage
+      const excludeKinds = []
       if (!filters.value.show_likes && filters.value.kind !== 'Like') {
-        p.exclude_kinds = 'Like'
+        excludeKinds.push('Like')
       }
+      if (!filters.value.show_private_messages && filters.value.kind !== 'PrivateMessage') {
+        excludeKinds.push('PrivateMessage')
+      }
+      if (excludeKinds.length) p.exclude_kinds = excludeKinds.join(',')
       return p
     }
 

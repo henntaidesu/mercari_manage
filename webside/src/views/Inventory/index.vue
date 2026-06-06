@@ -116,7 +116,6 @@
               v-loading="isInventoryExpandLoading(row)"
             >
               <div v-if="getInventoryExpandRows(row).length" class="inventory-expand-section">
-                <div class="inventory-expand-section-title">{{ t('inventory.onSaleProducts') }}</div>
                 <el-table
                   :data="getInventoryExpandRows(row)"
                   size="small"

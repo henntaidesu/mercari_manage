@@ -173,7 +173,7 @@ class _AggregateMixin:
         end_ts: Optional[int] = None,
         owner_user_id: int = 0,
     ) -> Dict[str, Any]:
-        from ...use_web.orders.units.order_goods_ratio import split_order_money_for_owner_user
+        from ....use_web.orders.units.order_goods_ratio import split_order_money_for_owner_user
 
         db = cls().db
         base_sql, params = cls._build_list_filter(

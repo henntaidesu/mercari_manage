@@ -97,6 +97,6 @@ class FetchSellerIdViaMitmBody(PydanticModel):
         max_length=64,
         pattern=r"^[a-zA-Z0-9_-]+$",
     )
-    wait_seconds: int = Field(90, ge=10, le=300)
+    wait_seconds: int = Field(15, ge=10, le=300)
     headless: bool = False
     close_browser_after: bool = False

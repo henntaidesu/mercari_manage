@@ -184,7 +184,9 @@ export default defineComponent({
     }
 
     function openPrepareLoginBrowser() {
-      openBrowserByKey(MERCARI_PREPARE_KEY, t('mercariAccounts.prepareLoginBrowserLabel'))
+      // 新增账号：先清空 mercari_prepare 的登录态，确保打开的是未登录的全新页面
+      // （否则会沿用上一次准备账号时残留的 Cookie，打开已登录的旧账号页面）
+      openBrowserByKey(MERCARI_PREPARE_KEY, t('mercariAccounts.prepareLoginBrowserLabel'), { fresh: true })
     }
 
     function openCreate() {
@@ -323,7 +325,7 @@ export default defineComponent({
     const cookieInjectKeys = ref(new Set())
     const fetchSellerIdLoading = ref(false)
 
-    async function openBrowserByKey(accountKey, label) {
+    async function openBrowserByKey(accountKey, label, { fresh = false } = {}) {
       if (browserLoadingKeys.value.has(accountKey)) return
       const next = new Set(browserLoadingKeys.value)
       next.add(accountKey)
@@ -332,7 +334,8 @@ export default defineComponent({
         const res = await webDriveApi.openSession({
           account_key: accountKey,
           headless: false,
-          restore_tabs: true
+          restore_tabs: true,
+          fresh
         })
         const d = res.data || {}
         const tr = d.tab_restore || {}

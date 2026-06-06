@@ -22,6 +22,8 @@ class OpenSessionBody(PydanticModel):
     restore_tabs: Optional[bool] = None
     use_mitm_proxy: bool = False
     mitm_proxy_url: Optional[str] = None
+    fresh: bool = False
+    """启动前清空该 profile（Cookie/登录态）。用于「新增账号」打开 mercari_prepare 时确保未登录。"""
 
 class CloseSessionBody(PydanticModel):
     account_key: str = Field(
@@ -54,6 +56,7 @@ async def open_session(body: OpenSessionBody):
                 proxy_server=proxy,
                 interactive=not body.headless,
                 restore_tabs=body.restore_tabs,
+                fresh=body.fresh,
             ),
         }
     except ValueError as exc:

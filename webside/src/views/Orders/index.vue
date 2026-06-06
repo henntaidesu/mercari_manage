@@ -318,16 +318,6 @@
                       </template>
                     </el-table-column>
                   </el-table>
-                  <div
-                    v-if="packagingState[row.order_no]?.loaded"
-                    class="order-packaging-total-line"
-                  >
-                    {{ t('orders.packagingTotal') }}
-                    <span class="order-packaging-total-value">
-                      {{ Math.round(Number(packagingState[row.order_no]?.total_amount || 0)) }}
-                    </span>
-                    {{ t('orders.jpy') }}
-                  </div>
                 </div>
               </template>
             </div>
@@ -421,10 +411,10 @@
       destroy-on-close
       class="order-edit-dialog"
     >
-      <el-form :model="form" :rules="rules" ref="formRef" label-position="top" class="order-edit-form order-edit-form--tiled" disabled>
+      <el-form :model="form" :rules="rules" ref="formRef" label-position="top" size="small" class="order-edit-form order-edit-form--tiled" disabled>
         <!-- 基本信息 -->
         <el-divider content-position="left" class="order-edit-section">{{ t('orders.sectionBasic') }}</el-divider>
-        <el-row :gutter="16">
+        <el-row :gutter="16" class="order-edit-row5">
           <el-col v-if="form.id != null" :xs="24" :sm="12" :md="6">
             <el-form-item :label="t('orders.dbId')">
               <el-input :model-value="String(form.id)" disabled />
@@ -457,7 +447,7 @@
 
         <!-- 时间 -->
         <el-divider content-position="left" class="order-edit-section">{{ t('orders.sectionTime') }}</el-divider>
-        <el-row :gutter="16">
+        <el-row :gutter="16" class="order-edit-row5">
           <el-col :xs="24" :sm="12" :md="6">
             <el-form-item :label="t('orders.orderTime')" prop="order_date">
               <el-date-picker
@@ -498,7 +488,7 @@
 
         <!-- 交易双方 -->
         <el-divider content-position="left" class="order-edit-section">{{ t('orders.sectionParties') }}</el-divider>
-        <el-row :gutter="16">
+        <el-row :gutter="16" class="order-edit-row5">
           <el-col :xs="24" :sm="12" :md="6">
             <el-form-item :label="t('orders.sellerId')">
               <el-input v-model="form.data_user" placeholder="data_user（Mercari seller.id）" maxlength="64" clearable />
@@ -513,7 +503,7 @@
 
         <!-- 金额 -->
         <el-divider content-position="left" class="order-edit-section">{{ t('orders.sectionAmount') }}</el-divider>
-        <el-row :gutter="16">
+        <el-row :gutter="16" class="order-edit-row5">
           <el-col :xs="24" :sm="12" :md="6">
             <el-form-item :label="t('orders.amountJpy')" prop="amount">
               <el-input-number v-model="form.amount" :min="1" :precision="0" :controls="false" style="width: 100%" />
@@ -531,6 +521,11 @@
             </el-form-item>
           </el-col>
           <el-col :xs="24" :sm="12" :md="6">
+            <el-form-item :label="t('orders.packagingTotalJpy')">
+              <el-input :model-value="String(formPackagingTotal)" disabled />
+            </el-form-item>
+          </el-col>
+          <el-col :xs="24" :sm="12" :md="6">
             <el-form-item :label="t('orders.netIncomeJpy')">
               <el-input-number
                 v-model="form.net_income"
@@ -545,7 +540,7 @@
 
         <!-- 物流 -->
         <el-divider content-position="left" class="order-edit-section">{{ t('orders.sectionLogistics') }}</el-divider>
-        <el-row :gutter="16">
+        <el-row :gutter="16" class="order-edit-row5">
           <el-col :xs="24" :sm="12" :md="6">
             <el-form-item :label="t('orders.carrier')">
               <el-input v-model="form.carrier_display_name" clearable placeholder="carrier_display_name" />

@@ -8,7 +8,6 @@ from fastapi import HTTPException
 from ....db_manage.database import DatabaseManager
 from ....db_manage.models.on_sale_item import OnSaleItemModel
 from ....db_manage.models.warehouse import WarehouseModel
-from ....use_mercari.on_sale.on_sale_items_sync import _is_active_on_sale
 from ....use_mercari.get_order.description_mgmt_ids import (
     parse_management_ids_from_description,
 )
@@ -247,12 +246,22 @@ def _sort_on_sale_items_for_alert(items: list[dict]) -> None:
     items[:] = alerts + others
 
 
+_SORT_FIELD_KEYS = {
+    # 列 -> 取值函数（数值化，缺省 0），供前端表头排序使用
+    "price": lambda r: int(r.get("price") or 0),
+    "likes_comments": lambda r: (int(r.get("num_likes") or 0), int(r.get("num_comments") or 0)),
+    "created": lambda r: int(r.get("created") or 0),
+}
+
+
 def list_on_sale_items(
     keyword: Optional[str] = None,
     seller_id: Optional[str] = None,
     status: Optional[str] = None,
     page: int = 1,
     page_size: int = 20,
+    sort_by: Optional[str] = None,
+    sort_order: Optional[str] = None,
 ):
     page = max(1, int(page or 1))
     page_size = max(1, min(int(page_size or 20), 200))
@@ -280,7 +289,14 @@ def list_on_sale_items(
     _attach_inventory_by_item_id(all_items)
     _attach_description_mgmt_hints(all_items)
 
-    _sort_on_sale_items_for_alert(all_items)
+    key_fn = _SORT_FIELD_KEYS.get(str(sort_by or "").strip())
+    if key_fn is not None:
+        # 显式按表头列排序（升/降）；id 倒序兜底保证稳定
+        reverse = str(sort_order or "").strip().lower() != "asc"
+        all_items.sort(key=lambda r: -int(r.get("id") or 0))
+        all_items.sort(key=key_fn, reverse=reverse)
+    else:
+        _sort_on_sale_items_for_alert(all_items)
 
     total = len(all_items)
     start = (page - 1) * page_size
@@ -316,11 +332,12 @@ def list_on_sale_by_item_ids(item_ids: str):
     if not ids:
         raise HTTPException(status_code=400, detail="item_ids 不能为空")
     items = OnSaleItemModel.find_all_by_item_ids(ids)
-    # 库存页二级列表：仅展示煤炉侧仍为「出售中」的行（同步后非出售中已从 inventory 解绑，此处作兜底过滤）
+    # 库存页二级列表：展示煤炉侧仍为「出售中」或「暂停中」(stop) 的行，已软删除则过滤
     items = [
         r
         for r in items
-        if _is_active_on_sale(r.get("status"), int(r.get("is_delete") or 0))
+        if int(r.get("is_delete") or 0) == 0
+        and str(r.get("status") or "").strip().lower() in ("on_sale", "stop")
     ]
     _attach_seller_name(items)
     _attach_inventory_by_item_id(items)

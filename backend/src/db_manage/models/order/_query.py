@@ -179,7 +179,7 @@ class _QueryMixin:
         ]
         items = [dict(zip(keys, row)) for row in rows]
         if owner_user_id is not None and int(owner_user_id) > 0:
-            from ...use_web.orders.units.order_goods_ratio import split_order_money_for_owner_user
+            from ....use_web.orders.units.order_goods_ratio import split_order_money_for_owner_user
 
             oid = int(owner_user_id)
             for row in items:

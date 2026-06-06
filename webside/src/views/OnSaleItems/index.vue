@@ -59,6 +59,7 @@
         row-key="item_id"
         :row-class-name="onSaleRowClassName"
         @expand-change="onTableExpandChange"
+        @sort-change="onSortChange"
       >
         <el-table-column type="expand" width="44">
           <template #default="props">
@@ -165,7 +166,7 @@
           </template>
         </el-table-column>
         <el-table-column :label="t('onSaleItems.titleColumn')" prop="name" min-width="200" show-overflow-tooltip align="left" header-align="center" />
-        <el-table-column :label="t('onSaleItems.priceYen')" width="88" align="center" header-align="center">
+        <el-table-column :label="t('onSaleItems.priceYen')" prop="price" sortable="custom" width="100" align="center" header-align="center">
           <template #default="{ row }">{{ Number(row.price || 0) }}</template>
         </el-table-column>
         <el-table-column :label="t('onSaleItems.statusColumn')" width="112" align="center" header-align="center">
@@ -175,7 +176,7 @@
             </el-tag>
           </template>
         </el-table-column>
-        <el-table-column :label="t('onSaleItems.likesComments')" width="76" align="center" header-align="center">
+        <el-table-column :label="t('onSaleItems.likesComments')" prop="likes_comments" sortable="custom" width="96" align="center" header-align="center">
           <template #default="{ row }">{{ row.num_likes ?? 0 }}/{{ row.num_comments ?? 0 }}</template>
         </el-table-column>
         <el-table-column :label="t('onSaleItems.pvRecent')" width="100" align="center" header-align="center">
@@ -198,7 +199,7 @@
             <span v-else class="cell-muted">-</span>
           </template>
         </el-table-column>
-        <el-table-column :label="t('onSaleItems.created')" width="160" align="center" header-align="center">
+        <el-table-column :label="t('onSaleItems.created')" prop="created" sortable="custom" width="172" align="center" header-align="center">
           <template #default="{ row }">{{ displayTs(row.created) }}</template>
         </el-table-column>
         <el-table-column :label="t('onSaleItems.updated')" width="160" align="center" header-align="center">

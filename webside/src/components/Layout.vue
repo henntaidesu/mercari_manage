@@ -210,7 +210,7 @@ const menuItems = [
   { path: '/inventory', titleKey: 'layout.menu.inventory', icon: 'Goods' },
   { path: '/orders', titleKey: 'layout.menu.orders', icon: 'Tickets' },
   { path: '/on-sale-items', titleKey: 'layout.menu.onSaleItems', icon: 'ShoppingBag' },
-  { path: '/todos', titleKey: 'layout.menu.todos', icon: 'BellFilled' },
+  { path: '/todos', titleKey: 'layout.menu.todos', icon: 'Check' },
   { path: '/notifications', titleKey: 'layout.menu.notifications', icon: 'Bell' },
   { path: '/mercari-accounts', titleKey: 'layout.menu.mercariAccounts', icon: 'User' },
   { path: '/memos', titleKey: 'layout.menu.memos', icon: 'ChatDotRound' },

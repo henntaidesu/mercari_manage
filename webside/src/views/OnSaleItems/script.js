@@ -126,6 +126,9 @@ export default defineComponent({
       status: '',
     })
 
+    /** 表头排序状态：prop 为列字段，order 为 'ascending' | 'descending' | null */
+    const sort = ref({ prop: '', order: '' })
+
     /** 状态筛选下拉项：出售中 / 暂停出售（值对应煤炉 item.status） */
     const statusFilterOptions = computed(() => [
       { value: 'on_sale', label: t('onSaleItems.statusOnSale') },
@@ -189,6 +192,10 @@ export default defineComponent({
       if (filters.value.keyword?.trim()) p.keyword = filters.value.keyword.trim()
       if (filters.value.seller_id?.trim()) p.seller_id = filters.value.seller_id.trim()
       if (filters.value.status?.trim()) p.status = filters.value.status.trim()
+      if (sort.value.prop && sort.value.order) {
+        p.sort_by = sort.value.prop
+        p.sort_order = sort.value.order === 'ascending' ? 'asc' : 'desc'
+      }
       return p
     }
 
@@ -304,6 +311,12 @@ export default defineComponent({
     }
 
     function onFilterChange() {
+      page.value = 1
+      load()
+    }
+
+    function onSortChange({ prop, order }) {
+      sort.value = { prop: order ? prop : '', order: order || '' }
       page.value = 1
       load()
     }
@@ -1146,6 +1159,7 @@ export default defineComponent({
       onTableExpandChange,
       load,
       onFilterChange,
+      onSortChange,
       pad2,
       displayTs,
       thumbPreviewList,

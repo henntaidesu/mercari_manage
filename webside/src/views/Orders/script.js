@@ -665,6 +665,12 @@ export default defineComponent({
 
     const form = ref(createDefaultForm())
 
+    /** 编辑订单弹窗：当前订单的包材合计金额（日元） */
+    const formPackagingTotal = computed(() => {
+      const ono = String(form.value.order_no || '').trim()
+      return Math.round(Number(packagingState.value?.[ono]?.total_amount || 0))
+    })
+
     const rules = computed(() => ({
       order_no: [{ required: true, message: t('orders.orderNumberPlaceholder'), trigger: 'blur' }],
       order_date: [{ required: true, message: t('orders.pleaseSelectOrderTime'), trigger: 'change' }],
@@ -1419,6 +1425,8 @@ export default defineComponent({
         description: row.description || '',
         thumbnails_text: thumbnailsToFormText(row),
       }
+      // 加载该订单的包材合计金额用于展示
+      loadPackagingExpenses(row.order_no)
       dialogVisible.value = true
     }
 
@@ -1762,6 +1770,7 @@ export default defineComponent({
       onManualOutboundRowInventoryChange,
       openManualOutboundDialog,
       submitManualOutbound,
+      formPackagingTotal,
       inventoryLabelById,
       inventoryThumbUrl,
       inventoryPreviewSrcList,

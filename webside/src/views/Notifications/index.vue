@@ -30,6 +30,9 @@
           <el-checkbox v-model="filters.show_likes" @change="onFilterChange">
             {{ t('notifications.showLikes') }}
           </el-checkbox>
+          <el-checkbox v-model="filters.show_private_messages" @change="onFilterChange">
+            {{ t('notifications.showPrivateMessages') }}
+          </el-checkbox>
         </el-col>
         <el-col :xs="24" :md="8" class="search-actions">
           <el-tooltip :disabled="!syncLockStore.locked" :content="syncLockStore.label" placement="top">
