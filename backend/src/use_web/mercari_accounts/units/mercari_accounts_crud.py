@@ -8,15 +8,19 @@ from fastapi import HTTPException
 from ....db_manage.models.mercari_account import MercariAccountModel
 from .mercari_accounts_helpers import (
     _item_api_dict,
-    _norm_auto_fetch,
     _norm_headers_dict,
+    _norm_interval,
     _norm_pause_window,
     _norm_required_text,
     _norm_seller_id,
     _normalize_is_open,
     _validate_status,
 )
-from .mercari_accounts_models import MercariAccountCreate, MercariAccountUpdate
+from .mercari_accounts_models import (
+    AUTO_FETCH_TASK_KEYS,
+    MercariAccountCreate,
+    MercariAccountUpdate,
+)
 
 
 def list_mercari_accounts(
@@ -50,18 +54,16 @@ def create_mercari_account(data: MercariAccountCreate):
     value_json = _value_json_for_create(data)
     name = _norm_required_text(data.account_name, "账号名称")
     lid = (data.login_id or "").strip() or name
-    io, fi, li, os_, td, nt = _norm_auto_fetch(
-        _normalize_is_open(data.is_open),
-        data.fetch_interval,
-        _normalize_is_open(data.auto_fetch_order_list),
-        _normalize_is_open(data.auto_fetch_on_sale),
-        _normalize_is_open(data.auto_fetch_todos),
-        _normalize_is_open(data.auto_fetch_notifications),
-    )
-    # 自动上架（售出即补挂）账号级开关：保留用户选择，便于重新开启自动同步后继续显示
+    # 每项独立间隔：非空即开启该项；is_open 由是否有任一项开启派生（无总开关）
+    intervals = {
+        k: _norm_interval(getattr(data, f"auto_fetch_{k}_interval"))
+        for k in AUTO_FETCH_TASK_KEYS
+    }
+    is_open = 1 if any(intervals.values()) else 0
+    # 自动上架（售出即补挂）账号级开关：保留用户选择
     rl = 1 if _normalize_is_open(data.auto_fetch_relist) else 0
     pause_s, pause_e = _norm_pause_window(data.pause_start_time, data.pause_end_time)
-    item = MercariAccountModel(
+    kwargs = dict(
         account_name=name,
         login_id=lid,
         seller_id=_norm_seller_id(data.seller_id),
@@ -69,16 +71,17 @@ def create_mercari_account(data: MercariAccountCreate):
         value=value_json,
         status=data.status,
         remark=data.remark,
-        is_open=io,
-        fetch_interval=fi,
-        auto_fetch_order_list=li,
-        auto_fetch_on_sale=os_,
-        auto_fetch_todos=td,
-        auto_fetch_notifications=nt,
+        is_open=is_open,
+        fetch_interval=None,
         auto_fetch_relist=rl,
         pause_start_time=pause_s,
         pause_end_time=pause_e,
     )
+    for k in AUTO_FETCH_TASK_KEYS:
+        iv = intervals[k]
+        kwargs[f"auto_fetch_{k}"] = 1 if iv else 0
+        kwargs[f"auto_fetch_{k}_interval"] = iv
+    item = MercariAccountModel(**kwargs)
     if not item.save():
         raise HTTPException(status_code=500, detail="保存失败")
     return _item_api_dict(item)
@@ -103,46 +106,32 @@ def update_mercari_account(aid: int, data: MercariAccountUpdate):
     if data.value is not None:
         headers = _norm_headers_dict(data.value)
         item.value = json.dumps(headers, ensure_ascii=False)
-    if (
-        data.is_open is not None
-        or data.fetch_interval is not None
-        or data.auto_fetch_order_list is not None
-        or data.auto_fetch_on_sale is not None
-        or data.auto_fetch_todos is not None
-        or data.auto_fetch_notifications is not None
-        or data.auto_fetch_relist is not None
-    ):
-        prev_open = _normalize_is_open(item.is_open)
-        io = _normalize_is_open(data.is_open) if data.is_open is not None else prev_open
-        fi = data.fetch_interval if data.fetch_interval is not None else item.fetch_interval
-        li = _normalize_is_open(getattr(item, "auto_fetch_order_list", 0))
-        if data.auto_fetch_order_list is not None:
-            li = _normalize_is_open(data.auto_fetch_order_list)
-        os_ = _normalize_is_open(getattr(item, "auto_fetch_on_sale", 0))
-        if data.auto_fetch_on_sale is not None:
-            os_ = _normalize_is_open(data.auto_fetch_on_sale)
-        td = _normalize_is_open(getattr(item, "auto_fetch_todos", 0))
-        if data.auto_fetch_todos is not None:
-            td = _normalize_is_open(data.auto_fetch_todos)
-        nt = _normalize_is_open(getattr(item, "auto_fetch_notifications", 0))
-        if data.auto_fetch_notifications is not None:
-            nt = _normalize_is_open(data.auto_fetch_notifications)
-        rl = _normalize_is_open(getattr(item, "auto_fetch_relist", 0))
-        if data.auto_fetch_relist is not None:
-            rl = _normalize_is_open(data.auto_fetch_relist)
-        io, fi, li, os_, td, nt = _norm_auto_fetch(io, fi, li, os_, td, nt)
-        item.is_open = io
-        item.fetch_interval = fi
-        item.auto_fetch_order_list = li
-        item.auto_fetch_on_sale = os_
-        item.auto_fetch_todos = td
-        item.auto_fetch_notifications = nt
-        # 自动上架账号级开关：保留用户选择（关闭自动同步不清空配置）
-        item.auto_fetch_relist = rl
-        if io == 0:
-            item.auto_fetch_last_at = None
-        elif prev_open == 0 and io == 1:
-            item.auto_fetch_last_at = None
+    # 每项独立间隔：只要本次提交带了任一 *_interval 字段就按项重算
+    intervals_present = any(
+        getattr(data, f"auto_fetch_{k}_interval") is not None
+        for k in AUTO_FETCH_TASK_KEYS
+    )
+    if intervals_present:
+        for k in AUTO_FETCH_TASK_KEYS:
+            raw = getattr(data, f"auto_fetch_{k}_interval")
+            cur = getattr(item, f"auto_fetch_{k}_interval", None)
+            # raw 为 None 表示本次未携带该项，保留原值；否则规范化（空串=关闭）
+            new_iv = _norm_interval(raw) if raw is not None else (cur or None)
+            prev_on = bool((cur or "").strip())
+            now_on = bool(new_iv)
+            setattr(item, f"auto_fetch_{k}_interval", new_iv)
+            setattr(item, f"auto_fetch_{k}", 1 if now_on else 0)
+            # 新开启（关→开）或关闭时清空该项上次时间：开启后尽快执行、关闭后不残留节流
+            if (now_on and not prev_on) or not now_on:
+                setattr(item, f"auto_fetch_{k}_last_at", None)
+        item.is_open = 1 if any(
+            bool((getattr(item, f"auto_fetch_{k}_interval", None) or "").strip())
+            for k in AUTO_FETCH_TASK_KEYS
+        ) else 0
+
+    # 自动上架账号级开关：独立于各同步项，保留用户选择
+    if data.auto_fetch_relist is not None:
+        item.auto_fetch_relist = 1 if _normalize_is_open(data.auto_fetch_relist) else 0
 
     if data.pause_start_time is not None or data.pause_end_time is not None:
         new_start = (

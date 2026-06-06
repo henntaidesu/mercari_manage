@@ -6,9 +6,9 @@ from fastapi import HTTPException
 
 from ....db_manage.models.mercari_account import MercariAccountModel
 from .mercari_accounts_models import (
-    ALLOWED_FETCH_INTERVALS,
     ALLOWED_STATUS,
     _HEADER_FIELD_LABELS,
+    normalize_interval,
 )
 
 
@@ -44,35 +44,12 @@ def _normalize_is_open(v: Any) -> int:
         return 0
 
 
-def _norm_auto_fetch(
-    is_open: int,
-    fetch_interval: Optional[str],
-    order_list: int,
-    on_sale: int,
-    todos: int,
-    notifications: int,
-) -> tuple:
-    """
-    规范化自动同步。
-
-    - 开启（is_open=1）时：须合法间隔且至少一项子任务为 1。
-    - 关闭（is_open=0）时：**保留**用户已选的间隔与子任务（不清空），
-      以便重新开启后继续显示原本的配置；仅把非法间隔归一为 None。
-    """
-    io = 1 if is_open else 0
-    iv = (fetch_interval or "").strip()
-    li = 1 if order_list else 0
-    os_ = 1 if on_sale else 0
-    td = 1 if todos else 0
-    nt = 1 if notifications else 0
-    if io == 0:
-        # 关闭时保留配置；间隔若非合法值则置空，避免存入脏数据
-        return 0, (iv if iv in ALLOWED_FETCH_INTERVALS else None), li, os_, td, nt
-    if iv not in ALLOWED_FETCH_INTERVALS:
-        raise HTTPException(status_code=400, detail="开启自动数据获取时，请选择有效的时间间隔")
-    if not (li or os_ or td or nt):
-        raise HTTPException(status_code=400, detail="开启自动数据获取时，请至少选择一项同步任务")
-    return 1, iv, li, os_, td, nt
+def _norm_interval(value: Optional[str]) -> Optional[str]:
+    """规范化单项间隔：空→None（关闭）；非法格式/越界→400。"""
+    try:
+        return normalize_interval(value)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
 
 
 def _norm_pause_time(value: Optional[str], field_label: str) -> Optional[str]:
@@ -141,6 +118,10 @@ def _item_api_dict(item: MercariAccountModel) -> dict:
     d['auto_fetch_on_sale'] = 1 if d.get('auto_fetch_on_sale') else 0
     d['auto_fetch_todos'] = 1 if d.get('auto_fetch_todos') else 0
     d['auto_fetch_notifications'] = 1 if d.get('auto_fetch_notifications') else 0
+    d['auto_fetch_order_list_interval'] = d.get('auto_fetch_order_list_interval') or None
+    d['auto_fetch_on_sale_interval'] = d.get('auto_fetch_on_sale_interval') or None
+    d['auto_fetch_todos_interval'] = d.get('auto_fetch_todos_interval') or None
+    d['auto_fetch_notifications_interval'] = d.get('auto_fetch_notifications_interval') or None
     d['auto_fetch_relist'] = 1 if d.get('auto_fetch_relist') else 0
     d['pause_start_time'] = (d.get('pause_start_time') or None)
     d['pause_end_time'] = (d.get('pause_end_time') or None)

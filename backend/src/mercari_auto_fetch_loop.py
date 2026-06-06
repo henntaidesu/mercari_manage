@@ -2,11 +2,13 @@
 """
 煤炉账号「自动数据获取」后台调度。
 
-开启且 status=active 的账号，按 fetch_interval 节流；在账号配置的子任务中按需执行（与同账号 run_mercari_serial_async 串行）：
-- auto_fetch_order_list → sync_new_data（订单页「更新列表」）
-- auto_fetch_on_sale → sync_on_sale_items_from_mercari（在售页「从煤炉同步」）
-- auto_fetch_todos → sync_todos_from_mercari（待办页「从煤炉同步」）
-- auto_fetch_notifications → sync_notifications_from_mercari（通知页「从煤炉同步」）
+每个同步项各自配置间隔（auto_fetch_<项>_interval，非空即开启），并按各自的
+auto_fetch_<项>_last_at 独立节流；status=active 的账号在每个到期的项上按需执行
+（与同账号 run_mercari_serial_async 串行）：
+- order_list → sync_new_data（订单页「更新列表」）
+- on_sale → sync_on_sale_items_from_mercari（在售页「从煤炉同步」）
+- todos → sync_todos_from_mercari（待办页「从煤炉同步」）
+- notifications → sync_notifications_from_mercari（通知页「从煤炉同步」）
 
 环境变量：
 - MERCARI_AUTO_FETCH：设为 0/false/off 关闭本循环（默认开启）
@@ -23,6 +25,10 @@ from typing import Any, Dict, List, Optional, Tuple
 
 from .db_manage.models.mercari_account import MercariAccountModel
 from .db_manage.models.system_log import SystemLogModel
+from .use_web.mercari_accounts.units.mercari_accounts_models import (
+    AUTO_FETCH_TASK_KEYS,
+    interval_to_seconds,
+)
 from .use_mercari.get_notifications.notification.notification_sync import sync_notifications_from_mercari
 from .use_mercari.get_to_du_list.todolist_sync import sync_todos_from_mercari
 from .use_mercari.on_sale.on_sale_items_sync import sync_on_sale_items_from_mercari
@@ -41,21 +47,9 @@ class _AutoFetchTaskError(Exception):
         self.original = original
         super().__init__(str(original))
 
-_INTERVAL_SEC = {
-    "15": 15 * 60,
-    "30": 30 * 60,
-    "60": 60 * 60,
-    "3h": 3 * 3600,
-    "6h": 6 * 3600,
-    "10": 10 * 60,
-    "12h": 12 * 3600,
-    "24h": 24 * 3600,
-}
-
-
 def _interval_seconds(iv: Optional[str]) -> int:
-    key = (iv or "").strip()
-    return _INTERVAL_SEC.get(key, 30 * 60)
+    secs = interval_to_seconds(iv)
+    return secs if secs is not None else 30 * 60
 
 
 def _parse_last_at(raw: Optional[str]) -> Optional[datetime]:
@@ -75,17 +69,6 @@ def _parse_last_at(raw: Optional[str]) -> Optional[datetime]:
 
 def _now_iso() -> str:
     return datetime.now(timezone.utc).replace(microsecond=0).isoformat()
-
-
-def _normalize_row_is_open(v) -> bool:
-    if v is True:
-        return True
-    if v is False or v is None:
-        return False
-    try:
-        return bool(int(v))
-    except (TypeError, ValueError):
-        return False
 
 
 def _parse_hhmm_to_minutes(raw: Optional[str]) -> Optional[int]:
@@ -121,58 +104,46 @@ def _account_in_pause_window(item: MercariAccountModel, now_local: datetime) -> 
     return cur >= start or cur < end
 
 
-def _any_auto_task_enabled(item: MercariAccountModel) -> bool:
-    return (
-        _normalize_row_is_open(getattr(item, "auto_fetch_order_list", 0))
-        or _normalize_row_is_open(getattr(item, "auto_fetch_on_sale", 0))
-        or _normalize_row_is_open(getattr(item, "auto_fetch_todos", 0))
-        or _normalize_row_is_open(getattr(item, "auto_fetch_notifications", 0))
-    )
+# 各同步项的实际调用（键与 AUTO_FETCH_TASK_KEYS 一致；按此顺序串行执行）
+def _task_callable(key: str, aid: int):
+    if key == "order_list":
+        return lambda: sync_new_data(account_id=aid)
+    if key == "on_sale":
+        return lambda: sync_on_sale_items_from_mercari(account_id=aid)
+    if key == "todos":
+        return lambda: sync_todos_from_mercari(account_id=aid)
+    if key == "notifications":
+        return lambda: sync_notifications_from_mercari(account_id=aid)
+    raise KeyError(key)
 
 
-def _account_due(item: MercariAccountModel, now: datetime) -> bool:
-    if not _normalize_row_is_open(item.is_open):
-        return False
-    if not _any_auto_task_enabled(item):
-        return False
-    iv = (item.fetch_interval or "").strip()
-    if not iv:
-        return False
-    last = _parse_last_at(getattr(item, "auto_fetch_last_at", None))
-    if last is None:
-        return True
-    elapsed = (now - last).total_seconds()
-    return elapsed >= _interval_seconds(iv)
+def _due_tasks(item: MercariAccountModel, now: datetime) -> List[str]:
+    """返回本轮到期（已开启且距上次成功已超过各自间隔）的同步项键，保持执行顺序。"""
+    due: List[str] = []
+    for key in AUTO_FETCH_TASK_KEYS:
+        iv = (getattr(item, f"auto_fetch_{key}_interval", None) or "").strip()
+        if not iv:
+            continue
+        last = _parse_last_at(getattr(item, f"auto_fetch_{key}_last_at", None))
+        if last is None or (now - last).total_seconds() >= _interval_seconds(iv):
+            due.append(key)
+    return due
 
 
-async def _run_auto_fetch_for_account(aid: int, item: MercariAccountModel) -> Dict[str, Any]:
-    """执行账号本轮各子任务并收集各自返回的 stats（用于系统日志汇总）。"""
-    li = _normalize_row_is_open(getattr(item, "auto_fetch_order_list", 0))
-    os_ = _normalize_row_is_open(getattr(item, "auto_fetch_on_sale", 0))
-    td = _normalize_row_is_open(getattr(item, "auto_fetch_todos", 0))
-    nt = _normalize_row_is_open(getattr(item, "auto_fetch_notifications", 0))
-    results: Dict[str, Any] = {}
-    if not (li or os_ or td or nt):
-        return results
+async def _run_auto_fetch_for_account(
+    aid: int, due_keys: List[str], results: Dict[str, Any]
+) -> None:
+    """串行执行到期的同步项，成功结果写入 results；失败时携带子任务键抛出便于日志定位。"""
 
     async def _body():
-        # (子任务键, 是否启用, 实际调用)；按顺序串行执行，失败时携带子任务键抛出便于日志定位
-        plan = (
-            ("order_list", li, lambda: sync_new_data(account_id=aid)),
-            ("on_sale", os_, lambda: sync_on_sale_items_from_mercari(account_id=aid)),
-            ("todos", td, lambda: sync_todos_from_mercari(account_id=aid)),
-            ("notifications", nt, lambda: sync_notifications_from_mercari(account_id=aid)),
-        )
-        for key, enabled, call in plan:
-            if not enabled:
-                continue
+        for key in due_keys:
+            call = _task_callable(key, aid)
             try:
                 results[key] = await call()
             except Exception as exc:
                 raise _AutoFetchTaskError(key, exc) from exc
 
     await run_mercari_serial_async(queue_key_for_mercari_account(aid), _body)
-    return results
 
 
 _AUTO_FETCH_TASK_LABELS = {
@@ -216,11 +187,16 @@ def _summarize_auto_fetch(results: Dict[str, Any]) -> Tuple[str, str]:
     return message, ("warning" if has_err else "info")
 
 
-def _mark_last_at(aid: int) -> None:
+def _mark_task_last_at(aid: int, keys: List[str]) -> None:
+    """把给定同步项的上次成功时间标记为现在（仅标记真正执行成功的项）。"""
+    if not keys:
+        return
     item = MercariAccountModel.find_by_id(id=aid)
     if not item:
         return
-    item.auto_fetch_last_at = _now_iso()
+    now = _now_iso()
+    for key in keys:
+        setattr(item, f"auto_fetch_{key}_last_at", now)
     item.save()
 
 
@@ -239,8 +215,10 @@ async def run_mercari_auto_fetch_tick() -> None:
         aid = getattr(item, "id", None)
         if aid is None:
             continue
+        results: Dict[str, Any] = {}
         try:
-            if not _account_due(item, now):
+            due = _due_tasks(item, now)
+            if not due:
                 continue
             if _account_in_pause_window(item, now_local):
                 log.debug(
@@ -254,8 +232,6 @@ async def run_mercari_auto_fetch_tick() -> None:
             if not sid:
                 log.warning("[mercari_auto_fetch] 账号 id=%s 已开启自动获取但未配置 seller_id，跳过", aid)
                 continue
-            if not _any_auto_task_enabled(item):
-                continue
             # 全局同步锁：若有用户发起的同步（全量/各页）正在进行，本轮跳过该账号，下个 tick 再试
             lock_token = sync_lock_try_begin("auto", LABEL_AUTO)
             if lock_token is None:
@@ -264,9 +240,9 @@ async def run_mercari_auto_fetch_tick() -> None:
                 )
                 continue
             try:
-                log.info("[mercari_auto_fetch] 开始账号 id=%s seller_id=%s", aid, sid)
-                results = await _run_auto_fetch_for_account(int(aid), item)
-                _mark_last_at(int(aid))
+                log.info("[mercari_auto_fetch] 开始账号 id=%s seller_id=%s 项=%s", aid, sid, due)
+                await _run_auto_fetch_for_account(int(aid), due, results)
+                _mark_task_last_at(int(aid), list(results.keys()))
                 msg, level = _summarize_auto_fetch(results)
                 SystemLogModel.add(
                     category="auto_fetch",
@@ -280,6 +256,8 @@ async def run_mercari_auto_fetch_tick() -> None:
             finally:
                 sync_lock_end(lock_token)
         except _AutoFetchTaskError as exc:
+            # 仅把本轮已成功的项标记为已执行，失败项下个 tick 重试
+            _mark_task_last_at(int(aid), list(results.keys()))
             label = _AUTO_FETCH_TASK_LABELS.get(exc.task_key, exc.task_key)
             log.exception(
                 "[mercari_auto_fetch] 账号 id=%s 子任务[%s]失败", aid, label

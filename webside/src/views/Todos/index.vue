@@ -77,7 +77,6 @@
         <el-table-column :label="t('todos.colTitleMessage')" min-width="320" align="left" header-align="center">
           <template #default="{ row }">
             <div v-if="row.title" class="cell-title">{{ row.title }}</div>
-            <div class="cell-message">{{ row.message || '-' }}</div>
             <div v-if="row.item_id" class="cell-itemid">
               <el-link :href="mercariItemUrl(row.item_id)" target="_blank" type="primary" underline="never">
                 {{ row.item_id }}
@@ -90,15 +89,13 @@
         <el-table-column :label="t('orders.buyer')" width="160" align="center" header-align="center">
           <template #default="{ row }">
             <div v-if="buyerNameFromMessage(row.message)" class="cell-buyer">{{ buyerNameFromMessage(row.message) }}</div>
-            <div v-if="row.sender_id" class="cell-sender-id">ID: {{ row.sender_id }}</div>
-            <span v-if="!row.sender_id && !buyerNameFromMessage(row.message)" class="cell-muted">-</span>
+            <span v-else class="cell-muted">-</span>
           </template>
         </el-table-column>
 
         <el-table-column :label="t('common.time')" width="170" align="center" header-align="center">
           <template #default="{ row }">
             <div>{{ displayTs(row.mercari_updated || row.mercari_created) }}</div>
-            <div v-if="row.synced_at" class="cell-muted-sm">{{ t('common.sync') }}: {{ displayTs(row.synced_at) }}</div>
           </template>
         </el-table-column>
 

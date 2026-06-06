@@ -22,9 +22,8 @@
             <div class="card-item"><span>{{ t('mercariAccounts.sellerIdLabel') }}</span>{{ row.seller_id || '-' }}</div>
             <div class="card-item">
               <span>{{ t('mercariAccounts.autoFetchLabel') }}</span>
-              <template v-if="row.is_open === 1 && row.status === 'active'">
-                {{ t('mercariAccounts.autoFetchOn') }} · {{ fetchIntervalLabel(row.fetch_interval) }}
-                <template v-if="autoFetchTasksLabel(row)">（{{ autoFetchTasksLabel(row) }}）</template>
+              <template v-if="anyTaskEnabled(row) && row.status === 'active'">
+                {{ taskIntervalSummary(row) }}
                 <template v-if="pauseWindowLabel(row)"> · {{ t('mercariAccounts.pauseShort') }} {{ pauseWindowLabel(row) }}</template>
               </template>
               <template v-else>{{ t('mercariAccounts.autoFetchOff') }}</template>
@@ -110,107 +109,57 @@
           </el-select>
         </el-form-item>
         <el-divider content-position="left">{{ t('mercariAccounts.sectionAutoFetch') }}</el-divider>
-        <el-form-item :label="t('mercariAccounts.autoFetch')" prop="is_open">
-          <el-select v-model="form.is_open" style="width: 100%" @change="onAutoFetchToggle">
-            <el-option v-for="opt in autoFetchSwitchOptions" :key="opt.value" :label="opt.label" :value="opt.value" />
-          </el-select>
+        <el-form-item :label="t('mercariAccounts.syncItems')">
+          <div class="af-task-list">
+            <div class="af-task-row" v-for="def in FETCH_TASKS" :key="def.key">
+              <span class="af-task-name">{{ t(def.labelKey) }}</span>
+              <el-select
+                v-model="form.tasks[def.key].sel"
+                class="af-task-select"
+                :placeholder="t('mercariAccounts.intervalPlaceholder')"
+              >
+                <el-option v-for="opt in fetchIntervalOptions" :key="opt.value" :label="opt.label" :value="opt.value" />
+              </el-select>
+              <template v-if="form.tasks[def.key].sel === CUSTOM_INTERVAL">
+                <el-input-number
+                  v-model="form.tasks[def.key].num"
+                  :min="1"
+                  :max="1440"
+                  :step="1"
+                  :controls="false"
+                  class="af-task-num"
+                />
+                <el-select v-model="form.tasks[def.key].unit" class="af-task-unit">
+                  <el-option v-for="u in intervalUnitOptions" :key="u.value" :label="u.label" :value="u.value" />
+                </el-select>
+              </template>
+            </div>
+          </div>
         </el-form-item>
-        <template v-if="form.is_open === 1">
-          <el-form-item :label="t('mercariAccounts.syncItems')">
-            <div class="af-task-cards">
-              <div
-                class="af-task-card"
-                :class="{ 'is-active': form.auto_fetch_order_list === 1 }"
-                @click="form.auto_fetch_order_list = form.auto_fetch_order_list === 1 ? 0 : 1; onAutoFetchTaskChange()"
-              >
-                <el-checkbox
-                  v-model="form.auto_fetch_order_list"
-                  :true-value="1"
-                  :false-value="0"
-                  @click.stop
-                  @change="onAutoFetchTaskChange"
-                >{{ t('mercariAccounts.taskOrderList') }}</el-checkbox>
-              </div>
-              <div
-                class="af-task-card"
-                :class="{ 'is-active': form.auto_fetch_on_sale === 1 }"
-                @click="form.auto_fetch_on_sale = form.auto_fetch_on_sale === 1 ? 0 : 1; onAutoFetchTaskChange()"
-              >
-                <el-checkbox
-                  v-model="form.auto_fetch_on_sale"
-                  :true-value="1"
-                  :false-value="0"
-                  @click.stop
-                  @change="onAutoFetchTaskChange"
-                >{{ t('mercariAccounts.taskOnSale') }}</el-checkbox>
-              </div>
-              <div
-                class="af-task-card"
-                :class="{ 'is-active': form.auto_fetch_todos === 1 }"
-                @click="form.auto_fetch_todos = form.auto_fetch_todos === 1 ? 0 : 1; onAutoFetchTaskChange()"
-              >
-                <el-checkbox
-                  v-model="form.auto_fetch_todos"
-                  :true-value="1"
-                  :false-value="0"
-                  @click.stop
-                  @change="onAutoFetchTaskChange"
-                >{{ t('mercariAccounts.taskTodos') }}</el-checkbox>
-              </div>
-              <div
-                class="af-task-card"
-                :class="{ 'is-active': form.auto_fetch_notifications === 1 }"
-                @click="form.auto_fetch_notifications = form.auto_fetch_notifications === 1 ? 0 : 1; onAutoFetchTaskChange()"
-              >
-                <el-checkbox
-                  v-model="form.auto_fetch_notifications"
-                  :true-value="1"
-                  :false-value="0"
-                  @click.stop
-                  @change="onAutoFetchTaskChange"
-                >{{ t('mercariAccounts.taskNotifications') }}</el-checkbox>
-              </div>
-              <div
-                class="af-task-card"
-                :class="{ 'is-active': form.auto_fetch_relist === 1 }"
-                @click="form.auto_fetch_relist = form.auto_fetch_relist === 1 ? 0 : 1"
-              >
-                <el-checkbox
-                  v-model="form.auto_fetch_relist"
-                  :true-value="1"
-                  :false-value="0"
-                  @click.stop
-                >{{ t('mercariAccounts.taskRelist') }}</el-checkbox>
-              </div>
-            </div>
-          </el-form-item>
-          <el-form-item :label="t('mercariAccounts.interval')" prop="fetch_interval">
-            <el-select v-model="form.fetch_interval" style="width: 100%" :placeholder="t('mercariAccounts.intervalPlaceholder')" @change="onAutoFetchTaskChange">
-              <el-option v-for="opt in fetchIntervalOptions" :key="opt.value" :label="opt.label" :value="opt.value" />
-            </el-select>
-          </el-form-item>
-          <el-form-item :label="t('mercariAccounts.pauseRange')" prop="pause_window">
-            <div class="af-pause-row">
-              <el-time-picker
-                v-model="form.pause_start_time"
-                :placeholder="t('mercariAccounts.pauseStartPlaceholder')"
-                format="HH:mm"
-                value-format="HH:mm"
-                :clearable="true"
-                class="af-pause-picker"
-              />
-              <span class="af-pause-sep">{{ t('common.to') }}</span>
-              <el-time-picker
-                v-model="form.pause_end_time"
-                :placeholder="t('mercariAccounts.pauseEndPlaceholder')"
-                format="HH:mm"
-                value-format="HH:mm"
-                :clearable="true"
-                class="af-pause-picker"
-              />
-            </div>
-          </el-form-item>
-        </template>
+        <el-form-item :label="t('mercariAccounts.taskRelist')">
+          <el-switch v-model="form.auto_fetch_relist" :active-value="1" :inactive-value="0" />
+        </el-form-item>
+        <el-form-item :label="t('mercariAccounts.pauseRange')" prop="pause_window">
+          <div class="af-pause-row">
+            <el-time-picker
+              v-model="form.pause_start_time"
+              :placeholder="t('mercariAccounts.pauseStartPlaceholder')"
+              format="HH:mm"
+              value-format="HH:mm"
+              :clearable="true"
+              class="af-pause-picker"
+            />
+            <span class="af-pause-sep">{{ t('common.to') }}</span>
+            <el-time-picker
+              v-model="form.pause_end_time"
+              :placeholder="t('mercariAccounts.pauseEndPlaceholder')"
+              format="HH:mm"
+              value-format="HH:mm"
+              :clearable="true"
+              class="af-pause-picker"
+            />
+          </div>
+        </el-form-item>
       </el-form>
       <template #footer>
         <div class="mercari-dialog-footer">

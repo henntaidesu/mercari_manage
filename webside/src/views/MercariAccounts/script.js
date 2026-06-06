@@ -38,59 +38,82 @@ export default defineComponent({
       { label: t('mercariAccounts.disabled'), value: 'disabled' },
     ]
 
-    const autoFetchSwitchOptions = [
-      { label: t('mercariAccounts.autoFetchOff'), value: 0 },
-      { label: t('mercariAccounts.autoFetchOn'), value: 1 },
+    // 可独立配置间隔的同步项（key 与后端 AUTO_FETCH_TASK_KEYS 一致；顺序即执行顺序）
+    const FETCH_TASKS = [
+      { key: 'order_list', field: 'auto_fetch_order_list_interval', labelKey: 'mercariAccounts.taskOrderList', shortKey: 'mercariAccounts.taskShortOrderList' },
+      { key: 'on_sale', field: 'auto_fetch_on_sale_interval', labelKey: 'mercariAccounts.taskOnSale', shortKey: 'mercariAccounts.taskShortOnSale' },
+      { key: 'todos', field: 'auto_fetch_todos_interval', labelKey: 'mercariAccounts.taskTodos', shortKey: 'mercariAccounts.taskShortTodos' },
+      { key: 'notifications', field: 'auto_fetch_notifications_interval', labelKey: 'mercariAccounts.taskNotifications', shortKey: 'mercariAccounts.taskShortNotifications' },
     ]
 
+    // 间隔下拉：'' = 关闭该项，'custom' = 自定义；选中非空即开启该项
+    const CUSTOM_INTERVAL = 'custom'
+    const PRESET_INTERVAL_VALUES = ['15', '30', '60', '3h', '6h']
     const fetchIntervalOptions = [
+      { label: t('mercariAccounts.intervalOff'), value: '' },
       { label: t('mercariAccounts.interval15min'), value: '15' },
       { label: t('mercariAccounts.interval30min'), value: '30' },
       { label: t('mercariAccounts.interval1h'), value: '60' },
       { label: t('mercariAccounts.interval3h'), value: '3h' },
       { label: t('mercariAccounts.interval6h'), value: '6h' },
+      { label: t('mercariAccounts.intervalCustom'), value: CUSTOM_INTERVAL },
+    ]
+    const intervalUnitOptions = [
+      { label: t('mercariAccounts.unitMinute'), value: 'min' },
+      { label: t('mercariAccounts.unitHour'), value: 'h' },
     ]
 
-    const legacyFetchIntervalLabels = {
-      '10': t('mercariAccounts.interval10min'),
-      '12h': t('mercariAccounts.interval12h'),
-      '24h': t('mercariAccounts.interval24h'),
+    // 把存储的间隔字符串格式化为可读文案（卡片展示用）
+    function formatInterval(v) {
+      const s = String(v == null ? '' : v).trim()
+      if (!s) return ''
+      const preset = fetchIntervalOptions.find((o) => o.value && o.value !== CUSTOM_INTERVAL && o.value === s)
+      if (preset) return preset.label
+      if (s.endsWith('h')) return t('mercariAccounts.intervalHours', { n: s.slice(0, -1) })
+      const n = s.endsWith('m') ? s.slice(0, -1) : s
+      return t('mercariAccounts.intervalMinutes', { n })
     }
 
-    function fetchIntervalLabel(v) {
-      if (v == null || v === '') return '-'
-      const key = String(v)
-      const cur = fetchIntervalOptions.find((o) => o.value === key)
-      if (cur) return cur.label
-      return legacyFetchIntervalLabels[key] || key
+    // 把存储间隔解析为表单态 { sel, num, unit }
+    function parseTaskInterval(v) {
+      const s = String(v == null ? '' : v).trim()
+      if (!s) return { sel: '', num: 30, unit: 'min' }
+      if (PRESET_INTERVAL_VALUES.includes(s)) return { sel: s, num: 30, unit: 'min' }
+      if (s.endsWith('h')) return { sel: CUSTOM_INTERVAL, num: Number(s.slice(0, -1)) || 1, unit: 'h' }
+      const n = s.endsWith('m') ? s.slice(0, -1) : s
+      return { sel: CUSTOM_INTERVAL, num: Number(n) || 30, unit: 'min' }
+    }
+
+    // 把表单态转回存储间隔字符串（'' = 关闭）
+    function buildTaskInterval(tk) {
+      if (!tk) return ''
+      if (tk.sel === CUSTOM_INTERVAL) {
+        const n = Math.trunc(Number(tk.num) || 0)
+        return tk.unit === 'h' ? `${n}h` : `${n}`
+      }
+      return tk.sel || ''
+    }
+
+    function anyTaskEnabled(row) {
+      return FETCH_TASKS.some((def) => String(row?.[def.field] || '').trim())
+    }
+
+    // 卡片：列出已开启的同步项及各自间隔（如「订单列表 30 分钟、在售同步 1 小时」）
+    function taskIntervalSummary(row) {
+      const parts = []
+      for (const def of FETCH_TASKS) {
+        const iv = formatInterval(row?.[def.field])
+        if (iv) parts.push(`${t(def.shortKey)} ${iv}`)
+      }
+      return parts.join(t('mercariAccounts.taskJoiner'))
     }
 
     function pauseWindowLabel(row) {
-      if (!row || row.is_open !== 1) return ''
+      if (!row || !anyTaskEnabled(row)) return ''
       const s = String(row.pause_start_time || '').trim()
       const e = String(row.pause_end_time || '').trim()
       if (!s || !e || s === e) return ''
       return `${s} - ${e}`
-    }
-
-    function autoFetchTasksLabel(row) {
-      if (!row || row.is_open !== 1) return ''
-      const parts = []
-      if (row.auto_fetch_order_list === 1) parts.push(t('mercariAccounts.taskShortOrderList'))
-      if (row.auto_fetch_on_sale === 1) parts.push(t('mercariAccounts.taskShortOnSale'))
-      if (row.auto_fetch_todos === 1) parts.push(t('mercariAccounts.taskShortTodos'))
-      if (row.auto_fetch_notifications === 1) parts.push(t('mercariAccounts.taskShortNotifications'))
-      return parts.join(t('mercariAccounts.taskJoiner'))
-    }
-
-    function onAutoFetchToggle() {
-      // 关闭自动同步时**不清空**已选配置（间隔/子任务/暂停时段），
-      // 以便用户重新开启后继续显示原本的数据；仅清掉校验提示。
-      nextTick(() => formRef.value?.clearValidate(['fetch_interval', 'pause_window']))
-    }
-
-    function onAutoFetchTaskChange() {
-      nextTick(() => formRef.value?.validateField('fetch_interval').catch(() => {}))
     }
 
     const createDefaultForm = () => ({
@@ -99,15 +122,14 @@ export default defineComponent({
       seller_id: '',
       status: 'disabled',
       remark: '',
-      is_open: 0,
-      fetch_interval: '',
-      auto_fetch_order_list: 0,
-      auto_fetch_on_sale: 0,
-      auto_fetch_todos: 0,
-      auto_fetch_notifications: 0,
       auto_fetch_relist: 0,
       pause_start_time: null,
       pause_end_time: null,
+      // 每项独立间隔表单态；默认全部关闭（sel=''）
+      tasks: FETCH_TASKS.reduce((acc, def) => {
+        acc[def.key] = { sel: '', num: 30, unit: 'min' }
+        return acc
+      }, {}),
     })
 
     const form = ref(createDefaultForm())
@@ -128,34 +150,9 @@ export default defineComponent({
       account_name: [{ required: true, message: t('mercariAccounts.errAccountNameRequired'), trigger: 'blur' }],
       seller_id: sellerIdRules,
       status: [{ required: true, message: t('mercariAccounts.errStatusRequired'), trigger: 'change' }],
-      is_open: [{ required: true, message: t('common.selectPlaceholder'), trigger: 'change' }],
-      fetch_interval: [
-        {
-          validator(_rule, val, cb) {
-            if (form.value.is_open === 1) {
-              if (!val || !String(val).trim()) {
-                cb(new Error(t('mercariAccounts.errIntervalRequired')))
-                return
-              }
-              const anyTask =
-                form.value.auto_fetch_order_list === 1 ||
-                form.value.auto_fetch_on_sale === 1 ||
-                form.value.auto_fetch_todos === 1 ||
-                form.value.auto_fetch_notifications === 1
-              if (!anyTask) {
-                cb(new Error(t('mercariAccounts.errPickOneTask')))
-                return
-              }
-            }
-            cb()
-          },
-          trigger: 'change',
-        },
-      ],
       pause_window: [
         {
           validator(_rule, _val, cb) {
-            if (form.value.is_open !== 1) return cb()
             const s = String(form.value.pause_start_time || '').trim()
             const e = String(form.value.pause_end_time || '').trim()
             if (!s && !e) return cb()
@@ -237,7 +234,6 @@ export default defineComponent({
     }
 
     function openEdit(row) {
-      const open = row.is_open === 1 || row.is_open === true ? 1 : 0
       form.value = {
         ...createDefaultForm(),
         id: row.id,
@@ -245,48 +241,55 @@ export default defineComponent({
         seller_id: row.seller_id != null ? String(row.seller_id) : '',
         status: row.status || 'active',
         remark: row.remark || '',
-        is_open: open,
-        // 即便当前关闭了自动同步，也保留并回显原本的间隔/子任务/暂停时段，便于重新开启
-        fetch_interval: String(row.fetch_interval != null ? row.fetch_interval : ''),
-        auto_fetch_order_list: row.auto_fetch_order_list === 1 ? 1 : 0,
-        auto_fetch_on_sale: row.auto_fetch_on_sale === 1 ? 1 : 0,
-        auto_fetch_todos: row.auto_fetch_todos === 1 ? 1 : 0,
-        auto_fetch_notifications: row.auto_fetch_notifications === 1 ? 1 : 0,
         auto_fetch_relist: row.auto_fetch_relist === 1 ? 1 : 0,
         pause_start_time: row.pause_start_time || null,
         pause_end_time: row.pause_end_time || null,
+        // 回显各同步项的独立间隔
+        tasks: FETCH_TASKS.reduce((acc, def) => {
+          acc[def.key] = parseTaskInterval(row[def.field])
+          return acc
+        }, {}),
       }
       dialogVisible.value = true
     }
 
     function buildPayload() {
       const name = String(form.value.account_name || '').trim()
-      const open = form.value.is_open === 1 ? 1 : 0
-      // 关闭自动同步时仍原样提交配置（间隔/子任务/暂停），后端会保留，便于重新开启后继续显示
       const base = {
         account_name: name,
         login_id: name,
         seller_id: String(form.value.seller_id || '').trim() || null,
         status: form.value.status,
         remark: form.value.remark || null,
-        is_open: open,
-        fetch_interval: String(form.value.fetch_interval || '').trim() || null,
-        auto_fetch_order_list: form.value.auto_fetch_order_list === 1 ? 1 : 0,
-        auto_fetch_on_sale: form.value.auto_fetch_on_sale === 1 ? 1 : 0,
-        auto_fetch_todos: form.value.auto_fetch_todos === 1 ? 1 : 0,
-        auto_fetch_notifications: form.value.auto_fetch_notifications === 1 ? 1 : 0,
         auto_fetch_relist: form.value.auto_fetch_relist === 1 ? 1 : 0,
         pause_start_time: String(form.value.pause_start_time || '').trim() || null,
         pause_end_time: String(form.value.pause_end_time || '').trim() || null,
       }
-      if (form.value.id) {
-        return base
+      // 每项独立间隔：'' 表示关闭该项（后端 is_open 由是否有任一项开启派生）
+      for (const def of FETCH_TASKS) {
+        base[def.field] = buildTaskInterval(form.value.tasks[def.key])
       }
-      return { ...base }
+      return base
+    }
+
+    // 校验自定义间隔范围：分钟 5~1440，小时 1~24
+    function validateCustomIntervals() {
+      for (const def of FETCH_TASKS) {
+        const tk = form.value.tasks[def.key]
+        if (tk.sel !== CUSTOM_INTERVAL) continue
+        const n = Math.trunc(Number(tk.num) || 0)
+        const ok = tk.unit === 'h' ? (n >= 1 && n <= 24) : (n >= 5 && n <= 1440)
+        if (!ok) {
+          ElMessage.warning(t('mercariAccounts.errCustomIntervalRange'))
+          return false
+        }
+      }
+      return true
     }
 
     async function submit() {
       await formRef.value?.validate()
+      if (!validateCustomIntervals()) return
       submitting.value = true
       const payload = buildPayload()
       try {
@@ -585,14 +588,14 @@ export default defineComponent({
       dialogVisible,
       formRef,
       statusOptions,
-      autoFetchSwitchOptions,
+      FETCH_TASKS,
+      CUSTOM_INTERVAL,
       fetchIntervalOptions,
-      legacyFetchIntervalLabels,
-      fetchIntervalLabel,
+      intervalUnitOptions,
+      formatInterval,
+      anyTaskEnabled,
+      taskIntervalSummary,
       pauseWindowLabel,
-      autoFetchTasksLabel,
-      onAutoFetchToggle,
-      onAutoFetchTaskChange,
       createDefaultForm,
       form,
       sellerIdRules,

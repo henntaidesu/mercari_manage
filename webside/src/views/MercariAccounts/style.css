@@ -148,6 +148,35 @@
   white-space: normal;
   width: 100%;
 }
+.af-task-list {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  width: 100%;
+}
+.af-task-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+}
+.af-task-name {
+  flex: 0 0 132px;
+  color: #c2ccdc;
+  font-size: 13px;
+}
+.af-task-select {
+  flex: 1;
+  min-width: 0;
+}
+.af-task-num {
+  flex: 0 0 88px;
+  width: 88px;
+}
+.af-task-unit {
+  flex: 0 0 88px;
+  width: 88px;
+}
 .af-pause-row {
   display: flex;
   align-items: center;

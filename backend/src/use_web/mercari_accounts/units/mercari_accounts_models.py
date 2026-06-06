@@ -8,6 +8,46 @@ from pydantic import BaseModel as PydanticModel, Field
 ALLOWED_STATUS = {"active", "disabled"}
 # 前端主选项 15/30/1H/3H/6H；保留旧值以便已存数据校验通过
 ALLOWED_FETCH_INTERVALS = frozenset({"15", "30", "60", "3h", "6h", "10", "12h", "24h"})
+
+# 可独立配置间隔的自动同步项（键与 mercari_auto_fetch_loop / 前端一致）
+AUTO_FETCH_TASK_KEYS = ("order_list", "on_sale", "todos", "notifications")
+
+# 自定义间隔上下限（秒）：最小 5 分钟，最大 24 小时
+_INTERVAL_MIN_SEC = 5 * 60
+_INTERVAL_MAX_SEC = 24 * 3600
+
+
+def interval_to_seconds(value):
+    """把间隔字符串解析为秒。支持 "<分钟>" / "<n>m"(分钟) / "<n>h"(小时)。无法解析返回 None。"""
+    s = (value or "").strip().lower()
+    if not s:
+        return None
+    if s.endswith("h"):
+        num = s[:-1]
+        return int(num) * 3600 if num.isdigit() else None
+    if s.endswith("m"):
+        num = s[:-1]
+        return int(num) * 60 if num.isdigit() else None
+    return int(s) * 60 if s.isdigit() else None
+
+
+def normalize_interval(value):
+    """规范化单个间隔：空→None（关闭）；合法→规范字符串；非法→ValueError。
+
+    合法范围：5 分钟 ~ 24 小时；裸数字按分钟、"<n>h" 按小时。
+    """
+    s = (value or "").strip().lower()
+    if not s:
+        return None
+    secs = interval_to_seconds(s)
+    if secs is None:
+        raise ValueError("间隔格式无效（应为分钟数或「<小时>h」）")
+    if secs < _INTERVAL_MIN_SEC or secs > _INTERVAL_MAX_SEC:
+        raise ValueError("间隔需在 5 分钟 ~ 24 小时之间")
+    # 统一为最简形式："<n>m" 归一为 "<n>"
+    if s.endswith("m"):
+        return s[:-1]
+    return s
 MERCARI_IN_PROGRESS_URL = "https://jp.mercari.com/mypage/listings/in_progress"
 MERCARI_LISTINGS_URL = "https://jp.mercari.com/mypage/listings"
 IN_PROGRESS_FIRST_LINK_XPATH = '//*[@id="my-page-main-content"]/div/div/div/div/ul/li[1]/a/div[1]/div'
@@ -56,6 +96,11 @@ class MercariAccountCreate(PydanticModel):
     auto_fetch_on_sale: int = 0
     auto_fetch_todos: int = 0
     auto_fetch_notifications: int = 0
+    # 每项独立间隔；空串/None=关闭，非空=开启该项
+    auto_fetch_order_list_interval: Optional[str] = None
+    auto_fetch_on_sale_interval: Optional[str] = None
+    auto_fetch_todos_interval: Optional[str] = None
+    auto_fetch_notifications_interval: Optional[str] = None
     auto_fetch_relist: int = 0
     pause_start_time: Optional[str] = None
     pause_end_time: Optional[str] = None
@@ -74,6 +119,11 @@ class MercariAccountUpdate(PydanticModel):
     auto_fetch_on_sale: Optional[int] = None
     auto_fetch_todos: Optional[int] = None
     auto_fetch_notifications: Optional[int] = None
+    # 每项独立间隔；空串=关闭该项，None=本次不修改
+    auto_fetch_order_list_interval: Optional[str] = None
+    auto_fetch_on_sale_interval: Optional[str] = None
+    auto_fetch_todos_interval: Optional[str] = None
+    auto_fetch_notifications_interval: Optional[str] = None
     auto_fetch_relist: Optional[int] = None
     pause_start_time: Optional[str] = None
     pause_end_time: Optional[str] = None

@@ -101,6 +101,49 @@ class MercariAccountModel(BaseModel):
                 'not_null': True,
                 'default': 0,
             },
+            # 每个同步项独立的抓取间隔（非空即视为开启该项；为空=关闭）。
+            # 取值见 mercari_accounts_models.normalize_interval：预设 15/30/60/3h/6h，或自定义 "<分钟>" / "<小时>h"。
+            'auto_fetch_order_list_interval': {
+                'type': 'TEXT',
+                'not_null': False,
+                'default': None,
+            },
+            'auto_fetch_on_sale_interval': {
+                'type': 'TEXT',
+                'not_null': False,
+                'default': None,
+            },
+            'auto_fetch_todos_interval': {
+                'type': 'TEXT',
+                'not_null': False,
+                'default': None,
+            },
+            'auto_fetch_notifications_interval': {
+                'type': 'TEXT',
+                'not_null': False,
+                'default': None,
+            },
+            # 每个同步项独立的上次成功时间（UTC ISO），供后台定时任务按项节流
+            'auto_fetch_order_list_last_at': {
+                'type': 'TEXT',
+                'not_null': False,
+                'default': None,
+            },
+            'auto_fetch_on_sale_last_at': {
+                'type': 'TEXT',
+                'not_null': False,
+                'default': None,
+            },
+            'auto_fetch_todos_last_at': {
+                'type': 'TEXT',
+                'not_null': False,
+                'default': None,
+            },
+            'auto_fetch_notifications_last_at': {
+                'type': 'TEXT',
+                'not_null': False,
+                'default': None,
+            },
             # 自动上架（售出即补挂）账号级开关：1=本账号售出订单触发补挂（需配合订单更新列表 + 商品单品开关）
             'auto_fetch_relist': {
                 'type': 'INTEGER',
@@ -128,6 +171,7 @@ class MercariAccountModel(BaseModel):
         if ok:
             cls._migrate_login_password_json_to_value()
             cls._migrate_auto_fetch_task_defaults()
+            cls._migrate_per_task_intervals()
             if hasattr(cls, '_cached_table_columns'):
                 delattr(cls, '_cached_table_columns')
         return ok
@@ -190,6 +234,44 @@ class MercariAccountModel(BaseModel):
             print(f"[mercari_accounts] auto_fetch 子任务默认迁移跳过: {e}")
 
     @classmethod
+    def _migrate_per_task_intervals(cls) -> None:
+        """旧版「总开关 is_open + 单一 fetch_interval」迁移为「每项独立间隔」。
+
+        对历史数据：is_open=1 且某子任务已开启(=1) 且 fetch_interval 非空时，
+        把该共享间隔回填进对应的 *_interval 列（仅当目标列尚为空，幂等可重复执行）。
+        """
+        db = cls().db
+        table = cls.get_table_name()
+        if not db.table_exists(table):
+            return
+        names = {c['name'] for c in db.get_table_columns(table)}
+        pairs = (
+            ('auto_fetch_order_list', 'auto_fetch_order_list_interval'),
+            ('auto_fetch_on_sale', 'auto_fetch_on_sale_interval'),
+            ('auto_fetch_todos', 'auto_fetch_todos_interval'),
+            ('auto_fetch_notifications', 'auto_fetch_notifications_interval'),
+        )
+        if 'fetch_interval' not in names or 'is_open' not in names:
+            return
+        for flag_col, iv_col in pairs:
+            if flag_col not in names or iv_col not in names:
+                continue
+            try:
+                db.execute_update(
+                    f"""
+                    UPDATE [{table}]
+                    SET [{iv_col}] = [fetch_interval]
+                    WHERE [is_open] = 1
+                      AND IFNULL([{flag_col}], 0) = 1
+                      AND [fetch_interval] IS NOT NULL AND TRIM([fetch_interval]) != ''
+                      AND ([{iv_col}] IS NULL OR TRIM([{iv_col}]) = '')
+                    """,
+                    (),
+                )
+            except Exception as e:
+                print(f"[mercari_accounts] 每项间隔迁移跳过({iv_col}): {e}")
+
+    @classmethod
     def _migrate_login_password_json_to_value(cls) -> None:
         """旧版把请求头 JSON 存在 login_password；value 列为空时尝试迁移。"""
         db = cls().db
@@ -243,12 +325,12 @@ class MercariAccountModel(BaseModel):
 
         total = db.execute_query(f"SELECT COUNT(*) {base_sql}", tuple(params))[0][0]
         select_sql = f"""
-            SELECT m.id, m.account_name, m.login_id, m.seller_id, m.login_password, m.status, m.remark, m.[value], m.is_open, m.fetch_interval, m.auto_fetch_last_at, m.auto_fetch_order_list, m.auto_fetch_on_sale, m.auto_fetch_todos, m.auto_fetch_notifications, m.auto_fetch_relist, m.pause_start_time, m.pause_end_time
+            SELECT m.id, m.account_name, m.login_id, m.seller_id, m.login_password, m.status, m.remark, m.[value], m.is_open, m.fetch_interval, m.auto_fetch_last_at, m.auto_fetch_order_list, m.auto_fetch_on_sale, m.auto_fetch_todos, m.auto_fetch_notifications, m.auto_fetch_order_list_interval, m.auto_fetch_on_sale_interval, m.auto_fetch_todos_interval, m.auto_fetch_notifications_interval, m.auto_fetch_relist, m.pause_start_time, m.pause_end_time
             {base_sql}
             ORDER BY m.id DESC
             LIMIT ? OFFSET ?
         """
-        keys = ['id', 'account_name', 'login_id', 'seller_id', 'login_password', 'status', 'remark', 'value', 'is_open', 'fetch_interval', 'auto_fetch_last_at', 'auto_fetch_order_list', 'auto_fetch_on_sale', 'auto_fetch_todos', 'auto_fetch_notifications', 'auto_fetch_relist', 'pause_start_time', 'pause_end_time']
+        keys = ['id', 'account_name', 'login_id', 'seller_id', 'login_password', 'status', 'remark', 'value', 'is_open', 'fetch_interval', 'auto_fetch_last_at', 'auto_fetch_order_list', 'auto_fetch_on_sale', 'auto_fetch_todos', 'auto_fetch_notifications', 'auto_fetch_order_list_interval', 'auto_fetch_on_sale_interval', 'auto_fetch_todos_interval', 'auto_fetch_notifications_interval', 'auto_fetch_relist', 'pause_start_time', 'pause_end_time']
         rows = db.execute_query(select_sql, tuple(params + [page_size, (page - 1) * page_size]))
         items = []
         for row in rows:
@@ -261,6 +343,10 @@ class MercariAccountModel(BaseModel):
             d['auto_fetch_on_sale'] = 1 if d.get('auto_fetch_on_sale') else 0
             d['auto_fetch_todos'] = 1 if d.get('auto_fetch_todos') else 0
             d['auto_fetch_notifications'] = 1 if d.get('auto_fetch_notifications') else 0
+            d['auto_fetch_order_list_interval'] = d.get('auto_fetch_order_list_interval') or None
+            d['auto_fetch_on_sale_interval'] = d.get('auto_fetch_on_sale_interval') or None
+            d['auto_fetch_todos_interval'] = d.get('auto_fetch_todos_interval') or None
+            d['auto_fetch_notifications_interval'] = d.get('auto_fetch_notifications_interval') or None
             d['auto_fetch_relist'] = 1 if d.get('auto_fetch_relist') else 0
             d['pause_start_time'] = d.get('pause_start_time') or None
             d['pause_end_time'] = d.get('pause_end_time') or None
