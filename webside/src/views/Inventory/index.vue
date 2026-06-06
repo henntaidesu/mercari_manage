@@ -53,9 +53,38 @@
               <el-select v-model="filterOwnerUserId" class="search-select-control" :placeholder="t('inventory.allOwners')" clearable @change="load">
                 <el-option v-for="u in ownerUsers" :key="u.id" :label="u.display_name || u.username" :value="u.id" />
               </el-select>
-              <el-checkbox v-model="hideNoWarehouseSlot" class="search-filter-checkbox">{{ t('inventory.hideNoStock') }}</el-checkbox>
-              <el-checkbox v-model="viewNoImageOnly" class="search-filter-checkbox">{{ t('inventory.viewNoImageOnly') }}</el-checkbox>
-              <el-checkbox v-model="viewCombinedOnly" class="search-filter-checkbox">{{ t('inventory.viewCombinedOnly') }}</el-checkbox>
+              <div
+                class="search-filter-chip"
+                :class="{ 'search-filter-chip--active': hideNoWarehouseSlot }"
+                role="button"
+                tabindex="0"
+                @click="hideNoWarehouseSlot = !hideNoWarehouseSlot"
+                @keyup.enter="hideNoWarehouseSlot = !hideNoWarehouseSlot"
+              >{{ t('inventory.hideNoStock') }}</div>
+              <div
+                class="search-filter-chip"
+                :class="{ 'search-filter-chip--active': viewNoImageOnly }"
+                role="button"
+                tabindex="0"
+                @click="viewNoImageOnly = !viewNoImageOnly"
+                @keyup.enter="viewNoImageOnly = !viewNoImageOnly"
+              >{{ t('inventory.viewNoImageOnly') }}</div>
+              <div
+                class="search-filter-chip"
+                :class="{ 'search-filter-chip--active': viewCombinedOnly }"
+                role="button"
+                tabindex="0"
+                @click="viewCombinedOnly = !viewCombinedOnly"
+                @keyup.enter="viewCombinedOnly = !viewCombinedOnly"
+              >{{ t('inventory.viewCombinedOnly') }}</div>
+              <div
+                class="search-filter-chip"
+                :class="{ 'search-filter-chip--active': viewAutoListingOnly }"
+                role="button"
+                tabindex="0"
+                @click="viewAutoListingOnly = !viewAutoListingOnly"
+                @keyup.enter="viewAutoListingOnly = !viewAutoListingOnly"
+              >{{ t('inventory.viewAutoListingOnly') }}</div>
             </div>
           </div>
         </el-col>

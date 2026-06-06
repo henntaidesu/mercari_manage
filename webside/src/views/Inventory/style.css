@@ -80,13 +80,32 @@
   width: 180px;
   max-width: 180px;
 }
-.search-filters-row .search-filter-checkbox {
+.search-filters-row .search-filter-chip {
   flex: 0 0 auto;
-  margin-right: 0;
   white-space: nowrap;
+  cursor: pointer;
+  user-select: none;
+  height: 32px;
+  line-height: 30px;
+  padding: 0 14px;
+  border: 1px solid var(--el-border-color, #dcdfe6);
+  border-radius: 16px;
+  background: var(--el-fill-color-light, #f5f7fa);
+  color: var(--el-text-color-secondary, #909399);
+  font-size: 13px;
+  transition: all 0.2s ease;
 }
-.search-filters-row .search-filter-checkbox :deep(.el-checkbox__label) {
-  padding-left: 6px;
+.search-filters-row .search-filter-chip:hover {
+  border-color: var(--el-color-primary, #409eff);
+  color: var(--el-color-primary, #409eff);
+}
+.search-filters-row .search-filter-chip--active {
+  border-color: var(--el-color-primary, #409eff);
+  background: var(--el-color-primary, #409eff);
+  color: #fff;
+}
+.search-filters-row .search-filter-chip--active:hover {
+  color: #fff;
 }
 .product-field-inline {
   display: flex;
@@ -1011,10 +1030,10 @@
     min-width: 0;
     max-width: none;
   }
-  .search-filters-row .search-filter-checkbox {
-    flex: 1 0 100%;
-    width: 100%;
+  .search-filters-row .search-filter-chip {
+    flex: 0 0 auto;
     margin-top: 2px;
+    text-align: center;
   }
   .search-actions {
     justify-content: stretch;

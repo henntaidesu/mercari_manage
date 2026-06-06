@@ -27,6 +27,7 @@ def list_inventory(
     warehouse_assigned_only: bool = False,
     no_image_only: bool = False,
     combined_only: bool = False,
+    auto_listing_only: bool = False,
 ):
     where_parts = []
     params = []
@@ -71,6 +72,8 @@ def list_inventory(
         where_parts.append(f"AND NOT {_sql_inventory_has_image_condition()}")
     if combined_only:
         where_parts.append("AND COALESCE(p.is_combined, 0) = 1")
+    if auto_listing_only:
+        where_parts.append("AND COALESCE(p.auto_listing_enabled, 0) = 1")
     where_sql = " " + " ".join(where_parts) + " ORDER BY p.id DESC"
     return _query_inventory_with_joins(where_sql, tuple(params))
 

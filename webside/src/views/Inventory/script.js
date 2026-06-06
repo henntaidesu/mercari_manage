@@ -128,6 +128,19 @@ export default defineComponent({
       return false
     }
     const viewCombinedOnly = ref(readViewCombinedOnlyPreference())
+    /** localStorage：勾选后仅展示开启自动出品的条目（auto_listing_enabled=1） */
+    const VIEW_AUTO_LISTING_ONLY_STORAGE_KEY = 'mercari.inventory.viewAutoListingOnly'
+    function readViewAutoListingOnlyPreference() {
+      try {
+        const raw = localStorage.getItem(VIEW_AUTO_LISTING_ONLY_STORAGE_KEY)
+        if (raw === '1' || raw === 'true') return true
+        if (raw === '0' || raw === 'false') return false
+      } catch {
+        /* ignore */
+      }
+      return false
+    }
+    const viewAutoListingOnly = ref(readViewAutoListingOnlyPreference())
     const currentPage = ref(1)
     const pageSize = 15
     const dialogVisible = ref(false)
@@ -1548,6 +1561,7 @@ export default defineComponent({
       if (filterWarehouse.value) params.warehouse_id = filterWarehouse.value
       if (filterProductType.value) params.product_type_id = filterProductType.value
       if (filterOwnerUserId.value) params.owner_user_id = filterOwnerUserId.value
+      if (viewAutoListingOnly.value) params.auto_listing_only = true
       if (hideNoWarehouseSlot.value) params.in_stock_only = true
       if (viewNoImageOnly.value) params.no_image_only = true
       if (viewCombinedOnly.value) params.combined_only = true
@@ -1584,6 +1598,15 @@ export default defineComponent({
     watch(viewCombinedOnly, (v) => {
       try {
         localStorage.setItem(VIEW_COMBINED_ONLY_STORAGE_KEY, v ? '1' : '0')
+      } catch {
+        /* ignore */
+      }
+      void load({ resetPage: false })
+    })
+
+    watch(viewAutoListingOnly, (v) => {
+      try {
+        localStorage.setItem(VIEW_AUTO_LISTING_ONLY_STORAGE_KEY, v ? '1' : '0')
       } catch {
         /* ignore */
       }
@@ -3725,6 +3748,7 @@ export default defineComponent({
       VIEW_COMBINED_ONLY_STORAGE_KEY,
       readViewCombinedOnlyPreference,
       viewCombinedOnly,
+      viewAutoListingOnly,
       currentPage,
       pageSize,
       dialogVisible,
