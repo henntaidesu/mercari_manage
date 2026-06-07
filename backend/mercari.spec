@@ -43,7 +43,7 @@ for pkg in ("mitmproxy", "playwright", "easyocr", "PIL", "cryptography"):
         pass
 
 a = Analysis(
-    ["mercari_server.py"],
+    ["main.py"],
     pathex=[spec_dir],
     binaries=binaries,
     datas=datas,

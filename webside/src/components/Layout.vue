@@ -251,6 +251,7 @@ const menuItems = [
       { path: '/system/warehouses', titleKey: 'layout.menu.warehouses', icon: 'OfficeBuilding' },
       { path: '/system/categories', titleKey: 'layout.menu.categories', icon: 'Collection' },
       { path: '/system/product-type-category-mappings', titleKey: 'layout.menu.productTypeMappings', icon: 'Connection' },
+      { path: '/system/talk-scripts', titleKey: 'layout.menu.talkScripts', icon: 'ChatLineRound' },
       { path: '/system/system-logs', titleKey: 'layout.menu.systemLogs', icon: 'Document' }
     ]
   }

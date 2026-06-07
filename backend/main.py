@@ -21,7 +21,7 @@ from src.readiness import is_ready, mark_ready
 #   True          = 无视环境变量与各处 headless=True 入参，所有自动化浏览器一律有头，方便肉眼 DEBUG
 # 改这一处即可全局生效（启动时通过 set_force_headed_debug 应用）。
 # 注：环境变量 WEB_DRIVE_FORCE_HEADED_DEBUG=1 也可临时开启，便于不改码调试。
-WEB_DRIVE_FORCE_HEADED_DEBUG = False  # 开发时默认强制有头，生产环境请改为 False
+WEB_DRIVE_FORCE_HEADED_DEBUG = True  # 开发时默认强制有头，生产环境请改为 False
 
 
 def _resolve_force_headed_debug() -> bool:
@@ -195,6 +195,12 @@ def _resolve_ssl_config() -> tuple[str | None, str | None]:
 
 
 if __name__ == "__main__":
+    # PyInstaller 冻结后，子进程会重新执行本入口脚本；freeze_support() 必须在最前调用，
+    # 否则每个被 spawn 的子进程都会重新启动整个应用，导致无限循环。
+    import multiprocessing
+
+    multiprocessing.freeze_support()
+
     import uvicorn
 
     host = (os.environ.get("MERCARI_HOST") or "0.0.0.0").strip()
@@ -217,7 +223,7 @@ if __name__ == "__main__":
         )
 
     uvicorn.run(
-        "main:app",
+        app,
         host=host,
         port=port,
         proxy_headers=True,

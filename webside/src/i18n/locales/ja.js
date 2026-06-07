@@ -95,6 +95,7 @@ export default {
       todos: "タスク",
       notifications: "メルカリ通知",
       mercariAccounts: "メルカリアカウント",
+      talkScripts: "定型文",
       memos: "メモ",
       system: "システム管理",
       systemOverview: "システム概要",

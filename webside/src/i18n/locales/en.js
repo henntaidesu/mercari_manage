@@ -95,6 +95,7 @@ export default {
       todos: "To-Do",
       notifications: "Mercari Notifications",
       mercariAccounts: "Mercari Accounts",
+      talkScripts: "Scripts",
       memos: "Memos",
       system: "System",
       systemOverview: "System Overview",
