@@ -1,5 +1,5 @@
 <template>
-  <div>
+  <div :class="{ 'batch-pick-mode-active': batchMode }">
     <el-card shadow="never" class="search-card">
       <el-row :gutter="0" align="middle" class="search-row">
         <el-col :xs="24" :md="14" class="search-left-group">
@@ -13,7 +13,6 @@
             v-model="filters.seller_id"
             :placeholder="t('onSaleItems.sellerPlaceholder')"
             clearable
-            filterable
             style="min-width: 200px; width: 100%"
             @change="onFilterChange"
           >
@@ -54,13 +53,29 @@
           </el-select>
         </el-col>
         <el-col :xs="24" :md="10" class="search-actions">
-          <el-tooltip :disabled="!syncLockStore.locked" :content="syncLockStore.label" placement="top">
-            <span>
-              <el-button type="primary" :icon="Download" :loading="syncLoading || syncLockStore.locked" :disabled="syncLockStore.locked" @click="runSync">
-                {{ t('onSaleItems.syncFromMercari') }}
-              </el-button>
-            </span>
-          </el-tooltip>
+          <template v-if="!batchMode">
+            <el-tooltip :disabled="!syncLockStore.locked" :content="syncLockStore.label" placement="top">
+              <span>
+                <el-button type="primary" :icon="Download" :loading="syncLoading || syncLockStore.locked" :disabled="syncLockStore.locked" @click="runSync">
+                  {{ t('onSaleItems.syncFromMercari') }}
+                </el-button>
+              </span>
+            </el-tooltip>
+            <el-tooltip :disabled="!syncLockStore.locked" :content="syncLockStore.label" placement="top">
+              <span>
+                <el-button type="success" :disabled="syncLockStore.locked" @click="enterBatchMode">
+                  {{ t('onSaleItems.batchRevisePrice') }}
+                </el-button>
+              </span>
+            </el-tooltip>
+          </template>
+          <template v-else>
+            <span class="batch-pick-count">{{ t('onSaleItems.batchSelectedCount', { count: batchSelectedCount }) }}</span>
+            <el-button type="primary" :disabled="!batchSelectedCount" @click="openBatchPriceDialog">
+              {{ t('onSaleItems.batchConfirmPrice') }}
+            </el-button>
+            <el-button @click="exitBatchMode">{{ t('common.cancel') }}</el-button>
+          </template>
         </el-col>
       </el-row>
     </el-card>
@@ -74,6 +89,7 @@
         :row-class-name="onSaleRowClassName"
         @expand-change="onTableExpandChange"
         @sort-change="onSortChange"
+        @row-click="onTableRowClick"
       >
         <el-table-column type="expand" width="44">
           <template #default="props">
@@ -219,7 +235,7 @@
         <el-table-column :label="t('onSaleItems.updated')" width="160" align="center" header-align="center">
           <template #default="{ row }">{{ displayTs(row.updated) }}</template>
         </el-table-column>
-        <el-table-column :label="t('common.operate')" width="130" fixed="right" align="center" header-align="center">
+        <el-table-column v-if="!batchMode" :label="t('common.operate')" width="130" fixed="right" align="center" header-align="center">
           <template #default="{ row }">
             <el-tooltip :disabled="!syncLockStore.locked" :content="syncLockStore.label" placement="top">
               <span>
@@ -234,6 +250,12 @@
                 </el-button>
               </span>
             </el-tooltip>
+          </template>
+        </el-table-column>
+        <el-table-column v-else :label="t('onSaleItems.batchSelectColumn')" width="64" fixed="right" align="center" header-align="center">
+          <template #default="{ row }">
+            <el-icon v-if="batchSelectedIds.has(String(row.item_id || '').trim())" color="#67C23A" :size="20"><Check /></el-icon>
+            <span v-else class="cell-muted">-</span>
           </template>
         </el-table-column>
       </el-table>
@@ -461,6 +483,33 @@
         <el-button @click="reviseDialogVisible = false">{{ t('common.cancel') }}</el-button>
         <el-button type="primary" :loading="reviseSaving" @click="submitReviseDetail">
           {{ t('onSaleItems.submitRevise') }}
+        </el-button>
+      </template>
+    </el-dialog>
+
+    <el-dialog
+      v-model="batchPriceDialogVisible"
+      :title="t('onSaleItems.batchPriceDialogTitle')"
+      width="420px"
+      append-to-body
+      destroy-on-close
+    >
+      <div class="batch-price-tip">{{ t('onSaleItems.batchSelectedCount', { count: batchSelectedCount }) }}</div>
+      <el-form label-width="80px">
+        <el-form-item :label="t('onSaleItems.priceLabel')">
+          <el-input-number
+            v-model="batchPrice"
+            :min="300"
+            :precision="0"
+            :controls="false"
+            style="width: 100%"
+          />
+        </el-form-item>
+      </el-form>
+      <template #footer>
+        <el-button @click="batchPriceDialogVisible = false">{{ t('common.cancel') }}</el-button>
+        <el-button type="primary" :loading="batchSaving" @click="submitBatchPrice">
+          {{ t('common.confirm') }}
         </el-button>
       </template>
     </el-dialog>

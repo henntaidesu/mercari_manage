@@ -21,7 +21,7 @@
       <div class="search-row">
         <!-- 第一行：搜索框 + 下拉筛选 -->
         <div class="search-controls-row">
-          <el-input v-model="keyword" class="search-input-control" :placeholder="t('inventory.searchProductOrMgmtId')" clearable @change="load" prefix-icon="Search" />
+          <el-input v-model="keyword" class="search-input-control" clearable @change="load" prefix-icon="Search" />
           <div class="search-filters-row">
             <el-select v-model="filterCat" class="search-select-control" :placeholder="t('inventory.allCategories')" clearable @change="load">
               <el-option v-for="c in categories" :key="c.id" :label="c.name" :value="c.id" />
@@ -35,7 +35,6 @@
               :placeholder="t('inventory.warehouseShelfNamePlaceholder')"
               popper-class="product-type-cascader-popper"
               clearable
-              filterable
               @change="handleFilterWarehouseChange"
             />
             <el-cascader
@@ -47,7 +46,6 @@
               :placeholder="t('inventory.productType')"
               popper-class="product-type-cascader-popper"
               clearable
-              filterable
               @change="handleFilterProductTypeChange"
             />
             <el-select v-model="filterOwnerUserId" class="search-select-control" :placeholder="t('inventory.allOwners')" clearable @change="load">
@@ -295,7 +293,6 @@
               class="inventory-inline-select"
               :placeholder="t('inventory.selectType')"
               popper-class="product-type-cascader-popper"
-              filterable
               clearable
               @change="saveProductTypeInline(row, $event)"
               @visible-change="(v) => { if (!v) editingProductTypeRowId = null }"
@@ -451,7 +448,6 @@
                   <el-select
                     v-model="form.category_id"
                     clearable
-                    :filterable="!isIOS"
                     :placeholder="t('inventory.pleaseSelectCategory')"
                     class="product-field-inline__main"
                   >
@@ -481,7 +477,6 @@
                 :props="productTypeCascaderProps"
                 :show-all-levels="false"
                 clearable
-                filterable
                 :placeholder="t('inventory.pleaseSelectProductType')"
                 style="width: 100%"
                 popper-class="product-type-cascader-popper"
@@ -505,7 +500,6 @@
               <el-select
                 v-model="form.owner_user_id"
                 clearable
-                :filterable="!isIOS"
                 :placeholder="t('inventory.pleaseSelectOwner')"
                 style="width: 100%"
               >
@@ -521,7 +515,6 @@
                 :props="warehouseCascaderProps"
                 :show-all-levels="false"
                 clearable
-                :filterable="!isIOS"
                 :placeholder="t('inventory.warehouseShelfArrowPlaceholder')"
                 style="width: 100%"
                 popper-class="product-type-cascader-popper"
@@ -649,7 +642,6 @@
                   v-model="form.mercari_account_id"
                   :placeholder="t('dialogs.singleListing.listingAccountPlaceholder')"
                   style="width: 100%"
-                  :filterable="!isIOS"
                   :loading="mercariAccountsLoading"
                   @change="persistListingField('mercari_account_id')"
                 >
@@ -687,7 +679,6 @@
                   :options="shippingFromCascaderOptions"
                   :props="shippingFromCascaderProps"
                   :show-all-levels="false"
-                  filterable
                   :placeholder="t('dialogs.singleListing.shippingFromPlaceholder')"
                   style="width: 100%"
                   popper-class="product-type-cascader-popper"
@@ -1125,7 +1116,6 @@
           <span class="camera-device-label">{{ t('inventory.camera') }}</span>
           <el-select
             v-model="productImgCameraSelectId"
-            filterable
             :placeholder="t('inventory.selectCamera')"
             class="camera-device-select"
             :disabled="Boolean(productImgPreviewUrl) || productImgCapturing"
@@ -1296,7 +1286,6 @@
             v-model="splitForm.owner_user_id"
             :placeholder="t('inventory.pleaseSelectOwner')"
             clearable
-            :filterable="!isIOS"
             style="width: 100%"
           >
             <el-option
@@ -1375,7 +1364,6 @@
           <span class="camera-device-label">{{ t('inventory.camera') }}</span>
           <el-select
             v-model="inventoryCameraSelectId"
-            filterable
             :placeholder="t('inventory.selectCamera')"
             class="camera-device-select"
             @change="onContCameraDeviceChanged"

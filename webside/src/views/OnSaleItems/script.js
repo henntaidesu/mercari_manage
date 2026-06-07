@@ -1,7 +1,7 @@
 import { defineComponent, ref, computed, onBeforeUnmount, onMounted, reactive } from 'vue'
 import { ElMessageBox } from 'element-plus'
 import { ElMessage } from '@/utils/notify'
-import { Download, Loading, WarningFilled } from '@element-plus/icons-vue'
+import { Download, Loading, WarningFilled, Check } from '@element-plus/icons-vue'
 import { useI18n } from 'vue-i18n'
 import { onSaleItemApi, mercariAccountApi, webDriveApi } from '@/api/index.js'
 import { parseMgmtIdsFromDescription, isCipherMgmtLine } from '@/utils/mgmtIdCipher.js'
@@ -164,7 +164,14 @@ export default defineComponent({
     })
 
     function onSaleRowClassName({ row }) {
-      return isOnSaleOverListed(row) ? 'on-sale-stock-alert-row' : ''
+      const classes = []
+      if (isOnSaleOverListed(row)) classes.push('on-sale-stock-alert-row')
+      if (batchMode.value) {
+        const iid = String(row?.item_id ?? '').trim()
+        if (iid && batchSelectedIds.value.has(iid)) classes.push('batch-pick-row-selected')
+        if (!batchSelectable(row)) classes.push('batch-pick-row-disabled')
+      }
+      return classes.join(' ')
     }
 
     /** 标红行原因列表（已本地化），与库存管理页一致，供 tooltip 悬停展示 */
@@ -443,6 +450,136 @@ export default defineComponent({
     const reviseForm = reactive({ name: '', price: 0, listing_description: '' })
     /** 商品说明末行的「暗码」（管理番号暗号）；编辑时锁定不可改，保存时原样回拼 */
     const reviseDescCipher = ref('')
+
+    /** 批量改价：开启后点击商品行选中（无前置勾选框），选中后弹出表单输入价格逐个改价 */
+    const batchMode = ref(false)
+    /** 已选中的商品 item_id 集合（trim 后） */
+    const batchSelectedIds = ref(new Set())
+    const batchPriceDialogVisible = ref(false)
+    const batchPrice = ref(null)
+    const batchSaving = ref(false)
+
+    const batchSelectedCount = computed(() => batchSelectedIds.value.size)
+
+    /** 选中的 id 解析为当前列表中的行（仅当前页可解析，与库存「在列表中选择」一致） */
+    const batchSelectedRows = computed(() =>
+      displayList.value.filter((r) => batchSelectedIds.value.has(String(r?.item_id ?? '').trim()))
+    )
+
+    /** 拍卖商品（存在 auction_info_json）不可改价，点击不可选中 */
+    function batchSelectable(row) {
+      return !String(row?.auction_info_json ?? '').trim()
+    }
+
+    /** 点击商品行：切换选中（拍卖商品禁止选中） */
+    function toggleBatchRow(row) {
+      const iid = String(row?.item_id ?? '').trim()
+      if (!iid) return
+      const next = new Set(batchSelectedIds.value)
+      if (next.has(iid)) {
+        next.delete(iid)
+        batchSelectedIds.value = next
+        return
+      }
+      if (!batchSelectable(row)) {
+        ElMessage.warning(t('onSaleItems.batchAuctionCannotSelect'))
+        return
+      }
+      next.add(iid)
+      batchSelectedIds.value = next
+    }
+
+    function onTableRowClick(row) {
+      if (!batchMode.value) return
+      toggleBatchRow(row)
+    }
+
+    function enterBatchMode() {
+      batchMode.value = true
+      batchSelectedIds.value = new Set()
+    }
+
+    function exitBatchMode() {
+      batchMode.value = false
+      batchSelectedIds.value = new Set()
+    }
+
+    function openBatchPriceDialog() {
+      if (!batchSelectedIds.value.size) {
+        ElMessage.warning(t('onSaleItems.batchNoSelection'))
+        return
+      }
+      batchPrice.value = null
+      batchPriceDialogVisible.value = true
+    }
+
+    /** 提交批量改价：对每个选中商品逐个调用改价（仅改价格），过程在全屏遮罩展示进度 */
+    async function submitBatchPrice() {
+      const price = Number(batchPrice.value)
+      if (!Number.isFinite(price) || price < 300) {
+        ElMessage.warning(t('onSaleItems.priceInvalid'))
+        return
+      }
+      if (batchSaving.value) return
+
+      const tasks = []
+      let skipped = 0
+      for (const row of batchSelectedRows.value) {
+        const iid = String(row?.item_id || '').trim()
+        const resolved = resolveAccountKeyForRow(row)
+        if (!iid || !resolved) {
+          skipped += 1
+          continue
+        }
+        tasks.push({ iid, accountKey: resolved.accountKey })
+      }
+      if (!tasks.length) {
+        ElMessage.warning(t('onSaleItems.batchNoValidItems'))
+        return
+      }
+
+      const priceInt = Math.floor(price)
+      batchSaving.value = true
+      syncOverlayTitle.value = t('onSaleItems.batchRevisingTitle')
+      syncOverlayFailed.value = false
+      syncProgressLabel.value = ''
+      syncOverlayVisible.value = true
+
+      let ok = 0
+      let fail = skipped
+      for (let i = 0; i < tasks.length; i++) {
+        const task = tasks[i]
+        syncProgressLabel.value = t('onSaleItems.batchRevisingProgress', {
+          current: i + 1,
+          total: tasks.length,
+          iid: task.iid,
+        })
+        try {
+          await webDriveApi.reviseMercariItem({
+            account_key: task.accountKey,
+            item_id: task.iid,
+            price: priceInt,
+            use_mitm_proxy: true,
+          })
+          ok += 1
+        } catch (e) {
+          fail += 1
+          console.log('[批量改价] 失败', task.iid, e?.response?.data?.detail || e?.message)
+        }
+      }
+
+      syncOverlayVisible.value = false
+      syncOverlayTitle.value = t('onSaleItems.syncingFromMercari')
+      syncProgressLabel.value = ''
+      batchSaving.value = false
+      batchPriceDialogVisible.value = false
+      exitBatchMode()
+
+      const msg = t('onSaleItems.batchReviseDone', { ok, fail })
+      if (fail > 0) ElMessage.warning(msg)
+      else ElMessage.success(msg)
+      await load()
+    }
 
     /**
      * 拆分商品说明：仅把「最后一行」整行均为 -=~<> 暗号字符的暗码锁定，其余为可编辑正文。
@@ -1196,6 +1333,21 @@ export default defineComponent({
       reviseDescCipher,
       openReviseDialog,
       submitReviseDetail,
+      Check,
+      batchMode,
+      batchSelectedIds,
+      batchSelectedCount,
+      batchSelectedRows,
+      batchPriceDialogVisible,
+      batchPrice,
+      batchSaving,
+      batchSelectable,
+      toggleBatchRow,
+      onTableRowClick,
+      enterBatchMode,
+      exitBatchMode,
+      openBatchPriceDialog,
+      submitBatchPrice,
     }
   },
 })

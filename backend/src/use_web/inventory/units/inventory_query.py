@@ -33,8 +33,8 @@ def list_inventory(
     params = []
     kw = (keyword or "").strip()
     if kw:
-        clauses = ["p.name LIKE ?"]
-        kw_params = [f"%{kw}%"]
+        clauses = ["p.name LIKE ?", "p.listing_title LIKE ?"]
+        kw_params = [f"%{kw}%", f"%{kw}%"]
         # 纯数字 → 按管理番号（inventory.id）精确匹配
         mgmt_id_exact: Optional[int] = None
         if kw.isdigit():

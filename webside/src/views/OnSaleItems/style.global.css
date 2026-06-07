@@ -96,3 +96,29 @@
 .on-sale-revise-form .el-input-number {
   width: 100%;
 }
+
+/* 批量改价「点击行选择」模式（参考库存组合商品选择） */
+.batch-pick-count {
+  font-size: 13px;
+  color: #67C23A;
+  font-weight: 600;
+  margin-right: 4px;
+}
+/* 选择模式下：选中行整行浅绿色覆盖（含固定列） */
+.el-table tr.batch-pick-row-selected > td.el-table__cell {
+  background-color: rgba(103, 194, 58, 0.2) !important;
+  cursor: pointer;
+}
+.el-table tr.batch-pick-row-selected:hover > td.el-table__cell,
+.el-table tr.batch-pick-row-selected.hover-row > td.el-table__cell {
+  background-color: rgba(103, 194, 58, 0.32) !important;
+}
+/* 拍卖等不可选行：禁用指针、降低不透明度 */
+.el-table tbody tr.batch-pick-row-disabled {
+  cursor: not-allowed !important;
+  opacity: 0.55;
+}
+/* 选择模式下，整张表行的鼠标指针变为可点击 */
+.batch-pick-mode-active .el-table tbody tr {
+  cursor: pointer;
+}

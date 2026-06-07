@@ -1,9 +1,8 @@
 # -*- coding: utf-8 -*-
 """成本支出（包材/快递费）处理器：通用校验与分摊辅助函数。"""
 
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Optional
-from zoneinfo import ZoneInfo
 
 from fastapi import HTTPException
 
@@ -36,7 +35,9 @@ def _validate_type(value: Optional[str]) -> str:
 
 
 def _default_london_ts() -> int:
-    return int(datetime.now(ZoneInfo("Europe/London")).timestamp())
+    # .timestamp() 返回 UTC 纪元秒，与传入时区无关（原 ZoneInfo("Europe/London") 对结果无影响），
+    # 改用 timezone.utc 以避免依赖 tzdata（Windows / PyInstaller 打包环境缺该库会抛 ZoneInfoNotFoundError）。
+    return int(datetime.now(timezone.utc).timestamp())
 
 
 def _find_packaging_item_latest(item_name: str):

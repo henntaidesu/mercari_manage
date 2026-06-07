@@ -5,7 +5,6 @@
         <el-col :xs="24" :md="16" class="search-left-group">
           <el-input
             v-model="filters.keyword"
-            :placeholder="t('orders.searchKeywordPlaceholder')"
             clearable
             @change="onFilterChange"
           />
@@ -13,11 +12,24 @@
             v-model="filters.status"
             :placeholder="t('orders.statusFilterPlaceholder')"
             clearable
-            filterable
             style="width: 100%"
             @change="onFilterChange"
           >
             <el-option v-for="item in orderListStatusFilterOptions" :key="item.value" :label="item.label" :value="item.value" />
+          </el-select>
+          <el-select
+            v-model="filters.owner_user_id"
+            :placeholder="t('orders.ownerFilterPlaceholder')"
+            clearable
+            style="width: 100%"
+            @change="onFilterChange"
+          >
+            <el-option
+              v-for="u in ownerUsers"
+              :key="u.id"
+              :label="u.display_name || u.username"
+              :value="u.id"
+            />
           </el-select>
           <el-date-picker
             v-model="dateRange"
@@ -29,21 +41,6 @@
             style="width: 100%"
             @change="onFilterChange"
           />
-          <el-select
-            v-model="filters.owner_user_id"
-            :placeholder="t('orders.ownerFilterPlaceholder')"
-            clearable
-            filterable
-            style="width: 100%"
-            @change="onFilterChange"
-          >
-            <el-option
-              v-for="u in ownerUsers"
-              :key="u.id"
-              :label="u.display_name || u.username"
-              :value="u.id"
-            />
-          </el-select>
         </el-col>
         <el-col :xs="24" :md="8" class="search-actions">
           <el-tooltip :disabled="!syncLockStore.locked" :content="syncLockStore.label" placement="top">
@@ -426,7 +423,7 @@
           </el-col>
           <el-col :xs="24" :sm="12" :md="6">
             <el-form-item :label="t('orders.orderStatus')" prop="status">
-              <el-select v-model="form.status" filterable style="width: 100%">
+              <el-select v-model="form.status" style="width: 100%">
                 <el-option v-for="item in formOrderStatusOptions" :key="item.value" :label="item.label" :value="item.value" />
               </el-select>
             </el-form-item>
@@ -652,7 +649,6 @@
                 v-model="manualInvFilters.filterCat"
                 :placeholder="t('orders.allGameCategories')"
                 clearable
-                filterable
                 style="width: 100%"
                 @change="reloadManualInventoryList"
               >
@@ -669,7 +665,6 @@
                 :placeholder="t('orders.warehouseShelfPlaceholder')"
                 popper-class="product-type-cascader-popper"
                 clearable
-                filterable
                 @change="manualInvFilters.handleFilterWarehouseChange"
               />
             </div>
@@ -683,7 +678,6 @@
                 :placeholder="t('orders.productType')"
                 popper-class="product-type-cascader-popper"
                 clearable
-                filterable
                 @change="manualInvFilters.handleFilterProductTypeChange"
               />
             </div>
@@ -692,7 +686,6 @@
                 v-model="manualInvFilters.filterOwnerUserId"
                 :placeholder="t('orders.allOwners')"
                 clearable
-                filterable
                 style="width: 100%"
                 @change="reloadManualInventoryList"
               >
@@ -720,7 +713,6 @@
             >
               <el-select
                 v-model="row.inventory_id"
-                filterable
                 clearable
                 class="manual-inventory-select"
                 style="width: 100%"
@@ -832,7 +824,6 @@
                 v-model="bindInvFilters.filterCat"
                 :placeholder="t('orders.allGameCategories')"
                 clearable
-                filterable
                 style="width: 100%"
                 @change="reloadBindInventoryList"
               >
@@ -849,7 +840,6 @@
                 :placeholder="t('orders.warehouseShelfPlaceholder')"
                 popper-class="product-type-cascader-popper"
                 clearable
-                filterable
                 @change="bindInvFilters.handleFilterWarehouseChange"
               />
             </div>
@@ -863,7 +853,6 @@
                 :placeholder="t('orders.productType')"
                 popper-class="product-type-cascader-popper"
                 clearable
-                filterable
                 @change="bindInvFilters.handleFilterProductTypeChange"
               />
             </div>
@@ -872,7 +861,6 @@
                 v-model="bindInvFilters.filterOwnerUserId"
                 :placeholder="t('orders.allOwners')"
                 clearable
-                filterable
                 style="width: 100%"
                 @change="reloadBindInventoryList"
               >
@@ -896,7 +884,6 @@
             <div class="manual-ob-line-row">
               <el-select
                 v-model="bindOutboundForm.inventory_id"
-                filterable
                 clearable
                 class="manual-inventory-select"
                 style="width: 100%"
@@ -999,7 +986,6 @@
             v-model="convertOwnerForm.owner_user_id"
             :placeholder="t('inventory.pleaseSelectOwner')"
             clearable
-            filterable
             style="width: 100%"
           >
             <el-option

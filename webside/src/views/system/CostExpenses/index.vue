@@ -9,7 +9,6 @@
           <el-input
             v-model="filters.order_no"
             clearable
-            :placeholder="t('system.costExpenseOrderNo')"
             @change="onFilterChange"
           />
           <el-select v-model="filters.owner" :placeholder="t('system.costExpenseOwner')" clearable @change="onFilterChange">

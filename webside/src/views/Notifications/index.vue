@@ -5,7 +5,6 @@
         <el-col :xs="24" :md="16" class="search-left-group">
           <el-input
             v-model="filters.keyword"
-            :placeholder="t('notifications.searchKeywordPlaceholder')"
             clearable
             @change="onFilterChange"
           />
@@ -13,7 +12,6 @@
             v-model="filters.kind"
             :placeholder="t('common.type')"
             clearable
-            filterable
             style="min-width: 200px"
             @change="onFilterChange"
           >
