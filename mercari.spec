@@ -45,6 +45,12 @@ hiddenimports += [
     "httptools",
 ]
 
+# backend.exe 自调用充当 mitmdump 的入口（main.py 顶部守卫会导入并运行）
+hiddenimports += [
+    "mitmproxy.tools.main",
+    "mitmproxy.tools.dump",
+]
+
 # 业务源码（backend/src）整体打入，覆盖函数内的延迟 import
 hiddenimports += collect_submodules("src")
 hiddenimports = list(dict.fromkeys(hiddenimports))  # 去重

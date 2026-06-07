@@ -37,18 +37,9 @@ async def _on_startup(force_headed_debug: bool = False) -> None:
         logging.basicConfig(level=logging.INFO, format=_fmt, force=True)
     except TypeError:
         logging.basicConfig(level=logging.INFO, format=_fmt)
-    init_database()
 
-    # 应用「强制有头调试」全局开关（在任何浏览器启动前设定）
-    from .web_drive.core.manager import set_force_headed_debug
-
-    _force_headed = _resolve_force_headed_debug(force_headed_debug)
-    set_force_headed_debug(_force_headed)
-    if _force_headed:
-        logging.getLogger(__name__).warning(
-            "[web_drive] 强制有头调试已开启：所有自动化浏览器将以有头方式启动"
-        )
-
+    # ① MITM 代理优先启动：后续浏览器自动化与煤炉抓取都依赖它，先于较重的数据库初始化拉起，
+    #    保证性能较弱的服务器上代理尽早就绪（自动抓取循环另有 180s 延迟，避免启动期资源争抢）。
     if _env_enabled("SSL_MITM_AUTO_START"):
         from .ssl_mitm_proxy.runner import start_mitm_proxy
 
@@ -63,6 +54,20 @@ async def _on_startup(force_headed_debug: bool = False) -> None:
         if r.get("error"):
             logging.getLogger(__name__).warning("mercari-proxy 未启动: %s", r["error"])
 
+    # ② 数据库初始化
+    init_database()
+
+    # ③ 应用「强制有头调试」全局开关（在任何浏览器启动前设定）
+    from .web_drive.core.manager import set_force_headed_debug
+
+    _force_headed = _resolve_force_headed_debug(force_headed_debug)
+    set_force_headed_debug(_force_headed)
+    if _force_headed:
+        logging.getLogger(__name__).warning(
+            "[web_drive] 强制有头调试已开启：所有自动化浏览器将以有头方式启动"
+        )
+
+    # ④ 煤炉自动抓取后台循环（首跑延迟见 mercari_auto_fetch_loop 内部）
     from .mercari_auto_fetch_loop import mercari_auto_fetch_loop
 
     asyncio.create_task(mercari_auto_fetch_loop())

@@ -294,8 +294,21 @@ def _tick_seconds() -> int:
     return max(15, n)
 
 
+def _initial_delay_seconds() -> int:
+    """首跑前的等待秒数：让系统（含 MITM 代理）先完全就绪，兼顾性能较弱的服务器。默认 180s。"""
+    try:
+        n = int((os.environ.get("MERCARI_AUTO_FETCH_INITIAL_DELAY_SEC") or "180").strip() or "180")
+    except ValueError:
+        n = 180
+    return max(0, n)
+
+
 async def mercari_auto_fetch_loop() -> None:
     sec = _tick_seconds()
+    delay = _initial_delay_seconds()
+    if delay > 0:
+        log.info("[mercari_auto_fetch] 后台循环将在系统启动 %ss 后开始首跑（tick=%ss）", delay, sec)
+        await asyncio.sleep(delay)
     log.info("[mercari_auto_fetch] 后台循环已启动，tick=%ss", sec)
     while True:
         try:

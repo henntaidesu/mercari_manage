@@ -24,6 +24,26 @@ def _truthy(value: str | None) -> bool:
     return (value or "").strip().lower() in ("1", "true", "yes", "on")
 
 
+def _enable_windows_console_ansi() -> None:
+    """在 Windows 控制台开启 VT 处理，让 uvicorn 日志的 ANSI 颜色码正常渲染，
+    而不是以 ``[32m...[0m`` 这样的乱码字符显示（常见于打包后的 exe 在 CMD 运行）。
+    仅开启 VT，不改控制台代码页，避免影响中文输出。"""
+    if sys.platform != "win32":
+        return
+    try:
+        import ctypes
+
+        kernel32 = ctypes.windll.kernel32
+        ENABLE_VIRTUAL_TERMINAL_PROCESSING = 0x0004
+        for handle_id in (-11, -12):  # STD_OUTPUT_HANDLE, STD_ERROR_HANDLE
+            handle = kernel32.GetStdHandle(handle_id)
+            mode = ctypes.c_uint32()
+            if kernel32.GetConsoleMode(handle, ctypes.byref(mode)):
+                kernel32.SetConsoleMode(handle, mode.value | ENABLE_VIRTUAL_TERMINAL_PROCESSING)
+    except Exception:  # noqa: BLE001
+        pass
+
+
 def resolve_ssl_config() -> tuple[str | None, str | None]:
     certfile = (os.environ.get("MERCARI_SSL_CERTFILE") or "").strip()
     keyfile = (os.environ.get("MERCARI_SSL_KEYFILE") or "").strip()
@@ -71,6 +91,8 @@ def run(app: FastAPI) -> None:
     import multiprocessing
 
     multiprocessing.freeze_support()
+
+    _enable_windows_console_ansi()
 
     import uvicorn
 

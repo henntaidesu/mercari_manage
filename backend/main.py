@@ -1,3 +1,12 @@
+# 单文件打包后 backend.exe 自调用充当 mitmdump：带 MERCARI_RUN_MITMDUMP=1 启动时，
+# 在加载任何业务模块前切换到 mitmdump 入口并退出（见 src/ssl_mitm_proxy/runner.py）。
+import os as _os
+
+if _os.environ.get("MERCARI_RUN_MITMDUMP") == "1":
+    from src._mitmdump_entry import run_mitmdump
+
+    run_mitmdump()
+
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles

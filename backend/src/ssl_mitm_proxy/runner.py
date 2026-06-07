@@ -57,15 +57,23 @@ def ensure_mitm_ca_material(confdir: str) -> None:
         log.exception("生成 mitmproxy CA 失败: %s", exc)
 
 
-def _mitmdump_executable() -> str:
-    """mitmproxy 10+ 须通过 mitmdump 入口启动；``python -m mitmproxy.tools.dump`` 不是有效 CLI。"""
+def _mitmdump_argv() -> list[str]:
+    """返回启动 mitmdump 的命令前缀（argv）。
+
+    - 单文件打包(frozen)：backend.exe 自调用充当 mitmdump（配合 MERCARI_RUN_MITMDUMP=1，
+      见 main.py 顶部守卫），无需外置 mitmdump.exe。
+    - 开发态：用 PATH 里的 mitmdump，或 venv 的 Scripts/mitmdump.exe。
+    mitmproxy 10+ 须通过 mitmdump 入口启动；``python -m mitmproxy.tools.dump`` 不是有效 CLI。
+    """
+    if getattr(sys, "frozen", False):
+        return [sys.executable]
     w = shutil.which("mitmdump")
     if w:
-        return w
+        return [w]
     if sys.platform == "win32":
         scripts = os.path.join(os.path.dirname(sys.executable), "Scripts", "mitmdump.exe")
         if os.path.isfile(scripts):
-            return scripts
+            return [scripts]
     raise FileNotFoundError(
         "找不到 mitmdump。请在 backend 所在环境执行: pip install mitmproxy"
     )
@@ -121,7 +129,7 @@ def start_mitm_proxy() -> Dict[str, Any]:
     env["MERCARI_BACKEND_ROOT"] = os.path.abspath(backend_root())
     port = mitm_listen_port()
     try:
-        mitm_bin = _mitmdump_executable()
+        mitm_argv = _mitmdump_argv()
     except FileNotFoundError as exc:
         return {"started": False, "error": str(exc)}
     try:
@@ -129,8 +137,12 @@ def start_mitm_proxy() -> Dict[str, Any]:
     except ImportError:
         return {"started": False, "error": "未安装 mitmproxy: pip install mitmproxy"}
 
+    if getattr(sys, "frozen", False):
+        # backend.exe 自调用充当 mitmdump：子进程据此切换到 mitmdump 入口
+        env["MERCARI_RUN_MITMDUMP"] = "1"
+
     cmd = [
-        mitm_bin,
+        *mitm_argv,
         "-q",
         "--listen-port",
         str(port),
