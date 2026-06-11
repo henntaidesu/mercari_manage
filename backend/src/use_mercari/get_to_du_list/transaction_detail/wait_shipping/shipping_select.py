@@ -7,6 +7,7 @@ import logging
 from typing import Any, Dict, Optional
 from .....db_manage.models.todo_item import TodoItemModel
 from .....web_drive.core.mitm_session import mitm_automation_browser
+from .....web_drive.core.paths import mercari_todo_key
 from ....sync.sync_progress import make_sync_reporter
 from .._qr_facility import _extract_shipping_facility, _persist_shipping_facility, _save_qr_code_image
 from .qr_scan import _click_scan_qr_and_open_scanner
@@ -85,6 +86,7 @@ async def start_select_shipping_class(
         start_url=url,
         headless=None,
         minimized=None,
+        browser_key=mercari_todo_key(aid),
     ) as (mgr, auto_key):
         page = await mgr.active_tab_page(auto_key)
         await _click_size_select_entry(page, aid=aid, report=report)
@@ -202,6 +204,7 @@ async def confirm_shipping_selection(
         start_url=url,
         headless=None,
         minimized=None,
+        browser_key=mercari_todo_key(aid),
     ) as (mgr, auto_key):
         page = await mgr.active_tab_page(auto_key)
 

@@ -327,6 +327,7 @@ async def mitm_automation_browser(
     start_url: str,
     minimized: Optional[bool] = None,
     headless: Optional[bool] = None,
+    browser_key: Optional[str] = None,
 ) -> AsyncIterator[Tuple[EdgeWebDriveManager, str]]:
     """
     上下文管理器:进入时确保账号**同步/自动化专用** profile（``mercari_{id}__sync``）
@@ -348,12 +349,16 @@ async def mitm_automation_browser(
     (默认无头)。显式传 ``False`` 可强制有头(前台可见)，用于需要用户在浏览器内
     亲自操作/核对的场景(如「発送をしてください」待办的处理)。
 
+    ``browser_key``: 指定自动化会话 key（须为 ``mercari_<id>__xxx`` 派生 key）。
+    ``None`` = 同步默认 key ``mercari_{id}__sync``；待办事项操作传
+    ``mercari_todo_key(aid)``（``mercari_{id}__todo``），与同步会话互不干扰。
+
     注：``WEB_DRIVE_AUTOMATION_HEADLESS`` 默认开启(无头)，故除 /mercari-accounts
     「打开浏览器」外的所有自动化（含本函数）默认真·无头静默运行，不在前台显示
     ( ``minimized`` 此时自动失效)。设环境变量为 0 可改回有头+最小化（调试用）。
     """
     aid = int(account_id)
-    auto_key = mercari_automation_key(aid)
+    auto_key = (browser_key or "").strip() or mercari_automation_key(aid)
     mgr = get_web_drive_manager()
     target_url = (start_url or "").strip()
     use_minimized = _default_minimized() if minimized is None else bool(minimized)

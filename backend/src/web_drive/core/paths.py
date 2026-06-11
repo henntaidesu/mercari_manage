@@ -101,7 +101,17 @@ def mercari_automation_key(account_id: int) -> str:
     return f"{mercari_account_key(account_id)}__sync"
 
 
-# mercari_<id> 及其派生 key（mercari_<id>__sync / mercari_<id>__listing 等）
+def mercari_todo_key(account_id: int) -> str:
+    """待办事项（/#/todos）浏览器操作专用无头 profile（``mercari_{id}__todo``）。
+
+    待办交易页会话需要跨多个 HTTP 请求保持打开（发消息/发货/QR 扫码等连续操作），
+    独立成单独 profile 后，与数据同步（``__sync``）、出品（``__listing``）、
+    「打开浏览器」主 profile 互不冲突——同步照常进行也不会把交易页刷走。
+    """
+    return f"{mercari_account_key(account_id)}__todo"
+
+
+# mercari_<id> 及其派生 key（mercari_<id>__sync / __listing / __todo 等）
 _MERCARI_KEY_ID_RE = re.compile(r"^mercari_(\d+)(?:__[a-z_]+)?$")
 
 

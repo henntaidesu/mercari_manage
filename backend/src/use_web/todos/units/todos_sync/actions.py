@@ -8,7 +8,7 @@ from .....use_mercari.get_to_du_list.transaction_detail import SUPPORTED_REACTIO
 from .....use_mercari.sync.sync_progress import clear_sync_progress
 from .....web_drive.core.account_serial_queue import queue_key_for_mercari_account, run_mercari_serial_async
 from .....web_drive.core.manager import get_web_drive_manager
-from .....web_drive.core.paths import mercari_automation_key
+from .....web_drive.core.paths import mercari_todo_key
 from ..todos_models import CameraFrameRequest, ChangeShippingMethodRequest, ConfirmShippingSelectionRequest, SendMessageReactionRequest, SendTransactionMessageRequest, SubmitTransactionReviewRequest, TransactionActionRequest
 from .detail import _validate_job_id
 
@@ -244,7 +244,7 @@ async def close_detail_browser(account_id: int) -> Dict[str, Any]:
     if aid <= 0:
         raise HTTPException(status_code=400, detail="account_id 无效")
     mgr = get_web_drive_manager()
-    main_key = mercari_automation_key(aid)
+    main_key = mercari_todo_key(aid)
     result = await mgr.close_session(main_key, force=True)
     return {"account_id": aid, **(result if isinstance(result, dict) else {})}
 

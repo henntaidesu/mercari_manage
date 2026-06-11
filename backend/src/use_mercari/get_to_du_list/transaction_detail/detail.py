@@ -10,6 +10,7 @@ from ....db_manage.database import DatabaseManager
 from ....db_manage.models.todo_item import TodoItemModel
 from ....ssl_mitm_proxy.capture_config import clear_shipping_info_response_file, clear_transaction_messages_response_file
 from ....web_drive.core.mitm_session import mitm_automation_browser
+from ....web_drive.core.paths import mercari_todo_key
 from ...sync.sync_progress import make_sync_reporter
 from ._cache import _clear_qr_image, _persist_transaction_detail
 from ._captures import _wait_for_both_captures
@@ -53,9 +54,9 @@ async def fetch_transaction_detail(
     clear_transaction_messages_response_file()
     since_ms = int(time.time() * 1000)
 
-    # ── Step 2: 用账号主 profile 经 MITM 打开交易页（与 /orders 更新列表同模式，
-    #            cookie 由 Edge 持久化自动维护；浏览器留给后续 followup op 复用，
-    #            队列空闲自动关闭由路由层 suppress_idle_close=True 关闭）──
+    # ── Step 2: 用待办专用无头 profile（mercari_{id}__todo）经 MITM 打开交易页：
+    #            与数据同步（__sync）、出品（__listing）、「打开浏览器」主 profile 互不冲突；
+    #            浏览器留给后续 followup op 复用（路由层 suppress_idle_close=True）──
     # 待发货待办：强制有头 + 前台可见的持久化浏览器，便于用户在浏览器内亲自核对发货；
     # 其余类型沿用默认（由 WEB_DRIVE_AUTOMATION_HEADLESS 决定，通常无头静默）。
     is_wait_shipping = _is_wait_shipping_todo(todo)
@@ -81,6 +82,7 @@ async def fetch_transaction_detail(
         start_url=url,
         headless=headless_override,
         minimized=minimized_override,
+        browser_key=mercari_todo_key(aid),
     ) as (mgr, main_key):
         report("wait_captures", "等待 shipping_info 与 transaction_messages 截获…")
         shipping, messages = await _wait_for_both_captures(

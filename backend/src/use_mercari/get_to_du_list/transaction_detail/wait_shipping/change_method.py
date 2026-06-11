@@ -8,6 +8,7 @@ import time
 from typing import Any, Dict, List, Optional
 from .....db_manage.models.todo_item import TodoItemModel
 from .....web_drive.core.mitm_session import mitm_automation_browser
+from .....web_drive.core.paths import mercari_todo_key
 from ....sync.sync_progress import make_sync_reporter
 from .._cache import _clear_qr_image
 from .._common import _is_wait_shipping_todo
@@ -107,6 +108,7 @@ async def click_change_shipping_method(
         start_url=url,
         headless=headless_override,
         minimized=minimized_override,
+        browser_key=mercari_todo_key(aid),
     ) as (mgr, auto_key):
         page = await mgr.active_tab_page(auto_key)
 
@@ -203,6 +205,7 @@ async def revise_shipping_after_qr(
         start_url=url,
         headless=headless_override,
         minimized=minimized_override,
+        browser_key=mercari_todo_key(aid),
     ) as (mgr, auto_key):
         page = await mgr.active_tab_page(auto_key)
 
@@ -392,6 +395,7 @@ async def confirm_change_shipping_method(
         start_url=url,
         headless=headless_override,
         minimized=minimized_override,
+        browser_key=mercari_todo_key(aid),
     ) as (mgr, auto_key):
         page = await mgr.active_tab_page(auto_key)
 
