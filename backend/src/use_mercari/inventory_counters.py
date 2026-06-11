@@ -104,6 +104,14 @@ def _adjust_on_sale(db: DatabaseManager, inv_id: int, on_sale_delta: int) -> boo
         (int(on_sale_delta), int(inv_id)),
     )
     recompute_listable_quantity([int(inv_id)])
+    if on_sale_delta > 0:
+        # 新挂牌已计入在售 → 核销 auto_relist「未同步补挂」台账（防无限循环出品）
+        try:
+            from .auto_relist import consume_unsynced_relists
+
+            consume_unsynced_relists(int(inv_id), int(on_sale_delta))
+        except Exception:
+            pass
     return bool(changed)
 
 

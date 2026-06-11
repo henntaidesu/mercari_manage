@@ -12,14 +12,22 @@
 出品说明末行写入管理番号暗号（``encode_mgmt_id``），下次在售同步即可把新挂牌
 ``item_id`` 重新绑回 ``inventory.id``，与手动「出品」保持一致。
 
-去重：以 ``orders.auto_relisted`` 标记，一个售出订单最多触发一次补挂。
+去重（防无限循环出品，三层）：
+  1. 订单级：以 ``orders.auto_relisted`` 标记，一个售出订单最多触发一次补挂；
+  2. 同轮级：一次 ``run_auto_relist_for_orders`` 内同一库存最多补挂一次
+     （同批多笔售出订单指向同一库存时，剩余可售计数尚未更新，不去重会连续重复上架）；
+  3. 台账级：补挂出去但尚未被「在售同步」绑定计入 on_sale_quantity 的件数记入
+     ``_unsynced_relists`` 台账，剩余可售判断一并扣减；绑定成功（在售 +1）时核销。
+     若新挂牌始终绑定失败（暗号丢失/在售同步未开），台账不清零 → 该商品停止补挂，
+     宁可少挂也不再形成「卖一件挂一件」的失控循环。
 """
 
 from __future__ import annotations
 
 import json
 import logging
-from typing import Iterable, List, Optional, Set
+import threading
+from typing import Dict, Iterable, List, Optional, Set
 
 from ..db_manage.database import DatabaseManager
 from ..db_manage.models.inventory import InventoryModel
@@ -33,6 +41,41 @@ log = logging.getLogger(__name__)
 
 # 出品说明总长上限（与手动出品 SingleListingFormDialog 一致）
 _DESCRIPTION_MAX_LEN = 1000
+
+# 「已补挂、尚未被在售同步计入 on_sale_quantity」的件数台账：inventory_id → 件数。
+# 进程重启清零的影响有限：订单级 auto_relisted 去重仍然有效，最多放过每个新售出订单一次补挂。
+_unsynced_relists: Dict[int, int] = {}
+_unsynced_lock = threading.Lock()
+
+
+def _unsynced_relist_count(inventory_id: int) -> int:
+    with _unsynced_lock:
+        return int(_unsynced_relists.get(int(inventory_id), 0))
+
+
+def _note_relist_posted(inventory_id: int) -> None:
+    """记一笔「已补挂、待在售同步计入」。"""
+    iid = int(inventory_id)
+    with _unsynced_lock:
+        _unsynced_relists[iid] = _unsynced_relists.get(iid, 0) + 1
+
+
+def consume_unsynced_relists(inventory_id: int, n: int = 1) -> None:
+    """在售计数 +n（在售同步/详情绑定）后核销同库存的未同步补挂台账。
+
+    由 ``inventory_counters._adjust_on_sale`` 在正增量时调用；台账只会阻止补挂，
+    多核销不会引发多挂，方向安全。
+    """
+    iid = int(inventory_id)
+    with _unsynced_lock:
+        cur = _unsynced_relists.get(iid, 0)
+        if cur <= 0:
+            return
+        left = cur - max(1, int(n))
+        if left > 0:
+            _unsynced_relists[iid] = left
+        else:
+            _unsynced_relists.pop(iid, None)
 
 
 def _account_relist_enabled(account_id: Optional[int]) -> bool:
@@ -68,9 +111,16 @@ async def run_auto_relist_for_orders(
     # 账号级「自动上架」开关：传入了 account_id 且未开启 → 直接跳过
     if account_id is not None and not _account_relist_enabled(account_id):
         return
+    # 同轮去重：同一库存在本次调用内最多补挂一次（防同批多笔售出订单重复上架）
+    relisted_in_run: Set[int] = set()
     for ono in nos:
         try:
-            await _relist_for_order(ono, seller_id=seller_id, account_id=account_id)
+            await _relist_for_order(
+                ono,
+                seller_id=seller_id,
+                account_id=account_id,
+                relisted_in_run=relisted_in_run,
+            )
         except Exception as exc:  # 单个订单失败不影响其余订单与同步主流程
             log.exception("[auto_relist] 订单 %s 补挂异常：%s", ono, exc)
 
@@ -165,6 +215,7 @@ async def _relist_for_order(
     *,
     seller_id: Optional[str],
     account_id: Optional[int],
+    relisted_in_run: Optional[Set[int]] = None,
 ) -> None:
     """处理单个售出订单的补挂。全程吞异常，仅记日志，绝不影响同步主流程。"""
     try:
@@ -201,14 +252,25 @@ async def _relist_for_order(
 
         for inv_id in inventory_ids:
             try:
-                await _relist_single_inventory(inv_id, aid)
+                await _relist_single_inventory(inv_id, aid, relisted_in_run=relisted_in_run)
             except Exception as exc:  # 单品失败不影响同订单其它商品
                 log.exception("[auto_relist] 商品 %s 补挂异常：%s", inv_id, exc)
     except Exception as exc:
         log.exception("[auto_relist] 订单 %s 补挂异常：%s", order_no, exc)
 
 
-async def _relist_single_inventory(inventory_id: int, account_id: int) -> None:
+async def _relist_single_inventory(
+    inventory_id: int,
+    account_id: int,
+    *,
+    relisted_in_run: Optional[Set[int]] = None,
+) -> None:
+    if relisted_in_run is not None and inventory_id in relisted_in_run:
+        log.info(
+            "[auto_relist] 商品 %s 本轮已补挂过，跳过（防同批订单重复上架）", inventory_id
+        )
+        return
+
     inv = InventoryModel.find_by_id(id=inventory_id)
     if inv is None:
         return
@@ -218,11 +280,13 @@ async def _relist_single_inventory(inventory_id: int, account_id: int) -> None:
     quantity = int(getattr(inv, "quantity", 0) or 0)
     on_sale = int(getattr(inv, "on_sale_quantity", 0) or 0)
     pending = int(getattr(inv, "pending_outbound_qty", 0) or 0)
-    available = quantity - on_sale - pending
+    unsynced = _unsynced_relist_count(inventory_id)
+    available = quantity - on_sale - pending - unsynced
     if available <= 0:
         log.info(
-            "[auto_relist] 商品 %s 无剩余可售库存（quantity=%s on_sale=%s pending=%s），跳过",
-            inventory_id, quantity, on_sale, pending,
+            "[auto_relist] 商品 %s 无剩余可售库存"
+            "（quantity=%s on_sale=%s pending=%s 未同步补挂=%s），跳过",
+            inventory_id, quantity, on_sale, pending, unsynced,
         )
         return
 
@@ -305,6 +369,9 @@ async def _relist_single_inventory(inventory_id: int, account_id: int) -> None:
         "[auto_relist] 商品 %s 触发补挂：account_id=%s price=%s name=%s",
         inventory_id, account_id, price, name,
     )
+    # 上架尝试前即占位：同一轮内绝不对同一库存二次出品
+    if relisted_in_run is not None:
+        relisted_in_run.add(inventory_id)
     try:
         # already_in_queue=True：补挂在订单同步任务的队列槽内联执行，复用当前浏览器会话、
         # 不再重复入队（避免自我死锁，且在同步收尾关浏览器之前完成）
@@ -325,6 +392,12 @@ async def _relist_single_inventory(inventory_id: int, account_id: int) -> None:
     try:
         data = (res or {}).get("data") if isinstance(res, dict) else None
         submit_msg = (data or {}).get("submit_message") if isinstance(data, dict) else None
+        # 确认提交成功，或已点过出品按钮但成功文案未确认（挂牌可能已生成）：
+        # 都记入「未同步补挂」台账，宁可少挂、绝不重复挂。
+        if isinstance(data, dict) and (
+            data.get("submitted") is True or data.get("submit_error")
+        ):
+            _note_relist_posted(inventory_id)
         log.info(
             "[auto_relist] 商品 %s 出品自动化完成：%s",
             inventory_id, submit_msg or "(无消息)",
