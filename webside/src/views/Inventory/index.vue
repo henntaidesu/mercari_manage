@@ -897,14 +897,24 @@
                   <div class="combined-edit-aside-item__title">
                     {{ t('inventory.mgmtPrefix') }} {{ row.inventory_id }} · {{ row.name || '—' }}
                   </div>
-                  <el-button
-                    v-if="!row.loadError"
-                    class="combined-edit-aside-item__jump"
-                    size="small"
-                    type="primary"
-                    link
-                    @click="openCombinedComponentEdit(row)"
-                  >{{ t('inventory.viewComponentProduct') }}</el-button>
+                  <div class="combined-edit-aside-item__actions">
+                    <el-button
+                      v-if="!row.loadError"
+                      class="combined-edit-aside-item__jump"
+                      size="small"
+                      type="primary"
+                      link
+                      @click="openCombinedComponentEdit(row)"
+                    >{{ t('inventory.viewComponentProduct') }}</el-button>
+                    <el-button
+                      class="combined-edit-aside-item__remove"
+                      size="small"
+                      type="danger"
+                      link
+                      :disabled="combinedComponentRemoving || combinedEditDetailRows.length <= 1"
+                      @click="removeCombinedComponentRow(row)"
+                    >{{ t('inventory.removeCombinedComponent') }}</el-button>
+                  </div>
                 </div>
                 <div class="combined-edit-aside-item__meta">
                   <span>{{ t('inventory.perSet') }} <strong>{{ row.per_combo_quantity }}</strong></span>

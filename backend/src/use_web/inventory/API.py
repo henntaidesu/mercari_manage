@@ -12,7 +12,7 @@ from fastapi import APIRouter
 from .units.inventory_query import list_inventory, find_by_barcode, get_inventory, list_inventory_pending_outbound_lines, list_inventory_used_in_combos
 from .units.inventory_crud import create_inventory, update_inventory, delete_inventory
 from .units.inventory_stock import stock_in_inventory, stock_out_inventory
-from .units.inventory_combined import create_combined_inventory
+from .units.inventory_combined import create_combined_inventory, remove_combined_component
 from .units.inventory_split import split_inventory
 from .units.inventory_images import find_by_image, upload_inventory_image
 from .units.inventory_public_handler import get_image_thumb
@@ -32,6 +32,7 @@ router.add_api_route("/find-by-image", find_by_image, methods=["POST"])
 router.add_api_route("/upload-image", upload_inventory_image, methods=["POST"])
 router.add_api_route("/combine", create_combined_inventory, methods=["POST"])
 router.add_api_route("/{pid}/split", split_inventory, methods=["POST"])
+router.add_api_route("/{pid}/combined-components/{component_id}", remove_combined_component, methods=["DELETE"])
 router.add_api_route("/{pid}/stock-in", stock_in_inventory, methods=["POST"])
 router.add_api_route("/{pid}/stock-out", stock_out_inventory, methods=["POST"])
 router.add_api_route("/{pid}/pending-outbound-lines", list_inventory_pending_outbound_lines, methods=["GET"])

@@ -27,6 +27,7 @@ export const inventoryApi = {
   },
   create: (data) => http.post('/use_web/inventory', data),
   combine: (data) => http.post('/use_web/inventory/combine', data),
+  removeCombinedComponent: (id, componentId) => http.delete(`/use_web/inventory/${id}/combined-components/${componentId}`),
   split: (id, data) => http.post(`/use_web/inventory/${id}/split`, data),
   update: (id, data) => http.put(`/use_web/inventory/${id}`, data),
   remove: (id) => http.delete(`/use_web/inventory/${id}`),

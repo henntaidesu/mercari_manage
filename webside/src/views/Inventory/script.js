@@ -1,5 +1,6 @@
 import { defineComponent, ref, computed, watch, onMounted, onBeforeUnmount, nextTick, reactive } from 'vue'
 import { ElMessage } from '@/utils/notify'
+import { ElMessageBox } from 'element-plus'
 import { Loading, WarningFilled } from '@element-plus/icons-vue'
 import { useI18n } from 'vue-i18n'
 import {
@@ -2240,6 +2241,32 @@ export default defineComponent({
       }
     }
 
+    /** 删除组合组成明细：移除该来源商品，原商品的「组合数量」随之减少 */
+    const combinedComponentRemoving = ref(false)
+    async function removeCombinedComponentRow(row) {
+      if (!form.value?.id || !row?.inventory_id) return
+      try {
+        await ElMessageBox.confirm(
+          t('inventory.removeCombinedComponentConfirm', { name: row.name || row.inventory_id }),
+          t('inventory.removeCombinedComponentTitle'),
+          { type: 'warning', confirmButtonText: t('common.confirm'), cancelButtonText: t('common.cancel') }
+        )
+      } catch {
+        return
+      }
+      combinedComponentRemoving.value = true
+      try {
+        const updated = await inventoryApi.removeCombinedComponent(form.value.id, row.inventory_id)
+        form.value.combined_items = updated?.combined_items ?? form.value.combined_items
+        await loadCombinedEditDetailForRow({ is_combined: 1, combined_items: form.value.combined_items })
+        ElMessage.success(t('inventory.removeCombinedComponentSuccess'))
+        await load({ resetPage: false })
+        loadInventoryStats()
+      } finally {
+        combinedComponentRemoving.value = false
+      }
+    }
+
     /** 加载「所属组合」：该商品被哪些组合商品引用（仅普通商品时有意义） */
     async function loadUsedInCombosForRow(row) {
       usedInCombosRows.value = []
@@ -3942,6 +3969,8 @@ export default defineComponent({
       form,
       combinedEditDetailLoading,
       combinedEditDetailRows,
+      combinedComponentRemoving,
+      removeCombinedComponentRow,
       combinedLinkImageDialogVisible,
       showCombinedEditDetail,
       usedInCombosLoading,

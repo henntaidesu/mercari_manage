@@ -369,11 +369,19 @@
   text-overflow: ellipsis;
   white-space: nowrap;
 }
-.combined-edit-aside-item__jump {
+.combined-edit-aside-item__actions {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.combined-edit-aside-item__jump,
+.combined-edit-aside-item__remove {
   flex: 0 0 auto;
   padding: 0;
   height: auto;
   font-size: 12px;
+  margin-left: 0;
 }
 .combined-edit-aside-item__meta {
   margin-top: 4px;
