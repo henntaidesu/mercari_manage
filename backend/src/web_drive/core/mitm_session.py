@@ -47,6 +47,20 @@ _MERCARI_LOGIN_URL_RE = re.compile(
 # value: { "url": str, "ts": float, "account_name": str }
 _login_redirect_state: Dict[int, Dict[str, Any]] = {}
 
+# 每账号的 Cookie 克隆互斥锁：同账号的多路克隆（出品/同步/待办并发进入）串行读取主 profile，
+# 避免「一方为读 Cookie 临时开的无头主会话读完即关、另一方恰好仍在同一上下文读取」的竞态。
+_clone_cookie_locks: Dict[int, "asyncio.Lock"] = {}
+_clone_cookie_locks_guard = asyncio.Lock()
+
+
+async def _clone_cookie_lock_for(account_id: int) -> "asyncio.Lock":
+    async with _clone_cookie_locks_guard:
+        lk = _clone_cookie_locks.get(int(account_id))
+        if lk is None:
+            lk = asyncio.Lock()
+            _clone_cookie_locks[int(account_id)] = lk
+        return lk
+
 
 class MercariLoginRequiredError(RuntimeError):
     """打开账号浏览器后跳到 ``login.jp.mercari.com`` 登录页：账号 cookie 已失效。
@@ -270,10 +284,13 @@ async def clone_main_profile_cookies(
 
     只读主 profile：已开的会话（含用户手动有头浏览器）直接复用、绝不关闭；
     未开时由 ``export_cookies_full`` 临时无头打开读取、读完即关，不残留后台进程。
+    同账号并发克隆经 ``_clone_cookie_lock_for`` 串行，避免临时主会话的读/关竞态。
     ``target_key`` 会话须已打开。返回注入条数。
     """
     aid = int(account_id)
-    cookies = await mgr.export_cookies_full(mercari_account_key(aid))
+    lock = await _clone_cookie_lock_for(aid)
+    async with lock:
+        cookies = await mgr.export_cookies_full(mercari_account_key(aid))
     if not cookies:
         raise RuntimeError(
             "未读取到该账号的登录 Cookie，请先在「煤炉账号」页面打开浏览器登录 jp.mercari.com"

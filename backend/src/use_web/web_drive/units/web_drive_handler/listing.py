@@ -95,6 +95,10 @@ async def post_to_market(body: PostToMarketBody, *, background_caller: bool = Fa
     - HTTP 手动出品（默认）：锁被占用时直接 409，前端提示稍候再试；
     - ``background_caller=True``（自动补挂等后台任务）：排队等待锁，不丢任务。
     """
+    from .....web_drive.core.account_serial_queue import (
+        queue_key_for_mercari_account,
+        run_mercari_serial_async,
+    )
     from .....web_drive.core.paths import mercari_id_from_account_key
     from .....web_drive.listing.units.listing_lock import (
         ListingBusyError,
@@ -147,8 +151,22 @@ async def post_to_market(body: PostToMarketBody, *, background_caller: bool = Fa
 
         # 全局出品锁：手动入口冲突即 409；后台补挂排队等待
         label = "自动出品（售出补挂）进行中" if background_caller else "其他用户正在出品"
-        async with hold_listing_lock(label, wait=background_caller):
-            data = await _run()
+
+        async def _locked_run() -> Dict[str, Any]:
+            async with hold_listing_lock(label, wait=background_caller):
+                return await _run()
+
+        if background_caller:
+            # 自动补挂已在该账号同步队列槽内（auto_relist 内联调用），不可再入队（自我死锁）；
+            # 锁序为「账号队列 → 出品锁」，由外层同步任务持有队列。
+            data = await _locked_run()
+        else:
+            # 手动出品：先进该账号串行队列，再取全局出品锁——锁序与 auto_relist 一致
+            #（账号队列 → 出品锁），既与同账号同步/待办互斥（避免共享 MITM 截获串扰），又不会死锁。
+            data = await run_mercari_serial_async(
+                queue_key_for_mercari_account(account_id),
+                _locked_run,
+            )
         return {"success": True, "data": data}
     except HTTPException:
         raise

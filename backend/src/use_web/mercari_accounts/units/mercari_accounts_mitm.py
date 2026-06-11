@@ -167,10 +167,17 @@ async def fetch_seller_id_via_mitm(
     jp.mercari.com/mypage/listings，截获
     GET api.mercari.jp/items/get_items?status=on_sale,stop&... 并从查询参数读取 seller_id。
 
+    会话隔离（与「打开浏览器」的有头主 profile ``mercari_{id}`` 互不冲突）：
+    - 已有账号：用同步专用无头 profile ``mercari_{id}__sync`` + 克隆主 profile 登录态；
+    - 新增账号预登录：用 ``mercari_prepare`` 专用 profile（自带登录态），关闭后带 MITM 代理重开。
+
     全流程通过 ``run_mercari_serial_async`` 进入账号队列；队列空闲后由队列层
     自动关闭浏览器（``WEB_DRIVE_QUEUE_IDLE_CLOSE_SEC`` 秒延迟）。
     """
+    from ....web_drive.core.paths import mercari_id_from_account_key
+
     account_key = (body.account_key or "mercari_prepare").strip()
+    aid = mercari_id_from_account_key(account_key)
 
     async def _do_fetch():
         r = start_mitm_proxy()
@@ -180,14 +187,34 @@ async def fetch_seller_id_via_mitm(
         t0 = int(time.time() * 1000)
         mgr = get_web_drive_manager()
         headless = bool(body.headless) or automation_headless_enabled()
-        await mgr.open_session(
-            account_key,
-            headless=headless,
-            start_url=MERCARI_LISTINGS_URL,
-            proxy_server=default_mitm_proxy_url(),
-            interactive=not headless,
-            start_minimized=True,
-        )
+
+        if aid is not None:
+            # 已有账号：同步专用无头 profile + 克隆主 profile 登录态（只读，不触碰有头主浏览器）
+            from ....web_drive.core.mitm_session import clone_main_profile_cookies
+            from ....web_drive.core.paths import mercari_automation_key
+
+            auto_key = mercari_automation_key(aid)
+            await mgr.close_session(auto_key, force=True)
+            await mgr.open_session(
+                auto_key,
+                headless=headless,
+                proxy_server=default_mitm_proxy_url(),
+                interactive=not headless,
+                start_minimized=True,
+            )
+            await clone_main_profile_cookies(mgr, aid, auto_key)
+            await mgr.reload_active_tab(auto_key, MERCARI_LISTINGS_URL)
+        else:
+            # 新增账号预登录：prepare 专用 profile 自带登录态，关闭后带 MITM 代理重开以截获请求
+            await mgr.close_session(account_key, force=True)
+            await mgr.open_session(
+                account_key,
+                headless=headless,
+                start_url=MERCARI_LISTINGS_URL,
+                proxy_server=default_mitm_proxy_url(),
+                interactive=not headless,
+                start_minimized=True,
+            )
 
         cap = await _wait_capture_with_progress(
             since_ms=t0,
@@ -226,7 +253,8 @@ async def fetch_seller_id_via_mitm(
             "mitm": mitm_status(),
         }
 
-    return await run_mercari_serial_async(account_key, _do_fetch)
+    queue_key = queue_key_for_mercari_account(aid) if aid is not None else account_key
+    return await run_mercari_serial_async(queue_key, _do_fetch)
 
 
 async def fetch_auth_via_mitm(
