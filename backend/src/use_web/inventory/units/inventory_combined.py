@@ -144,5 +144,42 @@ def create_combined_inventory(data: CombinedInventoryCreate, _claims: dict = Dep
     from ....use_mercari.inventory_counters import recompute_listable_quantity
     recompute_listable_quantity([int(item["inventory_id"]) for item in items])
 
+    from ..image_search import enqueue_inventory as _enqueue_image_index
+    _enqueue_image_index(new_id)
+
     inventory_items = _query_inventory_with_joins(" AND p.id = ? LIMIT 1", (new_id,))
     return inventory_items[0] if inventory_items else {"id": new_id}
+
+
+def remove_combined_component(pid: int, component_id: int, _claims: dict = Depends(require_auth)):
+    """从组合商品的组成明细中删除一个来源商品。
+
+    来源被「拉走」的件数（组合预留）由 combined_items 派生，移除明细后该来源的「组合数量」
+    随之减少；据此重算其可上架（库存不变）。至少需保留一件来源商品，整组清空请删除该组合商品。
+    """
+    rows = db.execute_query(
+        "SELECT is_combined, combined_items FROM [inventory] WHERE id = ? AND COALESCE(is_delete, 0) = 0 LIMIT 1",
+        (pid,),
+    )
+    if not rows:
+        raise HTTPException(status_code=404, detail="组合商品不存在")
+    if not int(rows[0][0] or 0):
+        raise HTTPException(status_code=400, detail="该商品不是组合商品")
+
+    items = _parse_combined_items(rows[0][1])
+    if not any(int(it["inventory_id"]) == int(component_id) for it in items):
+        raise HTTPException(status_code=404, detail="组合明细中不存在该商品")
+
+    remaining = [it for it in items if int(it["inventory_id"]) != int(component_id)]
+    if not remaining:
+        raise HTTPException(status_code=400, detail="组合商品至少需保留一件来源商品，请直接删除该组合商品")
+
+    new_json = json.dumps(remaining, ensure_ascii=False, separators=(",", ":"))
+    db.execute_update("UPDATE [inventory] SET combined_items = ? WHERE id = ?", (new_json, pid))
+
+    # 该来源被「拉走」的件数减少，重算其可上架（库存不变）。
+    from ....use_mercari.inventory_counters import recompute_listable_quantity
+    recompute_listable_quantity([int(component_id)])
+
+    inventory_items = _query_inventory_with_joins(" AND p.id = ? LIMIT 1", (pid,))
+    return inventory_items[0] if inventory_items else {"id": pid}

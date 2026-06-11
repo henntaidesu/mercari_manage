@@ -36,6 +36,11 @@ _LIST_COLS = (
 # 顶置类型：合并购买请求 / 留言 永远排在列表最前
 _PINNED_KINDS = ("BundleRequestCreated", "Comment")
 
+# 事务局消息分组：kind 含 merpay 的通知（如 merpay-egp-ian-promotion）
+# 视同 PrivateMessage，随「事務局メッセージを表示」一起显示/隐藏。
+_PRIVATE_MESSAGE_KIND = "PrivateMessage"
+_MERPAY_LIKE = "%merpay%"
+
 
 def _split_kinds(raw: Optional[str]) -> List[str]:
     """逗号分隔的 kind 串 → 去重去空白后的 list（顺序保留）。"""
@@ -81,7 +86,11 @@ def list_notifications(
         where.append("n.[account_id] = ?")
         params.append(int(account_id))
     selected_kind = str(kind).strip() if kind else ""
-    if selected_kind:
+    if selected_kind == _PRIVATE_MESSAGE_KIND:
+        # 事务局消息分组：精确 PrivateMessage 或 kind 含 merpay 的都算
+        where.append("(n.[kind] = ? OR LOWER(IFNULL(n.[kind], '')) LIKE ?)")
+        params.extend([selected_kind, _MERPAY_LIKE])
+    elif selected_kind:
         where.append("n.[kind] = ?")
         params.append(selected_kind)
     else:
@@ -92,6 +101,12 @@ def list_notifications(
                 f"(n.[kind] IS NULL OR n.[kind] NOT IN ({placeholders}))"
             )
             params.extend(ex_list)
+            if _PRIVATE_MESSAGE_KIND in ex_list:
+                # 排除事务局消息时，kind 含 merpay 的一并排除
+                where.append(
+                    "(n.[kind] IS NULL OR LOWER(n.[kind]) NOT LIKE ?)"
+                )
+                params.append(_MERPAY_LIKE)
     if keyword:
         kw = f"%{str(keyword).strip()}%"
         where.append(
@@ -141,13 +156,22 @@ def list_notifications(
 
 
 def list_kinds() -> List[str]:
-    """返回所有出现过的 kind（前端下拉用）。"""
+    """返回所有出现过的 kind（前端下拉用）。
+
+    kind 含 merpay 的归入事务局消息分组，不单独列出；
+    若存在此类数据则保证下拉中有 ``PrivateMessage`` 一项。
+    """
     db = DatabaseManager()
     rows = db.execute_query(
         "SELECT DISTINCT [kind] FROM [notifications] "
         "WHERE [kind] IS NOT NULL AND TRIM([kind]) != '' ORDER BY [kind] ASC"
     )
-    return [r[0] for r in rows if r and r[0]]
+    all_kinds = [r[0] for r in rows if r and r[0]]
+    kinds = [k for k in all_kinds if "merpay" not in str(k).lower()]
+    has_merpay = len(kinds) != len(all_kinds)
+    if has_merpay and _PRIVATE_MESSAGE_KIND not in kinds:
+        kinds.append(_PRIVATE_MESSAGE_KIND)
+    return kinds
 
 
 def mark_read(ids: List[int], is_read: bool = True) -> Dict[str, Any]:

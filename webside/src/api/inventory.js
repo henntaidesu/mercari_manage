@@ -15,6 +15,15 @@ export const inventoryApi = {
       timeout: 15000
     })
   },
+  imageSearch: (file, topK = 20) => {
+    const fd = new FormData()
+    fd.append('file', file, file?.name || 'query.jpg')
+    return http.post(`/use_web/inventory/image-search?top_k=${topK}`, fd, {
+      headers: { 'Content-Type': 'multipart/form-data' },
+      timeout: 60000
+    })
+  },
+  imageSearchStatus: () => http.get('/use_web/inventory/image-search/status'),
   uploadImage: (file, onUploadProgress, signal) => {
     const fd = new FormData()
     fd.append('file', file, file?.name || 'inventory.jpg')
@@ -27,6 +36,7 @@ export const inventoryApi = {
   },
   create: (data) => http.post('/use_web/inventory', data),
   combine: (data) => http.post('/use_web/inventory/combine', data),
+  removeCombinedComponent: (id, componentId) => http.delete(`/use_web/inventory/${id}/combined-components/${componentId}`),
   split: (id, data) => http.post(`/use_web/inventory/${id}/split`, data),
   update: (id, data) => http.put(`/use_web/inventory/${id}`, data),
   remove: (id) => http.delete(`/use_web/inventory/${id}`),

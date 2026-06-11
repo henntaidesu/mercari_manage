@@ -24,6 +24,7 @@ from .system_log import SystemLogModel
 from .gotion_table import GotionTableModel
 from .gotion_column import GotionColumnModel
 from .gotion_row import GotionRowModel
+from .image_embedding import ImageEmbeddingModel
 
 __all__ = [
     'CategoryModel',
@@ -51,4 +52,5 @@ __all__ = [
     'GotionTableModel',
     'GotionColumnModel',
     'GotionRowModel',
+    'ImageEmbeddingModel',
 ]
