@@ -28,6 +28,9 @@ from .models import (
     MemoModel,
     TalkScriptModel,
     SystemLogModel,
+    GotionTableModel,
+    GotionColumnModel,
+    GotionRowModel,
     ImageEmbeddingModel,
 )
 
@@ -529,6 +532,9 @@ class DBManager:
             MemoModel,  # 备忘录 / 站内信（依赖 users，仅顺序习惯）
             TalkScriptModel,  # 话术表（全局共享，无外键依赖）
             SystemLogModel,  # 系统日志（自动上架 / 自动获取，无外键依赖）
+            GotionTableModel,   # Gotion 表格管理：表元数据（无外键依赖）
+            GotionColumnModel,  # Gotion 表格管理：列定义（依赖 gotion_tables，仅顺序习惯）
+            GotionRowModel,     # Gotion 表格管理：行数据（依赖 gotion_tables，仅顺序习惯）
             ImageEmbeddingModel,  # 商品图片特征向量（图片搜索索引，依赖 inventory，仅顺序习惯）
         ]
 
