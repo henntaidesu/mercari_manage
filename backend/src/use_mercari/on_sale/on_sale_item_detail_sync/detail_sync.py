@@ -8,7 +8,7 @@ from ...get_order.description_mgmt_ids import _extract_bundle_product_titles, _i
 from ...get_order.mercari_item_get import fetch_mercari_item_get
 from ...mgmt_id_cipher import MGMT_BINARY_ALPHABET, MGMT_CIPHER_ALPHABET, get_cipher_mode
 from ...sync.sync_progress import make_sync_reporter
-from .parsing import _is_matome_listing_bundle_by_title_and_description, _join_mercari_item_ids, _mercari_response_ok, _normalize_mercari_item_id, _on_sale_quantity_from_status, _persist_listing_description_for_item, _split_mercari_item_ids, extract_mgmt_barcode_hints, extract_shipping_duration, parse_listing_description_tokens_with_quantity, resolve_inventory_id_from_listing_description
+from .parsing import _is_matome_listing_bundle_by_title_and_description, _join_mercari_item_ids, _mercari_response_ok, _normalize_mercari_item_id, _on_sale_quantity_from_status, _persist_listing_description_for_item, _split_mercari_item_ids, extract_mgmt_barcode_hints, extract_shipping_duration, extract_shipping_payer, parse_listing_description_tokens_with_quantity, resolve_inventory_id_from_listing_description
 
 
 def detail_sync_inventory_from_item_get_response(
@@ -54,6 +54,9 @@ def detail_sync_inventory_from_item_get_response(
     ship_dur_id, ship_dur_name = extract_shipping_duration(data)
     sync["shipping_duration_id"] = ship_dur_id
     sync["shipping_duration_name"] = ship_dur_name
+    ship_payer_id, ship_payer_name = extract_shipping_payer(data)
+    sync["shipping_payer_id"] = ship_payer_id
+    sync["shipping_payer_name"] = ship_payer_name
 
     if persist_description:
         _persist_listing_description_for_item(
@@ -62,6 +65,8 @@ def detail_sync_inventory_from_item_get_response(
             desc_text,
             shipping_duration_id=ship_dur_id,
             shipping_duration_name=ship_dur_name,
+            shipping_payer_id=ship_payer_id,
+            shipping_payer_name=ship_payer_name,
         )
 
     hints = extract_mgmt_barcode_hints(desc_text)

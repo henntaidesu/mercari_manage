@@ -153,6 +153,37 @@ export default defineComponent({
       { value: 'none', label: t('onSaleItems.shippingDurationNone') },
     ])
 
+    // 修改对话框用：发货时效（option value = shipping_duration_id）
+    const shippingDurationEditOptions = computed(() => [
+      { value: '1', label: t('onSaleItems.shippingDuration1') },
+      { value: '2', label: t('onSaleItems.shippingDuration2') },
+      { value: '3', label: t('onSaleItems.shippingDuration3') },
+    ])
+    // 配送料の負担（option value：2=出品者負担/送料込み，1=購入者負担/着払い）
+    const shippingPayerEditOptions = computed(() => [
+      { value: '2', label: t('onSaleItems.shippingPayerSeller') },
+      { value: '1', label: t('onSaleItems.shippingPayerBuyer') },
+    ])
+    // 発送元の地域（option value = 都道府県 id / 99=未定），名称为日文（煤炉原值）
+    const shippingFromAreaOptions = [
+      { value: '1', label: '北海道' }, { value: '2', label: '青森県' }, { value: '3', label: '岩手県' },
+      { value: '4', label: '宮城県' }, { value: '5', label: '秋田県' }, { value: '6', label: '山形県' },
+      { value: '7', label: '福島県' }, { value: '8', label: '茨城県' }, { value: '9', label: '栃木県' },
+      { value: '10', label: '群馬県' }, { value: '11', label: '埼玉県' }, { value: '12', label: '千葉県' },
+      { value: '13', label: '東京都' }, { value: '14', label: '神奈川県' }, { value: '15', label: '新潟県' },
+      { value: '16', label: '富山県' }, { value: '17', label: '石川県' }, { value: '18', label: '福井県' },
+      { value: '19', label: '山梨県' }, { value: '20', label: '長野県' }, { value: '21', label: '岐阜県' },
+      { value: '22', label: '静岡県' }, { value: '23', label: '愛知県' }, { value: '24', label: '三重県' },
+      { value: '25', label: '滋賀県' }, { value: '26', label: '京都府' }, { value: '27', label: '大阪府' },
+      { value: '28', label: '兵庫県' }, { value: '29', label: '奈良県' }, { value: '30', label: '和歌山県' },
+      { value: '31', label: '鳥取県' }, { value: '32', label: '島根県' }, { value: '33', label: '岡山県' },
+      { value: '34', label: '広島県' }, { value: '35', label: '山口県' }, { value: '36', label: '徳島県' },
+      { value: '37', label: '香川県' }, { value: '38', label: '愛媛県' }, { value: '39', label: '高知県' },
+      { value: '40', label: '福岡県' }, { value: '41', label: '佐賀県' }, { value: '42', label: '長崎県' },
+      { value: '43', label: '熊本県' }, { value: '44', label: '大分県' }, { value: '45', label: '宮崎県' },
+      { value: '46', label: '鹿児島県' }, { value: '47', label: '沖縄県' }, { value: '99', label: '未定' },
+    ]
+
     const sellerFromAccounts = ref([])
 
     /** 上架超过库存预警：绑定库存的「在售 + 待出 > 库存(总持有)」时标红。
@@ -458,16 +489,26 @@ export default defineComponent({
     /** 修改在售商品弹窗（标题 / 价格 / 商品说明；出品方式稍后接入，保存方法由后续提供） */
     const reviseDialogVisible = ref(false)
     const reviseSaving = ref(false)
-    const reviseForm = reactive({ name: '', price: 0, listing_description: '' })
+    const reviseForm = reactive({
+      name: '',
+      price: 0,
+      listing_description: '',
+      shipping_payer: '',
+      shipping_duration: '',
+      shipping_from_area_id: '',
+    })
     /** 商品说明末行的「暗码」（管理番号暗号）；编辑时锁定不可改，保存时原样回拼 */
     const reviseDescCipher = ref('')
 
     /** 批量改价：开启后点击商品行选中（无前置勾选框），选中后弹出表单输入价格逐个改价 */
     const batchMode = ref(false)
+    /** 批量修改一次最多可选中的商品数 */
+    const BATCH_MAX = 10
     /** 已选中的商品 item_id 集合（trim 后） */
     const batchSelectedIds = ref(new Set())
     const batchPriceDialogVisible = ref(false)
-    const batchPrice = ref(null)
+    // 批量修改表单：价格 / 发货地区 / 发货天数（留空=不修改该项）
+    const batchForm = reactive({ price: null, shipping_from_area_id: '', shipping_duration: '' })
     const batchSaving = ref(false)
 
     const batchSelectedCount = computed(() => batchSelectedIds.value.size)
@@ -496,6 +537,10 @@ export default defineComponent({
         ElMessage.warning(t('onSaleItems.batchAuctionCannotSelect'))
         return
       }
+      if (next.size >= BATCH_MAX) {
+        ElMessage.warning(t('onSaleItems.batchMaxReached', { max: BATCH_MAX }))
+        return
+      }
       next.add(iid)
       batchSelectedIds.value = next
     }
@@ -520,18 +565,37 @@ export default defineComponent({
         ElMessage.warning(t('onSaleItems.batchNoSelection'))
         return
       }
-      batchPrice.value = null
+      batchForm.price = null
+      batchForm.shipping_from_area_id = ''
+      batchForm.shipping_duration = ''
       batchPriceDialogVisible.value = true
     }
 
-    /** 提交批量改价：对每个选中商品逐个调用改价（仅改价格），过程在全屏遮罩展示进度 */
+    /**
+     * 提交批量修改：对每个选中商品逐个调用修改（价格 / 发货地区 / 发货天数，留空项不改），
+     * 过程在全屏遮罩展示进度。
+     */
     async function submitBatchPrice() {
-      const price = Number(batchPrice.value)
-      if (!Number.isFinite(price) || price < 300) {
-        ElMessage.warning(t('onSaleItems.priceInvalid'))
+      if (batchSaving.value) return
+
+      // 收集本次要修改的字段（留空=不改）
+      const fields = {}
+      if (batchForm.price !== null && batchForm.price !== '') {
+        const price = Number(batchForm.price)
+        if (!Number.isFinite(price) || price < 300) {
+          ElMessage.warning(t('onSaleItems.priceInvalid'))
+          return
+        }
+        fields.price = Math.floor(price)
+      }
+      const area = String(batchForm.shipping_from_area_id || '').trim()
+      if (area) fields.shipping_from_area_id = area
+      const duration = String(batchForm.shipping_duration || '').trim()
+      if (duration) fields.shipping_duration = duration
+      if (Object.keys(fields).length === 0) {
+        ElMessage.warning(t('onSaleItems.batchEditEmpty'))
         return
       }
-      if (batchSaving.value) return
 
       const tasks = []
       let skipped = 0
@@ -549,7 +613,6 @@ export default defineComponent({
         return
       }
 
-      const priceInt = Math.floor(price)
       batchSaving.value = true
       syncOverlayTitle.value = t('onSaleItems.batchRevisingTitle')
       syncOverlayFailed.value = false
@@ -569,13 +632,13 @@ export default defineComponent({
           await webDriveApi.reviseMercariItem({
             account_key: task.accountKey,
             item_id: task.iid,
-            price: priceInt,
+            ...fields,
             use_mitm_proxy: true,
           })
           ok += 1
         } catch (e) {
           fail += 1
-          console.log('[批量改价] 失败', task.iid, e?.response?.data?.detail || e?.message)
+          console.log('[批量修改] 失败', task.iid, e?.response?.data?.detail || e?.message)
         }
       }
 
@@ -630,6 +693,10 @@ export default defineComponent({
       const { body, cipher } = splitListingCipher(detailListingBodyText.value || '')
       reviseForm.listing_description = body
       reviseDescCipher.value = cipher
+      // 配送について：发货时效 / 发货地区按当前值预填；配送料の負担本地无存储，默认留空（不修改）
+      reviseForm.shipping_duration = base.shipping_duration_id ? String(base.shipping_duration_id) : ''
+      reviseForm.shipping_from_area_id = base.shipping_from_area_id ? String(base.shipping_from_area_id) : ''
+      reviseForm.shipping_payer = base.shipping_payer_id ? String(base.shipping_payer_id) : ''
       reviseDialogVisible.value = true
     }
 
@@ -701,6 +768,9 @@ export default defineComponent({
           name,
           price: Math.floor(price),
           description,
+          shipping_payer: String(reviseForm.shipping_payer || '').trim() || undefined,
+          shipping_duration: String(reviseForm.shipping_duration || '').trim() || undefined,
+          shipping_from_area_id: String(reviseForm.shipping_from_area_id || '').trim() || undefined,
           use_mitm_proxy: true,
           progress_job_id: progressJobId,
         })
@@ -1430,13 +1500,16 @@ export default defineComponent({
       reviseDescCipher,
       openReviseDialog,
       submitReviseDetail,
+      shippingDurationEditOptions,
+      shippingPayerEditOptions,
+      shippingFromAreaOptions,
       Check,
       batchMode,
       batchSelectedIds,
       batchSelectedCount,
       batchSelectedRows,
       batchPriceDialogVisible,
-      batchPrice,
+      batchForm,
       batchSaving,
       batchSelectable,
       toggleBatchRow,

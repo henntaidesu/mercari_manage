@@ -322,7 +322,8 @@
             </el-descriptions-item>
             <el-descriptions-item :label="t('onSaleItems.mercariUpdated')" :span="1">{{ displayTs(detailViewBase.updated) }}</el-descriptions-item>
             <el-descriptions-item :label="t('onSaleItems.localSynced')" :span="1">{{ displayTs(detailViewBase.synced_at) }}</el-descriptions-item>
-            <el-descriptions-item :label="t('onSaleItems.shippingDuration')" :span="2">{{ detailViewBase.shipping_duration_name || '-' }}</el-descriptions-item>
+            <el-descriptions-item :label="t('onSaleItems.shippingDuration')" :span="1">{{ detailViewBase.shipping_duration_name || '-' }}</el-descriptions-item>
+            <el-descriptions-item :label="t('onSaleItems.shippingPayerLabel')" :span="1">{{ detailViewBase.shipping_payer_name || '-' }}</el-descriptions-item>
           </el-descriptions>
 
           <div class="detail-section-title">{{ t('onSaleItems.listingDescription') }}</div>
@@ -497,10 +498,24 @@
             style="width: 100%"
           />
         </el-form-item>
+        <el-form-item :label="t('onSaleItems.shippingPayerLabel')">
+          <el-select v-model="reviseForm.shipping_payer" :placeholder="t('onSaleItems.keepUnchanged')" clearable style="width: 100%">
+            <el-option v-for="o in shippingPayerEditOptions" :key="o.value" :label="o.label" :value="o.value" />
+          </el-select>
+        </el-form-item>
+        <el-form-item :label="t('onSaleItems.shippingFromAreaLabel')">
+          <el-select v-model="reviseForm.shipping_from_area_id" :placeholder="t('onSaleItems.keepUnchanged')" clearable filterable style="width: 100%">
+            <el-option v-for="o in shippingFromAreaOptions" :key="o.value" :label="o.label" :value="o.value" />
+          </el-select>
+        </el-form-item>
+        <el-form-item :label="t('onSaleItems.shippingDuration')">
+          <el-select v-model="reviseForm.shipping_duration" :placeholder="t('onSaleItems.keepUnchanged')" clearable style="width: 100%">
+            <el-option v-for="o in shippingDurationEditOptions" :key="o.value" :label="o.label" :value="o.value" />
+          </el-select>
+        </el-form-item>
         <el-form-item v-if="reviseDescCipher" :label="t('onSaleItems.secretCodeLabel')">
           <el-input :model-value="reviseDescCipher" disabled />
         </el-form-item>
-        <!-- 出品方式：稍后接入 -->
       </el-form>
       <template #footer>
         <el-button @click="reviseDialogVisible = false">{{ t('common.cancel') }}</el-button>
@@ -518,15 +533,27 @@
       destroy-on-close
     >
       <div class="batch-price-tip">{{ t('onSaleItems.batchSelectedCount', { count: batchSelectedCount }) }}</div>
-      <el-form label-width="80px">
+      <el-form label-width="110px">
         <el-form-item :label="t('onSaleItems.priceLabel')">
           <el-input-number
-            v-model="batchPrice"
+            v-model="batchForm.price"
             :min="300"
             :precision="0"
             :controls="false"
+            :value-on-clear="null"
+            :placeholder="t('onSaleItems.keepUnchanged')"
             style="width: 100%"
           />
+        </el-form-item>
+        <el-form-item :label="t('onSaleItems.shippingFromAreaLabel')">
+          <el-select v-model="batchForm.shipping_from_area_id" :placeholder="t('onSaleItems.keepUnchanged')" clearable filterable style="width: 100%">
+            <el-option v-for="o in shippingFromAreaOptions" :key="o.value" :label="o.label" :value="o.value" />
+          </el-select>
+        </el-form-item>
+        <el-form-item :label="t('onSaleItems.shippingDuration')">
+          <el-select v-model="batchForm.shipping_duration" :placeholder="t('onSaleItems.keepUnchanged')" clearable style="width: 100%">
+            <el-option v-for="o in shippingDurationEditOptions" :key="o.value" :label="o.label" :value="o.value" />
+          </el-select>
         </el-form-item>
       </el-form>
       <template #footer>

@@ -130,19 +130,29 @@ def extract_mgmt_barcode_hints(text: Optional[str]) -> Dict[str, Any]:
             barcodes.append(str(val).strip())
     return {"management_numbers": mgmt, "barcodes": barcodes}
 
-def extract_shipping_duration(data: Any) -> Tuple[Optional[int], Optional[str]]:
-    """从 items/get 的 data.shipping_duration 抽取 (id, 展示名「2~3日で発送」)。"""
-    sd = data.get("shipping_duration") if isinstance(data, dict) else None
-    if not isinstance(sd, dict):
+def _extract_id_name(data: Any, key: str) -> Tuple[Optional[int], Optional[str]]:
+    """从 items/get 的 data[key]={id,name,...} 抽取 (id, 展示名)。"""
+    sub = data.get(key) if isinstance(data, dict) else None
+    if not isinstance(sub, dict):
         return None, None
-    raw_id = sd.get("id")
+    raw_id = sub.get("id")
     try:
         sid = int(raw_id) if raw_id is not None and str(raw_id) != "" else None
     except (TypeError, ValueError):
         sid = None
-    name = sd.get("name")
+    name = sub.get("name")
     sname = str(name).strip() if isinstance(name, str) and str(name).strip() else None
     return sid, sname
+
+
+def extract_shipping_duration(data: Any) -> Tuple[Optional[int], Optional[str]]:
+    """从 items/get 的 data.shipping_duration 抽取 (id, 展示名「2~3日で発送」)。"""
+    return _extract_id_name(data, "shipping_duration")
+
+
+def extract_shipping_payer(data: Any) -> Tuple[Optional[int], Optional[str]]:
+    """从 items/get 的 data.shipping_payer 抽取 (id, 展示名「送料込み(出品者負担)」)。id 2=出品者/1=購入者。"""
+    return _extract_id_name(data, "shipping_payer")
 
 def _persist_listing_description_for_item(
     request_item_id: str,
@@ -150,10 +160,13 @@ def _persist_listing_description_for_item(
     description: Optional[str],
     shipping_duration_id: Optional[int] = None,
     shipping_duration_name: Optional[str] = None,
+    shipping_payer_id: Optional[int] = None,
+    shipping_payer_name: Optional[str] = None,
 ) -> None:
     """
-    将 items/get 返回的 data.description 与 data.shipping_duration（発送までの日数）写入
-    on_sale_items，供在售列表与「查看详情」展示。按多种 item_id 写法匹配本地一行。
+    将 items/get 返回的 data.description、data.shipping_duration（発送までの日数）与
+    data.shipping_payer（配送料の負担）写入 on_sale_items，供在售列表与「查看详情」展示。
+    按多种 item_id 写法匹配本地一行。
     """
     text = description if isinstance(description, str) else None
 
@@ -180,5 +193,7 @@ def _persist_listing_description_for_item(
         ob.listing_description = text
         ob.shipping_duration_id = shipping_duration_id
         ob.shipping_duration_name = shipping_duration_name
+        ob.shipping_payer_id = shipping_payer_id
+        ob.shipping_payer_name = shipping_payer_name
         ob.save()
         return

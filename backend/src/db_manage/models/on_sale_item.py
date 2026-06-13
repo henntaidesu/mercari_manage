@@ -36,6 +36,8 @@ _ON_SALE_ITEM_LIST_KEYS: Tuple[str, ...] = (
     "shipping_method_id",
     "shipping_duration_id",
     "shipping_duration_name",
+    "shipping_payer_id",
+    "shipping_payer_name",
     "pager_id",
     "liked",
     "item_pv",
@@ -188,6 +190,17 @@ class OnSaleItemModel(BaseModel):
                 "default": None,
             },
             "shipping_duration_name": {
+                "type": "TEXT",
+                "not_null": False,
+                "default": None,
+            },
+            # 配送料の負担（仅来自商品详情 items/get）：id 2=出品者負担/送料込み，1=購入者負担/着払い
+            "shipping_payer_id": {
+                "type": "INTEGER",
+                "not_null": False,
+                "default": None,
+            },
+            "shipping_payer_name": {
                 "type": "TEXT",
                 "not_null": False,
                 "default": None,

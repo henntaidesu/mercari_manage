@@ -32,8 +32,32 @@ NAME_INPUT_SELECTOR = 'input[name="name"]'
 PRICE_INPUT_SELECTOR = 'input[name="price"]'
 # 可见的说明输入框（排除自动高度镜像用的只读 textarea）
 DESC_TEXTAREA_SELECTOR = 'textarea[name="description"]:not([readonly])'
+# 配送について 三个下拉框（编辑页 <select> 均带稳定 name 属性）
+SHIPPING_PAYER_SELECT_SELECTOR = 'select[name="shippingPayer"]'
+SHIPPING_FROM_AREA_SELECT_SELECTOR = 'select[name="shippingFromArea"]'
+SHIPPING_DURATION_SELECT_SELECTOR = 'select[name="shippingDuration"]'
 # 「変更する」提交按钮
 SUBMIT_BTN_SELECTOR = 'button[data-testid="edit-button"]'
+
+# 発送までの日数：option value（= shipping_duration_id）→ 展示名
+_SHIPPING_DURATION_NAME_BY_VALUE: Dict[str, str] = {
+    "1": "1~2日で発送",
+    "2": "2~3日で発送",
+    "3": "4~7日で発送",
+}
+# 発送元の地域：option value（= shipping_from_area_id）→ 都道府県名
+_SHIPPING_FROM_AREA_NAME_BY_VALUE: Dict[str, str] = {
+    "1": "北海道", "2": "青森県", "3": "岩手県", "4": "宮城県", "5": "秋田県",
+    "6": "山形県", "7": "福島県", "8": "茨城県", "9": "栃木県", "10": "群馬県",
+    "11": "埼玉県", "12": "千葉県", "13": "東京都", "14": "神奈川県", "15": "新潟県",
+    "16": "富山県", "17": "石川県", "18": "福井県", "19": "山梨県", "20": "長野県",
+    "21": "岐阜県", "22": "静岡県", "23": "愛知県", "24": "三重県", "25": "滋賀県",
+    "26": "京都府", "27": "大阪府", "28": "兵庫県", "29": "奈良県", "30": "和歌山県",
+    "31": "鳥取県", "32": "島根県", "33": "岡山県", "34": "広島県", "35": "山口県",
+    "36": "徳島県", "37": "香川県", "38": "愛媛県", "39": "高知県", "40": "福岡県",
+    "41": "佐賀県", "42": "長崎県", "43": "熊本県", "44": "大分県", "45": "宮崎県",
+    "46": "鹿児島県", "47": "沖縄県", "99": "未定",
+}
 
 
 async def _fill_value(page: Any, selector: str, value: str, *, element_timeout_ms: int) -> None:
@@ -45,14 +69,46 @@ async def _fill_value(page: Any, selector: str, value: str, *, element_timeout_m
     await loc.fill(value)
 
 
+async def _select_option_value(
+    page: Any, selector: str, value: str, *, element_timeout_ms: int
+) -> None:
+    """选择 <select> 的指定 option value；原生 select_option 失败时回退到原生 setter+change 事件。"""
+    loc = page.locator(selector).first
+    await loc.wait_for(state="visible", timeout=element_timeout_ms)
+    await loc.scroll_into_view_if_needed()
+    try:
+        await loc.select_option(value=value, timeout=element_timeout_ms)
+        return
+    except Exception:
+        pass
+    await page.evaluate(
+        """([sel, val]) => {
+            const el = document.querySelector(sel);
+            if (!el) return false;
+            const setter = Object.getOwnPropertyDescriptor(
+                window.HTMLSelectElement.prototype, 'value'
+            ).set;
+            setter.call(el, val);
+            el.dispatchEvent(new Event('change', { bubbles: true }));
+            return true;
+        }""",
+        [selector, value],
+    )
+
+
 def _update_local_on_sale_item(
     item_ids: List[str],
     *,
     name: Optional[str] = None,
     price: Optional[int] = None,
     description: Optional[str] = None,
+    shipping_duration_id: Optional[str] = None,
+    shipping_from_area_id: Optional[str] = None,
 ) -> int:
-    """把改动直接写回本地 on_sale_items 表（按 item_id 匹配，兼容带/不带 m 前缀）。"""
+    """把改动直接写回本地 on_sale_items 表（按 item_id 匹配，兼容带/不带 m 前缀）。
+
+    配送料の負担（shippingPayer）本地未存列，不回写；发货时效 / 发货地区在写 id 的同时按映射写展示名。
+    """
     from ....db_manage.database import DatabaseManager
 
     sets: List[str] = []
@@ -66,6 +122,16 @@ def _update_local_on_sale_item(
     if description is not None:
         sets.append("[listing_description] = ?")
         params.append(description)
+    if shipping_duration_id:
+        sets.append("[shipping_duration_id] = ?")
+        params.append(int(shipping_duration_id))
+        sets.append("[shipping_duration_name] = ?")
+        params.append(_SHIPPING_DURATION_NAME_BY_VALUE.get(shipping_duration_id))
+    if shipping_from_area_id:
+        sets.append("[shipping_from_area_id] = ?")
+        params.append(int(shipping_from_area_id))
+        sets.append("[shipping_from_area_name] = ?")
+        params.append(_SHIPPING_FROM_AREA_NAME_BY_VALUE.get(shipping_from_area_id))
     if not sets:
         return 0
 
@@ -90,6 +156,9 @@ async def revise_mercari_item(
     name: Optional[str] = None,
     price: Optional[int] = None,
     description: Optional[str] = None,
+    shipping_payer: Optional[str] = None,
+    shipping_duration: Optional[str] = None,
+    shipping_from_area_id: Optional[str] = None,
     proxy_server: Optional[str] = None,  # noqa: ARG001 — MITM 由 mitm_automation_browser 统一配置
     page_load_timeout_ms: int = DEFAULT_PAGE_LOAD_TIMEOUT_MS,
     element_timeout_ms: int = DEFAULT_ELEMENT_TIMEOUT_MS,
@@ -99,7 +168,11 @@ async def revise_mercari_item(
     使用账号主 profile ``mercari_{id}`` 经 MITM 打开编辑页修改商品并提交；提交后直接更新本地数据库
     （不重新同步在售列表）。上下文退出后浏览器由 ``account_serial_queue`` 在队列空闲超时后自动关闭。
 
-    仅填写/更新传入的字段（name / price / description 任意组合）。
+    仅填写/更新传入的字段（name / price / description / 配送料の負担 / 発送までの日数 / 発送元の地域 任意组合）。
+    三个配送下拉框传入煤炉 ``<option>`` 的 value：
+      - ``shipping_payer``：``2``=送料込み(出品者負担) / ``1``=着払い(購入者負担)
+      - ``shipping_duration``：``1``/``2``/``3``（= shipping_duration_id）
+      - ``shipping_from_area_id``：``1``~``47`` 都道府県 / ``99`` 未定
     """
     from ...core.manager import EdgeWebDriveManager
     from ...core.mitm_session import mitm_automation_browser
@@ -127,7 +200,18 @@ async def revise_mercari_item(
         except (TypeError, ValueError):
             price_val = None
 
-    if not name_val and desc_val is None and price_val is None:
+    payer_val = (shipping_payer or "").strip() or None
+    duration_val = (shipping_duration or "").strip() or None
+    area_val = (shipping_from_area_id or "").strip() or None
+
+    if (
+        not name_val
+        and desc_val is None
+        and price_val is None
+        and payer_val is None
+        and duration_val is None
+        and area_val is None
+    ):
         raise ValueError("没有需要修改的字段")
 
     auto_key = mercari_automation_key(account_id)
@@ -185,6 +269,24 @@ async def revise_mercari_item(
                 page, DESC_TEXTAREA_SELECTOR, desc_val, element_timeout_ms=element_timeout_ms
             )
             result["filled"].append("description")
+        if payer_val is not None:
+            await _select_option_value(
+                page, SHIPPING_PAYER_SELECT_SELECTOR, payer_val,
+                element_timeout_ms=element_timeout_ms,
+            )
+            result["filled"].append("shipping_payer")
+        if area_val is not None:
+            await _select_option_value(
+                page, SHIPPING_FROM_AREA_SELECT_SELECTOR, area_val,
+                element_timeout_ms=element_timeout_ms,
+            )
+            result["filled"].append("shipping_from_area")
+        if duration_val is not None:
+            await _select_option_value(
+                page, SHIPPING_DURATION_SELECT_SELECTOR, duration_val,
+                element_timeout_ms=element_timeout_ms,
+            )
+            result["filled"].append("shipping_duration")
 
         await page.wait_for_timeout(500)
 
@@ -213,6 +315,8 @@ async def revise_mercari_item(
         name=name_val or None,
         price=price_val,
         description=desc_val,
+        shipping_duration_id=duration_val,
+        shipping_from_area_id=area_val,
     )
     result["updated_rows"] = updated
 

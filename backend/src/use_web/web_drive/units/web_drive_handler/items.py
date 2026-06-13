@@ -93,6 +93,10 @@ class ReviseMercariItemBody(PydanticModel):
     name: Optional[str] = Field(default=None, max_length=80)
     price: Optional[int] = None
     description: Optional[str] = Field(default=None, max_length=4000)
+    # 配送について（传入煤炉 <option> value）：配送料の負担 2/1、発送までの日数 1/2/3、発送元の地域 1~47/99
+    shipping_payer: Optional[str] = Field(default=None, max_length=8)
+    shipping_duration: Optional[str] = Field(default=None, max_length=8)
+    shipping_from_area_id: Optional[str] = Field(default=None, max_length=8)
     proxy_server: Optional[str] = None
     use_mitm_proxy: bool = True
     progress_job_id: Optional[str] = None
@@ -141,6 +145,9 @@ async def revise_on_sale_item(body: ReviseMercariItemBody):
                 name=body.name,
                 price=body.price,
                 description=body.description,
+                shipping_payer=body.shipping_payer,
+                shipping_duration=body.shipping_duration,
+                shipping_from_area_id=body.shipping_from_area_id,
                 proxy_server=proxy,
                 progress_job_id=jid,
             )
