@@ -90,11 +90,20 @@ SHIPPING_METHOD_ENTRY_TEXTS: Tuple[str, ...] = (
 
 SHIPPING_METHOD_CONFIRM_TEXT = "更新する"
 
-# /sell/shipping_methods 页各方式 radio（与系统 shipping_method 值对应）
+# 承运方式 radio：按 name+value 直接命中（与 DOM 顺序无关）。
+# 此前用 //*[@id="main"]/div/div[N] 的位置 XPath，一旦出现配送活动 banner
+# （shipping-campaign-bubble，div 计数 +1）就会串位，导致选「ゆうゆう」却选成「らくらく」。
+# value 取自煤炉页面 input[name="selectedShippingMethod"]：らくらく=14 / ゆうゆう=17 / たのメル便=16
+SHIPPING_METHOD_RADIO_NAME = "selectedShippingMethod"
+
+SHIPPING_METHOD_RADIO_VALUE: Dict[str, str] = {
+    "rakuraku": "14",
+    "yuuyu": "17",
+    "tanome": "16",
+}
+
+# 「未定」位于「その他」折叠区内，仍按 XPath 选；「普通郵便」走文案兜底
 SHIPPING_METHOD_RADIO_XPATH: Dict[str, str] = {
-    "rakuraku": '//*[@id="main"]/div/div[1]/div[1]/div/fieldset/input',
-    "yuuyu": '//*[@id="main"]/div/div[2]/div[1]/div/fieldset/input',
-    "tanome": '//*[@id="main"]/div/div[3]/div[1]/div/fieldset/input',
     "undecided": "/html/body/div[2]/div[2]/main/div/div[4]/div[2]/fieldset[8]/input",
     "regular_mail": "",
 }

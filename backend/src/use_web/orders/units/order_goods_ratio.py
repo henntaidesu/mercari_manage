@@ -176,6 +176,14 @@ def apply_bundle_title_ratio_pricing(items: List[Dict[str, Any]], order_amount: 
         qty = max(1, int(it.get("quantity") or 1))
         title = str(it.get("management_id") or "").strip()
         op = latest_price_by_title.get(title)
+        if op is None:
+            # 组合标题未匹配到在售价（在售已售出/下架或标题不一致）时，回退该行已关联库存的原价，
+            # 避免多归属订单里未匹配的那一方权重为 0、被分到 0 元。
+            inv_price = it.get("original_price")
+            try:
+                op = int(inv_price) if inv_price is not None else None
+            except (TypeError, ValueError):
+                op = None
         it["original_price"] = op
         op_int = int(op) if op is not None else 0
         w = max(0, op_int) * qty

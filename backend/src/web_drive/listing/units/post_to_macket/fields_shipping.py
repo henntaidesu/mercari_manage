@@ -6,7 +6,7 @@ import asyncio
 import logging
 import urllib.request
 from typing import Any
-from ._constants import SHIPPING_DAYS_OPTION_INDEX, SHIPPING_DAYS_SELECT_XPATH, SHIPPING_FROM_SELECT_XPATH, SHIPPING_METHODS_URL_FRAGMENT, SHIPPING_METHOD_CONFIRM_TEXT, SHIPPING_METHOD_ENTRY_TEXTS, SHIPPING_METHOD_ITEM_JA, SHIPPING_METHOD_RADIO_XPATH, SHIPPING_METHOD_UNDECIDED_EXPAND_XPATH, SHIPPING_PAYER_SELECT_XPATH, SHIPPING_PAYER_VALUE
+from ._constants import SHIPPING_DAYS_OPTION_INDEX, SHIPPING_DAYS_SELECT_XPATH, SHIPPING_FROM_SELECT_XPATH, SHIPPING_METHODS_URL_FRAGMENT, SHIPPING_METHOD_CONFIRM_TEXT, SHIPPING_METHOD_ENTRY_TEXTS, SHIPPING_METHOD_ITEM_JA, SHIPPING_METHOD_RADIO_NAME, SHIPPING_METHOD_RADIO_VALUE, SHIPPING_METHOD_RADIO_XPATH, SHIPPING_METHOD_UNDECIDED_EXPAND_XPATH, SHIPPING_PAYER_SELECT_XPATH, SHIPPING_PAYER_VALUE
 from ._helpers import _click_button_by_text, _click_by_texts, _react_set_select
 from ._sell_wizard import _url_is_sell_shipping_methods
 
@@ -122,7 +122,31 @@ async def _click_shipping_method_radio_by_xpath(
     *,
     element_timeout_ms: int,
 ) -> bool:
-    """在 shipping_methods 页按 XPath 点击对应 radio。成功返回 True。"""
+    """选中对应配送方式 radio。成功返回 True。
+
+    承运方式（らくらく/ゆうゆう/たのメル便）按 radio 的 name+value 直接命中，
+    与页面元素顺序无关——避免出现配送活动 banner 时位置 XPath 串位，
+    导致选「ゆうゆう」却选成「らくらく」。
+    """
+    radio_value = SHIPPING_METHOD_RADIO_VALUE.get(shipping_method)
+    if radio_value:
+        radio_loc = page.locator(
+            f"input[name='{SHIPPING_METHOD_RADIO_NAME}'][value='{radio_value}']"
+        )
+        try:
+            await radio_loc.first.wait_for(state="attached", timeout=element_timeout_ms)
+            await radio_loc.first.scroll_into_view_if_needed()
+            await radio_loc.first.click(force=True, timeout=element_timeout_ms)
+        except Exception as exc:
+            log.warning(
+                "[shipping_method] 按 value=%s 选择 %s 失败: %s",
+                radio_value, shipping_method, exc,
+            )
+            return False
+        log.info("[shipping_method] 已按 value=%s 选择 %s", radio_value, shipping_method)
+        return True
+
+    # 未定 / 普通郵便：位于「その他」折叠区内，仍按 XPath 选
     radio_xpath = (SHIPPING_METHOD_RADIO_XPATH.get(shipping_method) or "").strip()
     if not radio_xpath:
         return False
@@ -170,6 +194,17 @@ async def _click_shipping_method_by_text(
             await page.wait_for_timeout(400)
         except Exception as exc:
             log.warning("[shipping_method] 展开「未定」折叠失败: %s", exc)
+
+    # 优先用 fieldset 定位：每个 radio 各在独立 <fieldset> 内，文案唯一，
+    # 避免 has_text 命中外层容器（外层容器含全部方式文案）而点错。
+    fieldset = page.locator("fieldset").filter(has_text=ja_label)
+    if await fieldset.count() > 0:
+        radio = fieldset.first.locator("input[type='radio']").first
+        if await radio.count() > 0:
+            await radio.scroll_into_view_if_needed()
+            await radio.click(force=True, timeout=element_timeout_ms)
+            log.info("[shipping_method] 已通过 fieldset 文案选择 %s（%s）", shipping_method, ja_label)
+            return
 
     try:
         item = methods_main.locator(row_sel).filter(has_text=ja_label).first
