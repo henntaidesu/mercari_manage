@@ -328,6 +328,8 @@ def list_on_sale_by_item_id(item_id: str):
     if not iid:
         raise HTTPException(status_code=400, detail="item_id 不能为空")
     items = OnSaleItemModel.find_all_by_item_id(iid)
+    # 已软删除则过滤（与列表/批量查询保持一致，避免在售页搜索/详情看到 is_delete 物品）
+    items = [r for r in items if int(r.get("is_delete") or 0) == 0]
     _attach_seller_name(items)
     _attach_inventory_by_item_id(items)
     _attach_description_mgmt_hints(items)
