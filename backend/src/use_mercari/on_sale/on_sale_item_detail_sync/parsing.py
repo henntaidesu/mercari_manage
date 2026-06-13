@@ -130,14 +130,30 @@ def extract_mgmt_barcode_hints(text: Optional[str]) -> Dict[str, Any]:
             barcodes.append(str(val).strip())
     return {"management_numbers": mgmt, "barcodes": barcodes}
 
+def extract_shipping_duration(data: Any) -> Tuple[Optional[int], Optional[str]]:
+    """从 items/get 的 data.shipping_duration 抽取 (id, 展示名「2~3日で発送」)。"""
+    sd = data.get("shipping_duration") if isinstance(data, dict) else None
+    if not isinstance(sd, dict):
+        return None, None
+    raw_id = sd.get("id")
+    try:
+        sid = int(raw_id) if raw_id is not None and str(raw_id) != "" else None
+    except (TypeError, ValueError):
+        sid = None
+    name = sd.get("name")
+    sname = str(name).strip() if isinstance(name, str) and str(name).strip() else None
+    return sid, sname
+
 def _persist_listing_description_for_item(
     request_item_id: str,
     api_item_id: Optional[str],
     description: Optional[str],
+    shipping_duration_id: Optional[int] = None,
+    shipping_duration_name: Optional[str] = None,
 ) -> None:
     """
-    将 items/get 返回的 data.description 写入 on_sale_items.listing_description，
-    供在售列表与「查看详情」展示。按多种 item_id 写法匹配本地一行。
+    将 items/get 返回的 data.description 与 data.shipping_duration（発送までの日数）写入
+    on_sale_items，供在售列表与「查看详情」展示。按多种 item_id 写法匹配本地一行。
     """
     text = description if isinstance(description, str) else None
 
@@ -162,5 +178,7 @@ def _persist_listing_description_for_item(
             continue
         ob = rows[0]
         ob.listing_description = text
+        ob.shipping_duration_id = shipping_duration_id
+        ob.shipping_duration_name = shipping_duration_name
         ob.save()
         return

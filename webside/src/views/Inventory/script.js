@@ -1,5 +1,5 @@
 import { defineComponent, ref, computed, watch, onMounted, onBeforeUnmount, nextTick, reactive } from 'vue'
-import { ElMessage } from '@/utils/notify'
+import { ElMessage, reportLog } from '@/utils/notify'
 import { ElMessageBox } from 'element-plus'
 import { Loading, WarningFilled } from '@element-plus/icons-vue'
 import { useI18n } from 'vue-i18n'
@@ -2828,6 +2828,29 @@ export default defineComponent({
             if (d.submitted === true) {
               listingSubmittedOk = true
               ElMessage.success(t('inventory.listingSuccess') + (d.submit_message ? `（${d.submit_message}）` : ''))
+              // 出品成功：记录本次提交的出品信息到系统日志（category='listing'）
+              reportLog({
+                level: 'success',
+                category: 'listing',
+                account_id: Number(accountId),
+                message: `${t('inventory.listingSuccess')}：${listing_title}（¥${safePrice}）`,
+                detail: {
+                  inventory_ids: ids,
+                  account_id: Number(accountId),
+                  title: listing_title,
+                  price: safePrice,
+                  status: data.status || '',
+                  sale_type: data.sale_type || 'instant_buy',
+                  auction_duration: data.auction_duration || 'normal',
+                  shipping_payer: data.shipping_payer || 'seller',
+                  shipping_method: data.shipping_method || 'undecided',
+                  shipping_days: data.shipping_days || '2_3_days',
+                  shipping_from_area_id: data.shipping_from ? String(data.shipping_from) : '',
+                  category_mapping_id: data.category_mapping_id != null ? String(data.category_mapping_id) : null,
+                  image_count: imageUrls.length,
+                  submit_message: d.submit_message || null
+                }
+              })
             } else if (d.submitted === false && d.submit_message) {
               ElMessage.warning(t('inventory.listingSubmitWarning', { msg: d.submit_message }))
             } else {

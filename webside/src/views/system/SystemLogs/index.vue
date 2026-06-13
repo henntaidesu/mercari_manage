@@ -8,6 +8,7 @@
             <el-option :label="t('system.logCatAutoRelist')" value="auto_relist" />
             <el-option :label="t('system.logCatAutoFetch')" value="auto_fetch" />
             <el-option :label="t('system.logCatOperation')" value="operation" />
+            <el-option :label="t('system.logCatListing')" value="listing" />
           </el-select>
           <el-select v-model="filters.account_id" :placeholder="t('system.logAccountFilter')" clearable filterable @change="onFilterChange" style="width:100%">
             <el-option v-for="a in accounts" :key="a.id" :label="a.account_name || `#${a.id}`" :value="a.id" />

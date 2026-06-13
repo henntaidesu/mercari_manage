@@ -259,6 +259,7 @@ def list_on_sale_items(
     seller_id: Optional[str] = None,
     status: Optional[str] = None,
     auction: Optional[str] = None,
+    shipping_duration_id: Optional[str] = None,
     page: int = 1,
     page_size: int = 20,
     sort_by: Optional[str] = None,
@@ -294,6 +295,18 @@ def list_on_sale_items(
             r
             for r in all_items
             if bool(str(r.get("auction_info_json") or "").strip()) == want_auction
+        ]
+
+    # 发货时效筛选：'none' 仅无发货时效（未拉取详情，shipping_duration_id 为空）；
+    # 其余按 shipping_duration_id 精确匹配。
+    sd_val = str(shipping_duration_id or "").strip()
+    if sd_val == "none":
+        all_items = [
+            r for r in all_items if not str(r.get("shipping_duration_id") or "").strip()
+        ]
+    elif sd_val:
+        all_items = [
+            r for r in all_items if str(r.get("shipping_duration_id") or "").strip() == sd_val
         ]
 
     _attach_seller_name(all_items)

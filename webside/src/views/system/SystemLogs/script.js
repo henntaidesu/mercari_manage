@@ -20,7 +20,8 @@ export default defineComponent({
     const categoryConfig = computed(() => ({
       auto_relist: { label: t('system.logCatAutoRelist'), tag: 'success' },
       auto_fetch: { label: t('system.logCatAutoFetch'), tag: 'primary' },
-      operation: { label: t('system.logCatOperation'), tag: 'warning' }
+      operation: { label: t('system.logCatOperation'), tag: 'warning' },
+      listing: { label: t('system.logCatListing'), tag: 'success' }
     }))
 
     const levelConfig = computed(() => ({

@@ -51,6 +51,20 @@
               :value="s.value"
             />
           </el-select>
+          <el-select
+            v-model="filters.shipping_duration_id"
+            :placeholder="t('onSaleItems.shippingDurationPlaceholder')"
+            clearable
+            style="min-width: 160px; width: 100%"
+            @change="onFilterChange"
+          >
+            <el-option
+              v-for="s in shippingDurationFilterOptions"
+              :key="s.value"
+              :label="s.label"
+              :value="s.value"
+            />
+          </el-select>
         </el-col>
         <el-col :xs="24" :md="10" class="search-actions">
           <template v-if="!batchMode">
@@ -58,6 +72,14 @@
               <span>
                 <el-button type="primary" :icon="Download" :loading="syncLoading || syncLockStore.locked" :disabled="syncLockStore.locked" @click="runSync">
                   {{ t('onSaleItems.syncFromMercari') }}
+                </el-button>
+              </span>
+            </el-tooltip>
+            <!-- TEMP_FULL_UPDATE: 临时功能，现有数据补齐发货时效后删除此按钮 -->
+            <el-tooltip :disabled="!syncLockStore.locked" :content="syncLockStore.label" placement="top">
+              <span>
+                <el-button type="warning" :icon="Refresh" :loading="fullUpdateLoading || syncLockStore.locked" :disabled="syncLockStore.locked" @click="runFullUpdate">
+                  {{ t('onSaleItems.fullUpdate') }}
                 </el-button>
               </span>
             </el-tooltip>
@@ -300,6 +322,7 @@
             </el-descriptions-item>
             <el-descriptions-item :label="t('onSaleItems.mercariUpdated')" :span="1">{{ displayTs(detailViewBase.updated) }}</el-descriptions-item>
             <el-descriptions-item :label="t('onSaleItems.localSynced')" :span="1">{{ displayTs(detailViewBase.synced_at) }}</el-descriptions-item>
+            <el-descriptions-item :label="t('onSaleItems.shippingDuration')" :span="2">{{ detailViewBase.shipping_duration_name || '-' }}</el-descriptions-item>
           </el-descriptions>
 
           <div class="detail-section-title">{{ t('onSaleItems.listingDescription') }}</div>

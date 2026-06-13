@@ -17,7 +17,8 @@ from ..base_model import BaseModel
 
 # 允许的取值（仅用于内部约束/文档，不强制校验）
 # operation: 前端用户操作日志（来自页面提示）
-LOG_CATEGORIES = ("auto_relist", "auto_fetch", "operation")
+# listing:   手动出品记录（库存管理「出品」成功后记录的提交信息）
+LOG_CATEGORIES = ("auto_relist", "auto_fetch", "operation", "listing")
 LOG_LEVELS = ("info", "warning", "error", "success")
 
 

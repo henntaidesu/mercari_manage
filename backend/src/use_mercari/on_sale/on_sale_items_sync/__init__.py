@@ -13,8 +13,11 @@ from .inventory_qty import (
 )
 from .row_mapping import mercari_list_item_to_row, upsert_on_sale_item_row
 from .sync import apply_on_sale_list_sync, sync_on_sale_items_from_mercari
+# TEMP_FULL_UPDATE: 临时功能，现有数据补齐后删除下面一行导入与 __all__ 项。
+from .full_update import full_update_on_sale_details_from_mercari
 
 __all__ = [
+    "full_update_on_sale_details_from_mercari",  # TEMP_FULL_UPDATE
     "_is_active_on_sale",
     "count_active_on_sale_for_mercari_ids",
     "enrich_inventory_rows_on_sale_quantity",

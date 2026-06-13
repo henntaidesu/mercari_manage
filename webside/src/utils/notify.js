@@ -60,6 +60,31 @@ function logOperation(level, message) {
   }
 }
 
+// 上报结构化日志（带 detail / category / account_id）：fetch 直连绕开 axios 拦截器，
+// best-effort，记日志失败绝不打扰用户。供「出品成功后记录提交信息」等场景使用。
+function reportLog({ level = 'info', message = '', detail = null, category = 'operation', account_id = null } = {}) {
+  let token = null
+  try {
+    token = localStorage.getItem('auth_token')
+  } catch {
+    token = null
+  }
+  if (!token) return // 未登录不记录
+  try {
+    fetch('/mercariV2/src/use_web/system/operation-logs', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${token}`
+      },
+      body: JSON.stringify({ level, message, detail, category, account_id }),
+      keepalive: true
+    }).catch(() => {})
+  } catch {
+    // 记日志失败不影响页面
+  }
+}
+
 function show(defaultType, arg) {
   const isObj = arg && typeof arg === 'object'
   const type = (isObj && arg.type) || defaultType
@@ -82,5 +107,5 @@ ElMessage.warning = (arg) => show('warning', arg)
 ElMessage.error = (arg) => show('error', arg)
 ElMessage.info = (arg) => show('info', arg)
 
-export { ElMessage }
+export { ElMessage, reportLog }
 export default ElMessage

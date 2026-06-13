@@ -34,6 +34,8 @@ _ON_SALE_ITEM_LIST_KEYS: Tuple[str, ...] = (
     "shipping_from_area_id",
     "shipping_from_area_name",
     "shipping_method_id",
+    "shipping_duration_id",
+    "shipping_duration_name",
     "pager_id",
     "liked",
     "item_pv",
@@ -176,6 +178,17 @@ class OnSaleItemModel(BaseModel):
             },
             "shipping_method_id": {
                 "type": "INTEGER",
+                "not_null": False,
+                "default": None,
+            },
+            # 発送までの日数（仅来自商品详情 items/get，列表 list 不含此字段）
+            "shipping_duration_id": {
+                "type": "INTEGER",
+                "not_null": False,
+                "default": None,
+            },
+            "shipping_duration_name": {
+                "type": "TEXT",
                 "not_null": False,
                 "default": None,
             },

@@ -19,29 +19,56 @@ from ....db_manage.models.system_log import SystemLogModel
 db = DatabaseManager()
 
 
+# 允许前端上报的日志大类（白名单）：操作日志 / 手动出品
+_FRONTEND_LOG_CATEGORIES = {"operation", "listing"}
+
+
 class OperationLogIn(BaseModel):
     level: str = "info"
     message: str = ""
     detail: Optional[Any] = None
+    # 日志大类：operation（默认，页面提示）/ listing（手动出品记录）
+    category: str = "operation"
+    # 关联煤炉账号（listing 类用于在日志中展示出品账号）
+    account_id: Optional[int] = None
+
+
+def _account_name_for_log(account_id: Optional[int]) -> Optional[str]:
+    """取煤炉账号名用于日志冗余展示；取不到返回 None。"""
+    if account_id is None:
+        return None
+    try:
+        from ....db_manage.models.mercari_account import MercariAccountModel
+        acc = MercariAccountModel.find_by_id(id=int(account_id))
+        if acc is None:
+            return None
+        name = str(getattr(acc, "account_name", "") or "").strip()
+        return name or None
+    except Exception:
+        return None
 
 
 def create_operation_log(
     body: OperationLogIn,
     auth: Dict[str, Any] = Depends(require_auth),
 ) -> Dict[str, Any]:
-    """记录一条「操作日志」(category='operation')，用户取自登录令牌。
+    """记录一条前端上报日志（category='operation' 或 'listing'），用户取自登录令牌。
 
-    供前端提示统一上报使用；写入失败不抛错，避免影响页面交互。
+    供前端提示统一上报、以及库存「出品」成功后记录提交的出品信息使用；
+    写入失败不抛错，避免影响页面交互。
     """
     user_id: Optional[int] = None
     try:
         user_id = int(auth.get("sub"))
     except (TypeError, ValueError):
         user_id = None
+    category = body.category if body.category in _FRONTEND_LOG_CATEGORIES else "operation"
     SystemLogModel.add(
-        category="operation",
+        category=category,
         level=(body.level or "info"),
         message=(body.message or ""),
+        account_id=body.account_id,
+        account_name=_account_name_for_log(body.account_id),
         user_id=user_id,
         username=auth.get("username"),
         detail=body.detail,

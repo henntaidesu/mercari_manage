@@ -1,7 +1,7 @@
 import { defineComponent, ref, computed, onBeforeUnmount, onMounted, reactive } from 'vue'
 import { ElMessageBox } from 'element-plus'
 import { ElMessage } from '@/utils/notify'
-import { Download, Loading, WarningFilled, Check } from '@element-plus/icons-vue'
+import { Download, Refresh, Loading, WarningFilled, Check } from '@element-plus/icons-vue'
 import { useI18n } from 'vue-i18n'
 import { onSaleItemApi, mercariAccountApi, webDriveApi } from '@/api/index.js'
 import { parseMgmtIdsFromDescription, isCipherMgmtLine } from '@/utils/mgmtIdCipher.js'
@@ -48,6 +48,7 @@ export default defineComponent({
     /** 正在请求 items/get 的商品 ID（trim 后） */
     const detailLoadingIds = ref(new Set())
     const syncLoading = ref(false)
+    const fullUpdateLoading = ref(false)
 
     /** 「从煤炉同步」全屏等待与步骤文案（与后端 progress_job_id 轮询同步） */
     const syncOverlayVisible = ref(false)
@@ -126,6 +127,7 @@ export default defineComponent({
       seller_id: '',
       status: '',
       listing_type: '',
+      shipping_duration_id: '',
     })
 
     /** 表头排序状态：prop 为列字段，order 为 'ascending' | 'descending' | null */
@@ -141,6 +143,14 @@ export default defineComponent({
     const listingTypeOptions = computed(() => [
       { value: 'auction', label: t('onSaleItems.auction') },
       { value: 'normal', label: t('onSaleItems.listingTypeNormal') },
+    ])
+
+    /** 发货时效筛选（值对应煤炉 shipping_duration.id；标签随语言切换） */
+    const shippingDurationFilterOptions = computed(() => [
+      { value: '1', label: t('onSaleItems.shippingDuration1') },
+      { value: '2', label: t('onSaleItems.shippingDuration2') },
+      { value: '3', label: t('onSaleItems.shippingDuration3') },
+      { value: 'none', label: t('onSaleItems.shippingDurationNone') },
     ])
 
     const sellerFromAccounts = ref([])
@@ -209,6 +219,7 @@ export default defineComponent({
       if (filters.value.status?.trim()) p.status = filters.value.status.trim()
       if (filters.value.listing_type === 'auction') p.auction = '1'
       else if (filters.value.listing_type === 'normal') p.auction = '0'
+      if (filters.value.shipping_duration_id?.trim()) p.shipping_duration_id = filters.value.shipping_duration_id.trim()
       if (sort.value.prop && sort.value.order) {
         p.sort_by = sort.value.prop
         p.sort_order = sort.value.order === 'ascending' ? 'asc' : 'desc'
@@ -1205,6 +1216,88 @@ export default defineComponent({
       }
     }
 
+    // TEMP_FULL_UPDATE: 临时功能，现有数据补齐发货时效后删除 runFullUpdate / fullUpdateLoading / 按钮 / i18n。
+    async function runFullUpdate() {
+      if (fullUpdateLoading.value || syncLoading.value) return
+      try {
+        await ElMessageBox.confirm(
+          t('onSaleItems.fullUpdateConfirmMsg'),
+          t('onSaleItems.fullUpdateConfirmTitle'),
+          { type: 'warning', confirmButtonText: t('onSaleItems.start'), cancelButtonText: t('common.cancel') },
+        )
+      } catch {
+        return
+      }
+
+      const progressJobId =
+        typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function'
+          ? crypto.randomUUID()
+          : `job_${Date.now()}_${Math.random().toString(36).slice(2, 11)}`
+
+      let lastConsoleStep = ''
+      async function pollSyncProgress() {
+        try {
+          const pr = await onSaleItemApi.getSyncProgress(progressJobId)
+          const zh = pr?.data?.label_zh
+          if (zh) {
+            syncProgressLabel.value = zh
+            if (zh !== lastConsoleStep) {
+              lastConsoleStep = zh
+              console.log('[全量更新]', zh)
+            }
+          }
+        } catch {
+          /* 轮询失败忽略 */
+        }
+      }
+
+      syncOverlayTitle.value = t('onSaleItems.fullUpdatingTitle')
+      syncOverlayFailed.value = false
+      syncProgressLabel.value = t('onSaleItems.connectingServer')
+      syncOverlayVisible.value = true
+      fullUpdateLoading.value = true
+      await pollSyncProgress()
+      syncProgressTimer = setInterval(pollSyncProgress, 400)
+
+      let hadError = false
+      try {
+        const res = await onSaleItemApi.fullUpdate(
+          { progress_job_id: progressJobId },
+          { timeout: 0 }
+        )
+        const d = res.data || {}
+        ElMessage.success(
+          t('onSaleItems.fullUpdateSuccess', {
+            accountCount: d.account_count ?? 0,
+            failCount: d.fail_count ?? 0,
+            target: d.target_count ?? 0,
+            updated: d.updated ?? 0,
+            failed: d.failed ?? 0,
+          })
+        )
+        await load()
+      } catch (exc) {
+        hadError = true
+        syncOverlayTitle.value = t('onSaleItems.fullUpdateFailed')
+        syncOverlayFailed.value = true
+        const msg = exc?.response?.data?.detail || exc?.message || t('onSaleItems.unknownError')
+        syncProgressLabel.value = String(msg)
+      } finally {
+        if (syncProgressTimer != null) {
+          clearInterval(syncProgressTimer)
+          syncProgressTimer = null
+        }
+        if (hadError) {
+          await new Promise((r) => setTimeout(r, 1200))
+        }
+        syncOverlayVisible.value = false
+        syncOverlayTitle.value = t('onSaleItems.syncingFromMercari')
+        syncOverlayFailed.value = false
+        syncProgressLabel.value = ''
+        fullUpdateLoading.value = false
+      }
+    }
+
     async function loadSellerAccounts() {
       try {
         const res = await mercariAccountApi.list({ page: 1, page_size: 200 })
@@ -1245,6 +1338,7 @@ export default defineComponent({
       ElMessage,
       ElMessageBox,
       Download,
+      Refresh,
       Loading,
       WarningFilled,
       useI18n,
@@ -1263,6 +1357,7 @@ export default defineComponent({
       loading,
       detailLoadingIds,
       syncLoading,
+      fullUpdateLoading,
       syncOverlayVisible,
       syncOverlayTitle,
       syncOverlayFailed,
@@ -1288,6 +1383,7 @@ export default defineComponent({
       filters,
       statusFilterOptions,
       listingTypeOptions,
+      shippingDurationFilterOptions,
       sellerFromAccounts,
       isOnSaleOverListed,
       onSaleAlertReasons,
@@ -1324,6 +1420,7 @@ export default defineComponent({
       fetchItemDetailForItemId,
       fetchItemDetail,
       runSync,
+      runFullUpdate,
       loadSellerAccounts,
       thumbUrl,
       detailLinkedImageGroups,
