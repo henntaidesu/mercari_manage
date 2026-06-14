@@ -3,6 +3,7 @@
 待办事项查询：分页 + 多条件过滤；联表 mercari_accounts 取 account_name 用于前端显示。
 """
 
+import json
 from typing import Any, Dict, List, Optional
 
 from ....db_manage.database import DatabaseManager
@@ -98,6 +99,66 @@ def list_todos(
     }
 
 
+def _combined_component_locations(db: DatabaseManager, combined_items_raw: Any) -> List[Dict[str, Any]]:
+    """解析组合商品的 ``combined_items``，返回每个来源商品的名称、数量与仓库位置。
+
+    保持 ``combined_items`` 中的原始顺序，同一来源出现多次时合并数量。
+    """
+    if not combined_items_raw:
+        return []
+    try:
+        parsed = json.loads(combined_items_raw)
+    except Exception:
+        return []
+    if not isinstance(parsed, list):
+        return []
+
+    qty_by_id: Dict[int, int] = {}
+    order: List[int] = []
+    for it in parsed:
+        if not isinstance(it, dict):
+            continue
+        try:
+            cid = int(it.get("inventory_id"))
+            qty = int(it.get("quantity"))
+        except (TypeError, ValueError):
+            continue
+        if cid > 0 and qty > 0:
+            if cid not in qty_by_id:
+                order.append(cid)
+            qty_by_id[cid] = qty_by_id.get(cid, 0) + qty
+    if not order:
+        return []
+
+    placeholders = ",".join("?" for _ in order)
+    rows = db.execute_query(
+        f"""
+        SELECT c.id, c.name,
+               NULLIF(TRIM(w.warehouse), '') AS warehouse_name,
+               NULLIF(TRIM(w.shelf_name), '') AS shelf_name,
+               NULLIF(TRIM(w.name), '') AS shelf_code
+        FROM [inventory] c
+        LEFT JOIN [warehouses] w ON w.id = c.warehouse_id
+        WHERE c.id IN ({placeholders})
+        """,
+        tuple(order),
+    )
+    by_id = {int(r[0]): r for r in rows}
+
+    out: List[Dict[str, Any]] = []
+    for cid in order:
+        r = by_id.get(cid)
+        out.append({
+            "id": cid,
+            "name": r[1] if r is not None else None,
+            "quantity": qty_by_id[cid],
+            "warehouse_name": r[2] if r is not None else None,
+            "shelf_name": r[3] if r is not None else None,
+            "shelf_code": r[4] if r is not None else None,
+        })
+    return out
+
+
 def match_inventory_for_item(item_id: str) -> Dict[str, Any]:
     """
     「発送をしてください」处理：按煤炉商品 ID 反查本地库存与关联订单。
@@ -124,6 +185,8 @@ def match_inventory_for_item(item_id: str) -> Dict[str, Any]:
                NULLIF(TRIM(w.shelf_name), '') AS shelf_name,
                NULLIF(TRIM(w.name), '') AS shelf_code,
                ptcm.product_type AS product_type_name,
+               COALESCE(p.is_combined, 0) AS is_combined,
+               p.combined_items AS combined_items,
                MIN(l.sort_index) AS sort_index, MIN(l.id) AS line_id
         FROM [order_outbound_lines] l
         INNER JOIN [inventory] p ON p.id = l.inventory_id
@@ -141,11 +204,19 @@ def match_inventory_for_item(item_id: str) -> Dict[str, Any]:
     keys = [
         "id", "name", "image", "image_front", "image_back", "images_json",
         "warehouse_name", "shelf_name", "shelf_code", "product_type_name",
+        "is_combined", "combined_items",
         "sort_index", "line_id",
     ]
     inventory: List[Dict[str, Any]] = []
     for row in inv_rows:
         d = dict(zip(keys, row))
+        is_combined = bool(int(d.get("is_combined") or 0))
+        # 组合（捆绑）库存：展开其来源商品，逐个回显仓库位置（组合本身的位置往往为空）
+        components = (
+            _combined_component_locations(db, d.get("combined_items"))
+            if is_combined
+            else []
+        )
         inventory.append({
             "id": d["id"],
             "name": d["name"],
@@ -154,6 +225,8 @@ def match_inventory_for_item(item_id: str) -> Dict[str, Any]:
             "warehouse_name": d["warehouse_name"],
             "shelf_name": d["shelf_name"],
             "shelf_code": d["shelf_code"],
+            "is_combined": is_combined,
+            "components": components,
         })
 
     # 订单号即 item_id：仅当库中确有该订单时回显

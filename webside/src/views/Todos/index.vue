@@ -198,6 +198,22 @@
                       {{ [inv.warehouse_name, inv.shelf_name].filter(Boolean).join(' / ') }}
                     </span>
                   </div>
+
+                  <!-- 组合（捆绑）库存：逐个展示组合内每个商品的仓库位置 -->
+                  <div v-if="inv.components && inv.components.length" class="detail-inv-components">
+                    <div class="detail-inv-components-title">{{ t('todos.combinedComponents') }}</div>
+                    <div
+                      v-for="comp in inv.components"
+                      :key="comp.id"
+                      class="detail-inv-component"
+                    >
+                      <span class="detail-inv-comp-name">{{ comp.name || ('#' + comp.id) }}</span>
+                      <span v-if="comp.quantity > 1" class="detail-inv-comp-qty">×{{ comp.quantity }}</span>
+                      <span class="detail-inv-comp-loc">
+                        {{ [comp.warehouse_name, comp.shelf_name].filter(Boolean).join(' / ') || dash }}
+                      </span>
+                    </div>
+                  </div>
                 </div>
 
                 <!-- 出库明细：仅待发货展示（待回复只显示关联商品，不显示发货/出库） -->

@@ -93,6 +93,52 @@ def recompute_listable_quantity(inv_ids: Optional[Iterable[int]] = None) -> int:
     ) or 0)
 
 
+def _combined_children(combo_inv_id: int) -> List[Tuple[int, int]]:
+    """返回组合商品的 (来源子商品 id, 每套用量) 列表；非组合/已软删/无效则返回空。"""
+    if combo_inv_id is None:
+        return []
+    db = DatabaseManager()
+    rows = db.execute_query(
+        "SELECT [combined_items] FROM [inventory] "
+        "WHERE [id] = ? AND COALESCE([is_combined], 0) = 1 AND COALESCE([is_delete], 0) = 0 LIMIT 1",
+        (int(combo_inv_id),),
+    )
+    if not rows:
+        return []
+    try:
+        parsed = json.loads(rows[0][0]) if rows[0][0] else []
+    except Exception:
+        return []
+    if not isinstance(parsed, list):
+        return []
+    out: List[Tuple[int, int]] = []
+    for it in parsed:
+        if not isinstance(it, dict):
+            continue
+        try:
+            child_id = int(it.get("inventory_id"))
+            per_set = int(it.get("quantity"))
+        except (TypeError, ValueError):
+            continue
+        if child_id > 0 and per_set > 0:
+            out.append((child_id, per_set))
+    return out
+
+
+def is_combined_source(inv_id: int) -> bool:
+    """该库存是否被任一未软删的组合商品引用为来源子商品（用于禁止拆分/归属转化等会改变其数量的操作）。"""
+    if inv_id is None:
+        return False
+    db = DatabaseManager()
+    rows = db.execute_query(
+        "SELECT 1 FROM [inventory] cmb, json_each(cmb.[combined_items]) je "
+        "WHERE COALESCE(cmb.[is_combined], 0) = 1 AND COALESCE(cmb.[is_delete], 0) = 0 "
+        "AND CAST(json_extract(je.value, '$.inventory_id') AS INTEGER) = ? LIMIT 1",
+        (int(inv_id),),
+    )
+    return bool(rows)
+
+
 def cascade_combined_child_deduction(
     combo_inv_id: int,
     combo_qty_reduced: int,
@@ -116,34 +162,11 @@ def cascade_combined_child_deduction(
         reduced = int(combo_qty_reduced or 0)
     except (TypeError, ValueError):
         return
-    if reduced <= 0 or combo_inv_id is None:
+    if reduced <= 0:
         return
     db = DatabaseManager()
-    rows = db.execute_query(
-        "SELECT [combined_items] FROM [inventory] "
-        "WHERE [id] = ? AND COALESCE([is_combined], 0) = 1 AND COALESCE([is_delete], 0) = 0 LIMIT 1",
-        (int(combo_inv_id),),
-    )
-    if not rows:
-        return
-    try:
-        parsed = json.loads(rows[0][0]) if rows[0][0] else []
-    except Exception:
-        return
-    if not isinstance(parsed, list):
-        return
-
     touched: List[int] = []
-    for it in parsed:
-        if not isinstance(it, dict):
-            continue
-        try:
-            child_id = int(it.get("inventory_id"))
-            per_set = int(it.get("quantity"))
-        except (TypeError, ValueError):
-            continue
-        if child_id <= 0 or per_set <= 0:
-            continue
+    for child_id, per_set in _combined_children(combo_inv_id):
         need = per_set * reduced
         crows = db.execute_query(
             "SELECT [quantity], [warehouse_id] FROM [inventory] WHERE [id] = ? LIMIT 1",
@@ -183,6 +206,63 @@ def cascade_combined_child_deduction(
         log.info(
             "[inventory_counters] 组合 %s 售出 %s 套，级联扣减来源子商品 %s",
             combo_inv_id, reduced, touched,
+        )
+
+
+def cascade_combined_child_restock(
+    combo_inv_id: int,
+    combo_qty_added: int,
+    *,
+    reason: str,
+) -> None:
+    """``cascade_combined_child_deduction`` 的逆操作：组合因订单作废（删除/取消）回吐库存(套数)时，
+    按每套用量反向回吐来源子商品物理库存（+= N × 每套用量），并按子商品货架写一条入库流水。
+
+    须在「组合自身 quantity 已回吐完成」之后调用，使可上架口径与扣减时对称保持一致。
+    """
+    try:
+        added = int(combo_qty_added or 0)
+    except (TypeError, ValueError):
+        return
+    if added <= 0:
+        return
+    db = DatabaseManager()
+    touched: List[int] = []
+    for child_id, per_set in _combined_children(combo_inv_id):
+        add = per_set * added
+        crows = db.execute_query(
+            "SELECT [warehouse_id] FROM [inventory] WHERE [id] = ? LIMIT 1",
+            (child_id,),
+        )
+        if not crows:
+            continue
+        warehouse_id = crows[0][0]
+        db.execute_update(
+            "UPDATE [inventory] SET [quantity] = COALESCE([quantity], 0) + ? WHERE [id] = ?",
+            (add, child_id),
+        )
+        if warehouse_id is not None:
+            try:
+                db.execute_insert(
+                    """
+                    INSERT INTO [transactions] (
+                        type, inventory_id, warehouse_id, quantity, remark, created_at
+                    ) VALUES (?, ?, ?, ?, ?, ?)
+                    """,
+                    ("in", child_id, warehouse_id, add, reason, int(time.time())),
+                )
+            except Exception:
+                log.exception(
+                    "[inventory_counters] 组合级联回吐写入库流水失败 combo=%s child=%s",
+                    combo_inv_id, child_id,
+                )
+        touched.append(child_id)
+
+    if touched:
+        recompute_listable_quantity(touched)
+        log.info(
+            "[inventory_counters] 组合 %s 作废回吐 %s 套，级联回吐来源子商品 %s",
+            combo_inv_id, added, touched,
         )
 
 

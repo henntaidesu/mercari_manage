@@ -159,6 +159,10 @@ def update_inventory(pid: int, data: InventoryUpdate, _claims: dict = Depends(re
         "image", "image_front", "image_back", "images_json",
     }
     update_data = {k: v for k, v in update_data.items() if k in allowed_fields}
+    # 组合商品上调套数前校验来源子商品是否够预留（排除本组合自身既有预留），避免幽灵预留
+    if old_is_combined and "quantity" in update_data:
+        from .inventory_combined import _validate_combined_quantity_for_update
+        _validate_combined_quantity_for_update(pid, old_combined_items, update_data["quantity"])
     if update_data:
         set_sql = ", ".join([f"[{k}] = ?" for k in update_data.keys()])
         params = tuple(update_data.values()) + (pid,)

@@ -8,6 +8,7 @@ from fastapi import HTTPException, Depends
 
 from ....auth import require_auth
 from ....db_manage.database import DatabaseManager
+from ....use_mercari.inventory_counters import is_combined_source, recompute_listable_quantity
 from ...image_storage import get_image_root
 
 from .inventory_helpers import (
@@ -69,6 +70,8 @@ def split_inventory(pid: int, data: InventorySplitRequest, _claims: dict = Depen
 
     if is_combined:
         raise HTTPException(status_code=400, detail="组合商品不能拆分")
+    if is_combined_source(pid):
+        raise HTTPException(status_code=400, detail="该商品被组合商品引用，请先解除组合后再拆分")
     if split_qty > src_quantity:
         raise HTTPException(
             status_code=400,
@@ -115,6 +118,9 @@ def split_inventory(pid: int, data: InventorySplitRequest, _claims: dict = Depen
 
     from ..image_search import enqueue_inventory as _enqueue_image_index
     _enqueue_image_index(new_id)
+
+    # 来源库存已减少，重算来源与新行的可上架（库存 - 在售 - 待出 - 组合预留）
+    recompute_listable_quantity([pid, int(new_id)])
 
     items = _query_inventory_with_joins(" AND p.id = ? LIMIT 1", (new_id,))
     return items[0] if items else {"id": new_id}

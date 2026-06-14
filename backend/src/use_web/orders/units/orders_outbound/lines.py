@@ -7,7 +7,11 @@ from fastapi import Depends, HTTPException
 from .....auth import require_auth
 from .....db_manage.models.order_outbound_line import OrderOutboundLineModel
 from .....use_mercari.get_order.description_mgmt_ids import refresh_inventory_pending_outbound_qty
-from .....use_mercari.inventory_counters import cascade_combined_child_deduction
+from .....use_mercari.inventory_counters import (
+    cascade_combined_child_deduction,
+    cascade_combined_child_restock,
+    is_combined_source,
+)
 from ..orders_helpers import _outbound_line_has_inventory_id, db
 from ..orders_models import OutboundLineBindInventoryBody, OutboundLineConvertOwnerBody, OutboundStockOutBody
 
@@ -17,6 +21,55 @@ def _is_stock_holding_line(line: OrderOutboundLineModel) -> bool:
     if int(line.is_stocked_out or 0) == 1:
         return True
     return int(line.stock_deducted or 0) == 1
+
+
+def restock_order_holding_lines(order_no: str, *, reason: str) -> None:
+    """订单作废（删除/取消）时，把仍占用库存的出库明细（已预扣 stock_deducted 或已出库 is_stocked_out）
+    按行数量回吐到 inventory.quantity，组合商品则反向级联回吐来源子商品，并写一条入库流水；同时清除该行的
+    占用标记（stock_deducted / is_stocked_out），避免后续删除/编辑对同一行二次回吐。
+
+    与改绑 / 归属转化的「回吐」口径一致（见 ``_is_stock_holding_line``）。
+    """
+    ono = (order_no or "").strip()
+    if not ono:
+        return
+    lines = OrderOutboundLineModel.find_all(where="[order_no] = ?", params=(ono,))
+    touched: List[int] = []
+    for line in lines:
+        if not _outbound_line_has_inventory_id(line) or not _is_stock_holding_line(line):
+            continue
+        inv_id = int(line.inventory_id)
+        qty = max(1, int(line.quantity or 1))
+        inv_rows = db.execute_query(
+            "SELECT [warehouse_id] FROM [inventory] WHERE [id] = ? LIMIT 1", (inv_id,)
+        )
+        warehouse_id = inv_rows[0][0] if inv_rows else None
+        db.execute_update(
+            "UPDATE [inventory] SET [quantity] = COALESCE([quantity], 0) + ? WHERE [id] = ?",
+            (qty, inv_id),
+        )
+        if warehouse_id is not None:
+            try:
+                db.execute_insert(
+                    """
+                    INSERT INTO [transactions] (
+                        type, inventory_id, warehouse_id, quantity, remark, created_at
+                    ) VALUES (?, ?, ?, ?, ?, ?)
+                    """,
+                    ("in", inv_id, warehouse_id, qty, reason, int(time.time())),
+                )
+            except Exception:
+                pass
+        # 组合商品：反向级联回吐来源子商品物理库存（普通商品为空操作）
+        cascade_combined_child_restock(inv_id, qty, reason=reason)
+        # 清除占用标记，防止二次回吐
+        line.is_stocked_out = 0
+        line.stocked_out_at = None
+        line.stock_deducted = 0
+        line.save()
+        touched.append(inv_id)
+    if touched:
+        refresh_inventory_pending_outbound_qty(list(set(touched)))
 
 def bind_outbound_line_inventory(line_id: int, data: OutboundLineBindInventoryBody):
     """未匹配/已匹配的明细行手动指定或重新绑定 inventory_id；已出库或已预扣的会回退旧库存并扣减新库存。"""
@@ -147,6 +200,8 @@ def convert_outbound_line_owner(
     src = src_rows[0]
     if int(src[15] or 0) == 1:
         raise HTTPException(status_code=400, detail="组合商品不能进行归属转化")
+    if is_combined_source(src_id):
+        raise HTTPException(status_code=400, detail="该商品被组合商品引用，请先解除组合后再进行归属转化")
     if int(src[4] or 0) == target_owner:
         raise HTTPException(status_code=400, detail="目标归属与当前归属一致")
 
@@ -305,6 +360,7 @@ def stock_out_order_outbound_line(line_id: int, data: OutboundStockOutBody):
     if int(line.stock_deducted or 0) == 0:
         if current_qty < qty:
             raise HTTPException(status_code=400, detail=f"库存不足，当前库存：{current_qty}")
+        # 原子扣减：条件 UPDATE 保证并发下不超卖（库存不足时本语句不命中行）
         updated = db.execute_update(
             """
             UPDATE [inventory]
@@ -313,12 +369,12 @@ def stock_out_order_outbound_line(line_id: int, data: OutboundStockOutBody):
                     WHEN COALESCE([pending_outbound_qty], 0) >= ? THEN COALESCE([pending_outbound_qty], 0) - ?
                     ELSE 0
                 END
-            WHERE [id] = ?
+            WHERE [id] = ? AND COALESCE([quantity], 0) >= ?
             """,
-            (qty, qty, qty, inv_id),
+            (qty, qty, qty, inv_id, qty),
         )
         if updated <= 0:
-            raise HTTPException(status_code=500, detail="库存更新失败")
+            raise HTTPException(status_code=400, detail=f"库存不足，当前库存：{current_qty}")
         if warehouse_id is not None:
             db.execute_insert(
                 """

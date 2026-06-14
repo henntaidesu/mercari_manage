@@ -285,6 +285,38 @@
   margin-left: 6px;
   color: var(--el-text-color-secondary);
 }
+.detail-inv-components {
+  margin-top: 8px;
+  padding: 6px 8px;
+  border-radius: 6px;
+  background: var(--el-fill-color-lighter);
+  font-size: 12px;
+}
+.detail-inv-components-title {
+  font-weight: 600;
+  color: var(--el-text-color-regular);
+  margin-bottom: 4px;
+}
+.detail-inv-component {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  line-height: 1.6;
+}
+.detail-inv-component + .detail-inv-component {
+  border-top: 1px dashed var(--el-border-color-lighter);
+}
+.detail-inv-comp-name {
+  color: var(--el-text-color-primary);
+}
+.detail-inv-comp-qty {
+  color: var(--el-text-color-secondary);
+}
+.detail-inv-comp-loc {
+  margin-left: auto;
+  color: var(--el-color-primary);
+}
 .detail-inv-orders {
   margin-top: 8px;
   font-size: 12px;

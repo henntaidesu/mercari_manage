@@ -115,6 +115,53 @@ def _validate_combined_sources(items: list[dict], combo_quantity: int) -> None:
             )
 
 
+def _validate_combined_quantity_for_update(combo_id: int, combined_items_raw, new_quantity) -> None:
+    """编辑组合套数时，校验上调后的预留不超过各来源子商品现有库存（排除本组合自身的既有预留）。
+
+    既有预留（其它组合） = Σ(其它未软删组合库存 × 每套用量)；本次预留 = 每套用量 × 新套数。
+    与创建时的 ``_validate_combined_sources`` 同口径，避免编辑套数造出超过实物的幽灵预留。
+    """
+    items = _parse_combined_items(combined_items_raw)
+    if not items:
+        return
+    sets = max(0, int(new_quantity or 0))
+    for it in items:
+        source_id = int(it["inventory_id"])
+        per_set = int(it["quantity"])
+        rows = db.execute_query(
+            "SELECT COALESCE(quantity, 0), name FROM [inventory] WHERE id = ? AND COALESCE(is_delete, 0) = 0 LIMIT 1",
+            (source_id,),
+        )
+        if not rows:
+            continue
+        available = int(rows[0][0] or 0)
+        name = rows[0][1]
+        other = db.execute_query(
+            """
+            SELECT COALESCE(SUM(
+                COALESCE(cmb.[quantity], 0) *
+                CAST(json_extract(je.value, '$.quantity') AS INTEGER)
+            ), 0)
+            FROM [inventory] cmb, json_each(cmb.[combined_items]) je
+            WHERE COALESCE(cmb.[is_combined], 0) = 1
+              AND COALESCE(cmb.[is_delete], 0) = 0
+              AND cmb.[id] != ?
+              AND CAST(json_extract(je.value, '$.inventory_id') AS INTEGER) = ?
+            """,
+            (int(combo_id), source_id),
+        )
+        already = int(other[0][0] or 0) if other else 0
+        need = per_set * sets
+        if already + need > available:
+            raise HTTPException(
+                status_code=400,
+                detail=(
+                    f"来源商品「{name or source_id}」库存不足：现有 {available}，"
+                    f"已被其它组合预留 {already}，本次需 {need}"
+                ),
+            )
+
+
 def create_combined_inventory(data: CombinedInventoryCreate, _claims: dict = Depends(require_auth)):
     """将一件或多件库存商品组合成一个新的库存商品（组合商品不扣减来源库存，来源被「拉走」的件数仅作展示与可上架扣减）。"""
     combo_quantity = int(data.quantity or 0)

@@ -88,13 +88,16 @@ def create_manual_outbound_lines(data: ManualOutboundLinesBatchCreateBody):
             )
             if not line.save():
                 raise HTTPException(status_code=500, detail="保存手动出库明细失败")
+            created_ids.append(int(line.id))
 
+            # 原子扣减：条件 UPDATE 保证并发下不超卖（库存不足时本语句不命中行）
             updated = db.execute_update(
-                "UPDATE [inventory] SET [quantity] = COALESCE([quantity], 0) - ? WHERE [id] = ?",
-                (qty, inv_id),
+                "UPDATE [inventory] SET [quantity] = COALESCE([quantity], 0) - ? "
+                "WHERE [id] = ? AND COALESCE([quantity], 0) >= ?",
+                (qty, inv_id, qty),
             )
             if updated <= 0:
-                raise HTTPException(status_code=500, detail=f"库存更新失败（inventory_id={inv_id}）")
+                raise HTTPException(status_code=400, detail=f"库存不足（inventory_id={inv_id}），当前库存：{current_qty}")
 
             if warehouse_id is not None:
                 db.execute_insert(
@@ -117,7 +120,6 @@ def create_manual_outbound_lines(data: ManualOutboundLinesBatchCreateBody):
                 inv_id, qty,
                 reason=(data.remark or "").strip() or f"组合售出级联扣减 {ono} / line#{line.id}",
             )
-            created_ids.append(int(line.id))
             touched_inv_ids.append(inv_id)
             created_items.append({"line_id": int(line.id), "inventory_id": inv_id, "quantity": qty})
     except Exception:

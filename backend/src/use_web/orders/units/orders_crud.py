@@ -14,6 +14,7 @@ from .orders_helpers import (
     _normalize_order_no,
     _validate_order_status,
 )
+from .orders_outbound.lines import restock_order_holding_lines
 from .orders_models import OrderCreate, OrderUpdate
 
 
@@ -103,8 +104,14 @@ def update_order(oid: int, data: OrderUpdate):
 
     if not item.save():
         raise HTTPException(status_code=400, detail="更新失败，订单号可能重复")
+    new_status = str(item.status or "").strip()
+    # 订单被取消：把已预扣/已出库占用的库存回吐（须在重建出库行之前，趁占用标记尚在）
+    if old_status != "cancelled" and new_status == "cancelled":
+        restock_order_holding_lines(
+            item.order_no, reason=f"订单取消回吐 {item.order_no}"
+        )
     sync_outbound_lines_for_order(item.order_no, item.description)
-    if old_status != str(item.status or "").strip():
+    if old_status != new_status:
         refresh_inventory_pending_outbound_qty(_inventory_ids_for_order(item.order_no))
     return item.to_dict()
 
@@ -116,6 +123,8 @@ def delete_order(oid: int):
     ono = (item.order_no or "").strip()
     if ono:
         touched_ids = _inventory_ids_for_order(ono)
+        # 先把已预扣/已出库占用的库存回吐，再删除出库明细（避免占用随订单一并丢失）
+        restock_order_holding_lines(ono, reason=f"订单删除回吐 {ono}")
         OrderOutboundLineModel.delete_all("[order_no] = ?", (ono,))
         refresh_inventory_pending_outbound_qty(touched_ids)
     if not item.delete():
