@@ -739,7 +739,13 @@
           </el-row>
         </template>
         </div>
-        <aside class="product-edit-dialog-layout__aside product-edit-dialog-layout__aside--images">
+        <aside
+          class="product-edit-dialog-layout__aside product-edit-dialog-layout__aside--images"
+          :class="{ 'product-edit-dialog-layout__aside--file-drop-hover': inventoryImagesPanelDropHover }"
+          @dragover.prevent="onInventoryImagesPanelDragOver($event)"
+          @dragleave="onInventoryImagesPanelDragLeave($event)"
+          @drop.prevent="onInventoryImagesPanelDrop($event)"
+        >
           <div class="inventory-images-aside-block">
             <div class="inventory-images-aside-header">
               <span class="inventory-images-aside-header__label">{{ t('inventory.productImages') }}</span>

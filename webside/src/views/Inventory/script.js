@@ -1697,6 +1697,18 @@ export default defineComponent({
       const order = inventorySortOrder.value
       const mult = order === 'ascending' ? 1 : -1
 
+      // 图片搜索结果且未手动点击列排序时：按匹配度（match_score）从高到低，
+      // 不套用预警置顶 / 管理番号排序，确保最相似的商品排在最前。
+      if (imageSearchActive.value && (!prop || !order)) {
+        arr.sort((a, b) => {
+          const sa = Number(a.match_score) || 0
+          const sb = Number(b.match_score) || 0
+          if (sa !== sb) return sb - sa
+          return (Number(b.id) || 0) - (Number(a.id) || 0)
+        })
+        return arr
+      }
+
       function alertOrder(a, b) {
         const aa = isInventoryAlertRow(a) ? 0 : 1
         const ba = isInventoryAlertRow(b) ? 0 : 1
@@ -1807,6 +1819,8 @@ export default defineComponent({
     /** 编辑弹窗商品图拖拽排序 */
     const inventoryImageDragFrom = ref(-1)
     const inventoryImageDropHoverIndex = ref(-1)
+    /** 外部文件拖入整个商品图片面板的悬停高亮 */
+    const inventoryImagesPanelDropHover = ref(false)
 
     function reorderIndexedSlots(store, from, to, len) {
       const snapshot = []
@@ -1837,6 +1851,12 @@ export default defineComponent({
     function onInventoryImageDragEnd() {
       inventoryImageDragFrom.value = -1
       inventoryImageDropHoverIndex.value = -1
+    }
+
+    /** 当前拖拽是否携带外部文件（用于区分内部换序与文件上传） */
+    function dragEventHasFiles(e) {
+      const types = e?.dataTransfer?.types
+      return !!types && Array.prototype.includes.call(types, 'Files')
     }
 
     function onInventoryImageDragOver(idx, e) {
@@ -1872,6 +1892,27 @@ export default defineComponent({
       inventoryImageDropHoverIndex.value = -1
       if (from < 0 || from === to) return
       reorderInventoryFormImages(from, to)
+    }
+
+    /** 整个商品图片面板作为拖拽上传落区：拖到空白处即追加 */
+    function onInventoryImagesPanelDragOver(e) {
+      if (inventoryImageDragFrom.value >= 0) return
+      if (dragEventHasFiles(e)) {
+        e.dataTransfer.dropEffect = 'copy'
+        inventoryImagesPanelDropHover.value = true
+      }
+    }
+
+    function onInventoryImagesPanelDragLeave(e) {
+      const next = e.relatedTarget
+      if (next && typeof next.closest === 'function' && e.currentTarget?.contains(next)) return
+      inventoryImagesPanelDropHover.value = false
+    }
+
+    function onInventoryImagesPanelDrop(e) {
+      inventoryImagesPanelDropHover.value = false
+      if (inventoryImageDragFrom.value >= 0) return
+      if (e?.dataTransfer?.files?.length) handleInventoryImageFilesDrop(-1, e)
     }
 
     /** 编辑弹窗内预览：已落盘路径走缩略图接口，data URL 原样 */
@@ -3331,23 +3372,23 @@ export default defineComponent({
       }
     }
 
-    async function handleInventoryImageFileChange(e) {
-      const file = e.target.files?.[0]
-      if (e.target) e.target.value = ''
+    /**
+     * 处理单个图片文件：即时上传模式走上传接口，否则读为 dataURL；
+     * targetIdx < 0 表示追加，>= 0 表示写入/替换该槽位。
+     * 来源可为隐藏 file input 或拖拽放下的文件。
+     */
+    async function applyInventoryImageFile(file, targetIdx) {
       if (!file) return
       if (file.size > MAX_UPLOAD_IMAGE_BYTES) {
         ElMessage.warning(t('inventory.imageMax25MB'))
         return
       }
-      const targetIdx = inventoryImagePickTargetIndex.value
       if (targetIdx === -1 && form.value.images.length >= MAX_INVENTORY_IMAGES) {
         ElMessage.warning(t('inventory.maxImagesAllowed', { n: MAX_INVENTORY_IMAGES }))
-        inventoryImagePickTargetIndex.value = -2
         return
       }
       if (targetIdx >= 0 && targetIdx >= form.value.images.length) {
         ElMessage.warning(t('inventory.invalidImageSlot'))
-        inventoryImagePickTargetIndex.value = -2
         return
       }
 
@@ -3393,26 +3434,52 @@ export default defineComponent({
           slot.percent = 0
           if (noBarcodeUploadAbortByIndex[writeIdx] === ac) noBarcodeUploadAbortByIndex[writeIdx] = null
         }
-        inventoryImagePickTargetIndex.value = -2
         return
       }
 
-      const reader = new FileReader()
-      reader.onload = (ev) => {
-        const dataUrl = ev.target.result
-        if (targetIdx < 0) {
-          if (form.value.images.length >= MAX_INVENTORY_IMAGES) return
-          form.value.images.push(dataUrl)
-        } else {
-          const copy = [...form.value.images]
-          copy[targetIdx] = dataUrl
-          form.value.images = copy
-        }
-        syncFormLegacyImageFieldsFromImages()
-        formRef.value?.validateField('image_front')
+      const dataUrl = await new Promise((resolve, reject) => {
+        const reader = new FileReader()
+        reader.onload = (ev) => resolve(ev.target.result)
+        reader.onerror = () => reject(new Error('read'))
+        reader.readAsDataURL(file)
+      })
+      if (targetIdx < 0) {
+        if (form.value.images.length >= MAX_INVENTORY_IMAGES) return
+        form.value.images.push(dataUrl)
+      } else {
+        const copy = [...form.value.images]
+        copy[targetIdx] = dataUrl
+        form.value.images = copy
       }
-      reader.readAsDataURL(file)
+      syncFormLegacyImageFieldsFromImages()
+      formRef.value?.validateField('image_front')
+    }
+
+    async function handleInventoryImageFileChange(e) {
+      const file = e.target.files?.[0]
+      if (e.target) e.target.value = ''
+      const targetIdx = inventoryImagePickTargetIndex.value
       inventoryImagePickTargetIndex.value = -2
+      await applyInventoryImageFile(file, targetIdx)
+    }
+
+    /**
+     * 拖拽放下文件：首个文件写入目标槽位（targetIdx < 0 追加），其余依次追加，
+     * 直到达到张数上限。非图片文件忽略。
+     */
+    async function handleInventoryImageFilesDrop(targetIdx, e) {
+      const files = Array.from(e.dataTransfer?.files || []).filter((f) =>
+        String(f.type || '').startsWith('image/')
+      )
+      if (!files.length) return
+      await applyInventoryImageFile(files[0], targetIdx)
+      for (let i = 1; i < files.length; i++) {
+        if (form.value.images.length >= MAX_INVENTORY_IMAGES) {
+          ElMessage.warning(t('inventory.maxImagesAllowed', { n: MAX_INVENTORY_IMAGES }))
+          break
+        }
+        await applyInventoryImageFile(files[i], -1)
+      }
     }
 
     async function submit() {
@@ -4173,6 +4240,10 @@ export default defineComponent({
       syncFormLegacyImageFieldsFromImages,
       inventoryImageDragFrom,
       inventoryImageDropHoverIndex,
+      inventoryImagesPanelDropHover,
+      onInventoryImagesPanelDragOver,
+      onInventoryImagesPanelDragLeave,
+      onInventoryImagesPanelDrop,
       reorderIndexedSlots,
       onInventoryImageDragStart,
       onInventoryImageDragEnd,

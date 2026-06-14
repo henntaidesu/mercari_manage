@@ -698,6 +698,12 @@
   outline-offset: 3px;
   border-radius: 8px;
 }
+.product-edit-dialog-layout__aside--images.product-edit-dialog-layout__aside--file-drop-hover {
+  outline: 2px dashed var(--el-color-success);
+  outline-offset: -4px;
+  border-radius: 10px;
+  background: var(--el-color-success-light-9);
+}
 .inventory-image-cell--draggable .inventory-form-preview-img :deep(.el-image img),
 .inventory-image-cell--draggable .inventory-form-preview-img :deep(.el-image__inner) {
   -webkit-user-drag: none;
