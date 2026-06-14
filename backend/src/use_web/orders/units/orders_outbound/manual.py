@@ -7,6 +7,7 @@ from fastapi import HTTPException
 from .....db_manage.models.order import OrderModel
 from .....db_manage.models.order_outbound_line import OrderOutboundLineModel
 from .....use_mercari.get_order.description_mgmt_ids import refresh_inventory_pending_outbound_qty
+from .....use_mercari.inventory_counters import cascade_combined_child_deduction
 from ..orders_helpers import db
 from ..orders_models import ManualOutboundLineCreateBody, ManualOutboundLineItem, ManualOutboundLinesBatchCreateBody, OrderPackagingWaiveBody
 
@@ -111,6 +112,11 @@ def create_manual_outbound_lines(data: ManualOutboundLinesBatchCreateBody):
                         int(time.time()),
                     ),
                 )
+            # 组合商品：套数已扣减，级联扣减来源子商品物理库存（普通商品为空操作）
+            cascade_combined_child_deduction(
+                inv_id, qty,
+                reason=(data.remark or "").strip() or f"组合售出级联扣减 {ono} / line#{line.id}",
+            )
             created_ids.append(int(line.id))
             touched_inv_ids.append(inv_id)
             created_items.append({"line_id": int(line.id), "inventory_id": inv_id, "quantity": qty})

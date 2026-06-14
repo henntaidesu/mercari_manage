@@ -62,22 +62,57 @@ def _normalize_combined_components(components: list[CombinedInventoryComponent])
     return items
 
 
-def _validate_combined_sources(items: list[dict]) -> None:
-    """校验组合来源商品：必须存在且自身不是组合商品（组合商品不再扣减来源库存，仅做合法性校验）。"""
+def _validate_combined_sources(items: list[dict], combo_quantity: int) -> None:
+    """校验组合来源商品：必须存在、自身不是组合商品，且预留不超过来源现有库存。
+
+    组合不扣减来源库存，但来源 quantity 必须能覆盖「已被其它组合预留 + 本次新增预留」，否则
+    会产生超过实物的「幽灵预留」（可上架被钳到 0，掩盖缺货）。本次新增预留 = 每套用量 × 套数；
+    既有预留 = Σ(其它未软删组合库存 × 其每套用量)。
+    """
     if not items:
         return
     ids = [int(item["inventory_id"]) for item in items]
     placeholders = ",".join("?" for _ in ids)
     rows = db.execute_query(
-        f"SELECT id, is_combined FROM [inventory] WHERE id IN ({placeholders}) AND COALESCE(is_delete, 0) = 0",
+        f"SELECT id, is_combined, COALESCE(quantity, 0), name FROM [inventory] "
+        f"WHERE id IN ({placeholders}) AND COALESCE(is_delete, 0) = 0",
         tuple(ids),
     )
-    found = {int(r[0]): int(r[1] or 0) for r in rows}
+    found = {int(r[0]): {"is_combined": int(r[1] or 0), "quantity": int(r[2] or 0), "name": r[3]} for r in rows}
     if len(found) != len(set(ids)):
         raise HTTPException(status_code=400, detail="组合商品包含不存在的商品")
-    for source_id, is_comb in found.items():
-        if is_comb:
+    for source_id, info in found.items():
+        if info["is_combined"]:
             raise HTTPException(status_code=400, detail="组合商品不能再次作为组合来源")
+
+    combo_sets = max(0, int(combo_quantity or 0))
+    for item in items:
+        source_id = int(item["inventory_id"])
+        per_set = int(item["quantity"])
+        info = found[source_id]
+        existing_reserved = db.execute_query(
+            """
+            SELECT COALESCE(SUM(
+                COALESCE(cmb.[quantity], 0) *
+                CAST(json_extract(je.value, '$.quantity') AS INTEGER)
+            ), 0)
+            FROM [inventory] cmb, json_each(cmb.[combined_items]) je
+            WHERE COALESCE(cmb.[is_combined], 0) = 1
+              AND COALESCE(cmb.[is_delete], 0) = 0
+              AND CAST(json_extract(je.value, '$.inventory_id') AS INTEGER) = ?
+            """,
+            (source_id,),
+        )
+        already = int(existing_reserved[0][0] or 0) if existing_reserved else 0
+        need = per_set * combo_sets
+        if already + need > info["quantity"]:
+            raise HTTPException(
+                status_code=400,
+                detail=(
+                    f"来源商品「{info['name'] or source_id}」库存不足：现有 {info['quantity']}，"
+                    f"已被其它组合预留 {already}，本次需 {need}"
+                ),
+            )
 
 
 def create_combined_inventory(data: CombinedInventoryCreate, _claims: dict = Depends(require_auth)):
@@ -91,7 +126,7 @@ def create_combined_inventory(data: CombinedInventoryCreate, _claims: dict = Dep
         raise HTTPException(status_code=400, detail="商品归属用户不存在")
 
     items = _normalize_combined_components(data.components)
-    _validate_combined_sources(items)
+    _validate_combined_sources(items, combo_quantity)
     paths = _resolve_paths_for_combined_create(data)
     img_cols = _sync_image_columns_from_paths(paths)
     barcode = f"COMBO-{int(time.time() * 1000)}"

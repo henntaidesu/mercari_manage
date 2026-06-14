@@ -7,6 +7,7 @@ from fastapi import Depends, HTTPException
 from .....auth import require_auth
 from .....db_manage.models.order_outbound_line import OrderOutboundLineModel
 from .....use_mercari.get_order.description_mgmt_ids import refresh_inventory_pending_outbound_qty
+from .....use_mercari.inventory_counters import cascade_combined_child_deduction
 from ..orders_helpers import _outbound_line_has_inventory_id, db
 from ..orders_models import OutboundLineBindInventoryBody, OutboundLineConvertOwnerBody, OutboundStockOutBody
 
@@ -334,6 +335,11 @@ def stock_out_order_outbound_line(line_id: int, data: OutboundStockOutBody):
                     int(time.time()),
                 ),
             )
+        # 组合商品：套数已扣减，级联扣减来源子商品物理库存（普通商品为空操作）
+        cascade_combined_child_deduction(
+            inv_id, qty,
+            reason=(data.remark or "").strip() or f"组合售出级联扣减 {line.order_no} / line#{line.id}",
+        )
 
     line.is_stocked_out = 1
     line.stocked_out_at = int(time.time())

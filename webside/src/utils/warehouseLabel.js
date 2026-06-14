@@ -17,10 +17,8 @@ export function warehouseShelfLabel(w) {
   return pk ? `（未设货架号） #${pk}` : '（未设货架号）'
 }
 
-/** 级联选择器叶子节点：货架号 + 主键 */
+/** 级联选择器叶子节点：仅显示货架号（不附主键 #id） */
 export function warehouseShelfLeafLabel(w) {
   if (!w) return ''
-  const code = w.name != null && String(w.name).trim() ? String(w.name).trim() : '（未设货架号）'
-  const pk = warehouseShelfPrimaryKey(w)
-  return pk ? `${code} #${pk}` : code
+  return w.name != null && String(w.name).trim() ? String(w.name).trim() : '（未设货架号）'
 }

@@ -179,6 +179,10 @@ def apply_inventory_change_for_item(
                     )
                 except Exception:
                     log.exception("[inventory_stock_apply] 写出库流水失败 inv=%s", inv)
+            # 组合商品：套数已扣减，级联扣减来源子商品物理库存（普通商品为空操作）
+            from .inventory_counters import cascade_combined_child_deduction
+
+            cascade_combined_child_deduction(inv, real_deduct, reason=reason)
         on_sale = recalculate_and_persist_inventory_on_sale_quantity(inv)
         result["changes"].append(
             {

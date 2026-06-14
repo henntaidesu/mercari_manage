@@ -104,5 +104,12 @@ def stock_out_inventory(pid: int, data: StockInRequest):
             conn.commit()
     except HTTPException:
         raise
+    # 组合商品：套数已扣减并提交，级联扣减来源子商品物理库存（普通商品为空操作）。
+    # 须在事务提交后调用，避免与外层 BEGIN IMMEDIATE 写锁互相阻塞。
+    from ....use_mercari.inventory_counters import cascade_combined_child_deduction
+
+    cascade_combined_child_deduction(
+        pid, data.quantity, reason=data.remark or "组合售出级联扣减（扫码出库）"
+    )
     new_qty = db.execute_query("SELECT quantity FROM [inventory] WHERE id = ?", (pid,))
     return {"success": True, "new_quantity": (new_qty[0][0] if new_qty else 0), "inventory_id": pid}

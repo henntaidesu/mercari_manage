@@ -22,7 +22,9 @@
 """
 from __future__ import annotations
 
+import json
 import logging
+import time
 from typing import Dict, Iterable, List, Optional, Set, Tuple
 
 from ..db_manage.database import DatabaseManager
@@ -89,6 +91,99 @@ def recompute_listable_quantity(inv_ids: Optional[Iterable[int]] = None) -> int:
         f"UPDATE [inventory] SET [listable_quantity] = {expr} WHERE [id] IN ({ph})",
         tuple(ids),
     ) or 0)
+
+
+def cascade_combined_child_deduction(
+    combo_inv_id: int,
+    combo_qty_reduced: int,
+    *,
+    reason: str,
+) -> None:
+    """组合商品因售出/出库导致库存(套数)减少时，按每套用量级联扣减来源子商品的物理库存。
+
+    组合采用「不扣库存、仅预留」模型：来源子商品的 quantity 含被组合「拉走」的件数，其
+    可上架由 Σ(组合库存 × 每套用量) 预留扣减（见 ``_combined_reserved_sql_expr``）。组合售出
+    N 套时，物理上每个子商品有 (N × 每套用量) 件随组合一并发出，故须同步从子商品 quantity
+    扣减（不低于 0），并按子商品所在货架写一条出库流水。
+
+    调用时机：必须在「组合自身 quantity 已扣减完成」之后调用——此时组合预留已随之下降，
+    本函数再扣减子商品物理库存，二者在「可上架 = 库存 - 预留」中恰好抵消，可上架保持正确。
+
+    仅当 ``combo_inv_id`` 确为未软删的组合商品且 ``combo_qty_reduced > 0`` 时生效；对普通
+    商品为无副作用的空操作（调用方无需自行判断是否组合）。
+    """
+    try:
+        reduced = int(combo_qty_reduced or 0)
+    except (TypeError, ValueError):
+        return
+    if reduced <= 0 or combo_inv_id is None:
+        return
+    db = DatabaseManager()
+    rows = db.execute_query(
+        "SELECT [combined_items] FROM [inventory] "
+        "WHERE [id] = ? AND COALESCE([is_combined], 0) = 1 AND COALESCE([is_delete], 0) = 0 LIMIT 1",
+        (int(combo_inv_id),),
+    )
+    if not rows:
+        return
+    try:
+        parsed = json.loads(rows[0][0]) if rows[0][0] else []
+    except Exception:
+        return
+    if not isinstance(parsed, list):
+        return
+
+    touched: List[int] = []
+    for it in parsed:
+        if not isinstance(it, dict):
+            continue
+        try:
+            child_id = int(it.get("inventory_id"))
+            per_set = int(it.get("quantity"))
+        except (TypeError, ValueError):
+            continue
+        if child_id <= 0 or per_set <= 0:
+            continue
+        need = per_set * reduced
+        crows = db.execute_query(
+            "SELECT [quantity], [warehouse_id] FROM [inventory] WHERE [id] = ? LIMIT 1",
+            (child_id,),
+        )
+        if not crows:
+            continue
+        current = int(crows[0][0] or 0)
+        warehouse_id = crows[0][1]
+        new_qty = max(0, current - need)
+        real_deduct = current - new_qty
+        if real_deduct <= 0:
+            continue
+        db.execute_update(
+            "UPDATE [inventory] SET [quantity] = ? WHERE [id] = ?",
+            (new_qty, child_id),
+        )
+        if warehouse_id is not None:
+            try:
+                db.execute_insert(
+                    """
+                    INSERT INTO [transactions] (
+                        type, inventory_id, warehouse_id, quantity, remark, created_at
+                    ) VALUES (?, ?, ?, ?, ?, ?)
+                    """,
+                    ("out", child_id, warehouse_id, real_deduct, reason, int(time.time())),
+                )
+            except Exception:
+                log.exception(
+                    "[inventory_counters] 组合级联扣减写出库流水失败 combo=%s child=%s",
+                    combo_inv_id, child_id,
+                )
+        touched.append(child_id)
+
+    if touched:
+        recompute_listable_quantity(touched)
+        log.info(
+            "[inventory_counters] 组合 %s 售出 %s 套，级联扣减来源子商品 %s",
+            combo_inv_id, reduced, touched,
+        )
 
 
 def _adjust_on_sale(db: DatabaseManager, inv_id: int, on_sale_delta: int) -> bool:
