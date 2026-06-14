@@ -650,7 +650,14 @@
           <el-row :gutter="16">
             <el-col :span="24">
               <el-form-item :label="t('inventory.listingTitle')">
-                <el-input v-model="form.listing_title" class="listing-field-fullwidth" type="text" clearable />
+                <el-input
+                  v-model="form.listing_title"
+                  class="listing-field-fullwidth"
+                  type="text"
+                  :maxlength="40"
+                  show-word-limit
+                  clearable
+                />
               </el-form-item>
             </el-col>
             <el-col :span="24">

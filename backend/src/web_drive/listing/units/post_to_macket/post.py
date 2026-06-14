@@ -6,7 +6,7 @@ import logging
 import re
 import urllib.request
 from typing import Any, Dict, List, Optional, Sequence
-from ._constants import DEFAULT_ELEMENT_TIMEOUT_MS, DEFAULT_PAGE_LOAD_TIMEOUT_MS, DESCRIPTION_TEXTAREA_XPATH, NAME_INPUT_XPATH, PHOTO_ADD_BUTTON_XPATH, SALE_ELEMENT_TIMEOUT_MS, SELL_CREATE_URL, SUBMIT_BUTTON_TEXTS, SWITCH_INPUT_XPATH
+from ._constants import DEFAULT_ELEMENT_TIMEOUT_MS, DEFAULT_PAGE_LOAD_TIMEOUT_MS, DESCRIPTION_TEXTAREA_XPATH, NAME_INPUT_XPATH, PHOTO_ADD_BUTTON_XPATH, SALE_ELEMENT_TIMEOUT_MS, SELL_CREATE_URL, SUBMIT_BUTTON_TEXTS, SUBMIT_CONFIRM_TIMEOUT_MS, SWITCH_INPUT_XPATH
 from ._helpers import ListingAborted, _abort_listing, _click_by_texts, _make_listing_progress_reporter, _react_set_input, _react_set_textarea, _resolve_image_to_local
 from ._sell_wizard import _ensure_left_sell_wizard, _wait_post_category_for_delayed_sell_wizard
 from .fields_basic import _select_category, _select_condition, _set_sale_type_and_price
@@ -101,6 +101,7 @@ async def post_to_market(
         "shipping_days_set": False,
         "sale_type_set": False,
         "price_filled": False,
+        "submit_clicked": False,
         "submitted": False,
         "aborted": False,
         "browser_kept_open": False,
@@ -384,7 +385,8 @@ async def post_to_market(
                 page, result, report, element_timeout_ms=element_timeout_ms,
             )
 
-            # ── 步骤 12：点击出品（出售）按钮 ───────────────────────────────────── #
+            # ── 步骤 12a：点击出品（出售）按钮 ───────────────────────────────────── #
+            # 点击本身失败（按钮找不到等）属真实失败：商品未提交，可安全报错重试。
             report("submit", "正在点击出品按钮提交…")
             try:
                 main = page.locator("#main")
@@ -409,56 +411,8 @@ async def post_to_market(
                         selectors="button",
                         log_prefix="[post_to_market]",
                     )
+                result["submit_clicked"] = True
                 log.info("[post_to_market] 已点击出品按钮，等待页面跳转…")
-
-                # 拍卖二次确认弹窗：「オークション形式での出品について」需在弹层（#main 之外）
-                # 再次点击「出品する」才会真正提交。即购无此弹窗，故仅在拍卖时探测。
-                if (sale_type or "instant_buy") != "instant_buy":
-                    try:
-                        dialog = page.locator('[role="dialog"]').filter(
-                            has_text=re.compile(r"オークション形式での出品")
-                        ).first
-                        await dialog.wait_for(state="visible", timeout=element_timeout_ms)
-                        confirm_btn = dialog.get_by_role("button", name="出品する").first
-                        await confirm_btn.wait_for(state="visible", timeout=element_timeout_ms)
-                        await confirm_btn.scroll_into_view_if_needed()
-                        await confirm_btn.click(timeout=element_timeout_ms)
-                        log.info("[post_to_market] 已点击拍卖二次确认「出品する」")
-                    except Exception as exc:
-                        log.info("[post_to_market] 未出现拍卖二次确认弹窗（忽略）: %s", exc)
-
-                try:
-                    await page.wait_for_url(
-                        "**/sell**",
-                        timeout=element_timeout_ms,
-                    )
-                except Exception:
-                    pass
-
-                result["url_after_submit"] = page.url
-
-                SUCCESS_TEXT = "出品が完了しました"
-                try:
-                    success_loc = page.get_by_text(SUCCESS_TEXT, exact=False).first
-                    await success_loc.wait_for(state="visible", timeout=element_timeout_ms)
-                    span_text = (await success_loc.inner_text()).strip()
-                    result["submit_message"] = span_text
-                    if SUCCESS_TEXT in span_text:
-                        result["submitted"] = True
-                        log.info("[post_to_market] 出品成功：%s", span_text)
-                    else:
-                        _abort_listing(
-                            result, report,
-                            step="submit", label_zh="出品提交",
-                            error_key="submit_error",
-                            exc=f"完成提示异常: {span_text}",
-                        )
-                except Exception as exc:
-                    _abort_listing(
-                        result, report,
-                        step="submit", label_zh="出品提交",
-                        error_key="submit_error", exc=exc,
-                    )
             except ListingAborted:
                 raise
             except Exception as exc:
@@ -467,6 +421,61 @@ async def post_to_market(
                     step="submit", label_zh="出品提交",
                     error_key="submit_error", exc=exc,
                 )
+
+            # ── 步骤 12b：拍卖二次确认弹窗 ──────────────────────────────────────── #
+            # 「オークション形式での出品について」需在弹层（#main 之外）再次点击「出品する」
+            # 才会真正提交。即购无此弹窗，故仅在拍卖时探测（缺失则忽略）。
+            if (sale_type or "instant_buy") != "instant_buy":
+                try:
+                    dialog = page.locator('[role="dialog"]').filter(
+                        has_text=re.compile(r"オークション形式での出品")
+                    ).first
+                    await dialog.wait_for(state="visible", timeout=element_timeout_ms)
+                    confirm_btn = dialog.get_by_role("button", name="出品する").first
+                    await confirm_btn.wait_for(state="visible", timeout=element_timeout_ms)
+                    await confirm_btn.scroll_into_view_if_needed()
+                    await confirm_btn.click(timeout=element_timeout_ms)
+                    log.info("[post_to_market] 已点击拍卖二次确认「出品する」")
+                except Exception as exc:
+                    log.info("[post_to_market] 未出现拍卖二次确认弹窗（忽略）: %s", exc)
+
+            # ── 步骤 12c：确认提交结果 ─────────────────────────────────────────── #
+            # 放宽超时等待成功文案（网络慢时弹窗渲染可能 >12s）。
+            # 已点击但未能在限时内确认成功 → 标记「不确定」（submit_uncertain，可能已上架），
+            # 绝不当作可重复出品的失败：由调用方/前端再做「在售对账」判定，避免重复上架。
+            SUCCESS_TEXT = "出品が完了しました"
+            confirm_ms = SUBMIT_CONFIRM_TIMEOUT_MS
+            try:
+                success_loc = page.get_by_text(SUCCESS_TEXT, exact=False).first
+                await success_loc.wait_for(state="visible", timeout=confirm_ms)
+                span_text = (await success_loc.inner_text()).strip()
+                result["submit_message"] = span_text
+                result["url_after_submit"] = page.url
+                if SUCCESS_TEXT in span_text:
+                    result["submitted"] = True
+                    log.info("[post_to_market] 出品成功：%s", span_text)
+                else:
+                    result["submit_uncertain"] = True
+                    result["submit_uncertain_message"] = f"完成提示异常: {span_text}"
+                    log.warning("[post_to_market] 出品完成提示异常（按不确定处理）: %s", span_text)
+                    if report:
+                        report(
+                            "submit_uncertain",
+                            "已点击出品但完成提示异常，将通过在售对账判定是否已上架",
+                        )
+            except Exception as exc:
+                result["url_after_submit"] = page.url
+                result["submit_uncertain"] = True
+                result["submit_uncertain_message"] = str(exc)
+                log.warning(
+                    "[post_to_market] 出品已点击但未在 %dms 内确认成功（按不确定处理）: %s",
+                    confirm_ms, exc,
+                )
+                if report:
+                    report(
+                        "submit_uncertain",
+                        "已点击出品但未在限时内确认结果，将通过在售对账判定是否已上架",
+                    )
 
         except ListingAborted:
             if report:

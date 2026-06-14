@@ -391,10 +391,12 @@ async def _relist_single_inventory(
     try:
         data = (res or {}).get("data") if isinstance(res, dict) else None
         submit_msg = (data or {}).get("submit_message") if isinstance(data, dict) else None
-        # 确认提交成功，或已点过出品按钮但成功文案未确认（挂牌可能已生成）：
-        # 都记入「未同步补挂」台账，宁可少挂、绝不重复挂。
+        # 确认提交成功，或已点过出品按钮但结果未确认（submit_uncertain / submit_error，
+        # 挂牌可能已生成）：都记入「未同步补挂」台账，宁可少挂、绝不重复挂。
         if isinstance(data, dict) and (
-            data.get("submitted") is True or data.get("submit_error")
+            data.get("submitted") is True
+            or data.get("submit_uncertain")
+            or data.get("submit_error")
         ):
             _note_relist_posted(inventory_id)
         log.info(

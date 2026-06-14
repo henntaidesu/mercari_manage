@@ -146,6 +146,12 @@ export default defineComponent({
     const pageSize = 15
     const dialogVisible = ref(false)
     const submitting = ref(false)
+    /** 编辑/新建弹窗：表单数据实时保存状态 */
+    const autosaving = ref(false)
+    let autosaveTimer = null
+    let autosaveInFlight = null
+    let formAutosaved = false
+    let formAutosaveInitializing = false
     const formRef = ref()
     const fileInputInventoryPick = ref()
     const fileInputInventoryCapture = ref()
@@ -2430,6 +2436,9 @@ export default defineComponent({
     }
 
     function openDialog(row = null) {
+      formAutosaveInitializing = true
+      cancelFormAutosave()
+      formAutosaved = false
       resetNoBarcodeImageUploadState()
       noBarcodeEntryMode.value = false
       categoryCreateMode.value = false
@@ -2514,6 +2523,10 @@ export default defineComponent({
       applyListingDefaultsToForm()
       if (mercariAccountOptions.value.length === 0) fetchMercariAccounts()
       dialogVisible.value = true
+      // 初始填充表单引发的 watch 不应触发实时保存，下一 tick 再放开
+      nextTick(() => {
+        formAutosaveInitializing = false
+      })
       if (row && Number(row.is_combined || 0) === 1) {
         loadCombinedEditDetailForRow(row)
       } else if (row && row.id) {
@@ -2523,6 +2536,13 @@ export default defineComponent({
 
     watch(dialogVisible, (visible) => {
       if (!visible) {
+        cancelFormAutosave()
+        // 关闭时若实时保存已写过库，刷新列表以反映最新数据（submit 自带刷新，已置 false）
+        if (formAutosaved) {
+          formAutosaved = false
+          load({ resetPage: false })
+          loadInventoryStats()
+        }
         resetNoBarcodeImageUploadState()
         noBarcodeEntryMode.value = false
         categoryCreateMode.value = false
@@ -2534,6 +2554,12 @@ export default defineComponent({
         usedInCombosLoading.value = false
       }
     })
+
+    // 表单任意字段（含数量 / 单价 / 煤炉ID 列表等独立编辑态）变化即调度后台实时保存
+    watch(form, scheduleFormAutosave, { deep: true })
+    watch(quantityEdit, scheduleFormAutosave)
+    watch(priceEdit, scheduleFormAutosave)
+    watch(mercariIdList, scheduleFormAutosave, { deep: true })
 
     watch(
       warehouses,
@@ -2863,8 +2889,16 @@ export default defineComponent({
       await pollListingPostProgress()
       listingPostProgressTimer = setInterval(pollListingPostProgress, 400)
 
+      // 记录出品前各库存的在售数：失败/不确定时用「在售对账」判定是否其实已上架（防重复出品）
+      const prevOnSaleById = new Map()
+      for (const invId of ids) {
+        const r = list.value.find((x) => Number(x.id) === Number(invId))
+        prevOnSaleById.set(Number(invId), Number(r?.on_sale_quantity ?? 0))
+      }
+
       let listingPostHadStepErrors = false
       let listingSubmittedOk = false
+      let listingSubmitUncertain = false // 已点击出品但未确认成功（可能已上架），待在售对账判定
       try {
         const res = await listingApi.postToMarket({
           account_key: accountKey,
@@ -2887,8 +2921,40 @@ export default defineComponent({
         })
         if (res?.success) {
           const d = res.data || {}
+          const confirmedSuccess = d.submitted === true
+          // 已点击「出品する」但未确认成功：可能已上架，绝不当失败重复出品，稍后用在售对账判定
+          const submitReached = d.submit_clicked === true || d.submit_uncertain === true
           const failures = collectWebDriveListingFailures(d)
-          if (failures.length) {
+          if (confirmedSuccess) {
+            listingSubmittedOk = true
+            ElMessage.success(t('inventory.listingSuccess') + (d.submit_message ? `（${d.submit_message}）` : ''))
+            // 出品成功：记录本次提交的出品信息到系统日志（category='listing'）
+            reportLog({
+              level: 'success',
+              category: 'listing',
+              account_id: Number(accountId),
+              message: `${t('inventory.listingSuccess')}：${listing_title}（¥${safePrice}）`,
+              detail: {
+                inventory_ids: ids,
+                account_id: Number(accountId),
+                title: listing_title,
+                price: safePrice,
+                status: data.status || '',
+                sale_type: data.sale_type || 'instant_buy',
+                auction_duration: data.auction_duration || 'normal',
+                shipping_payer: data.shipping_payer || 'seller',
+                shipping_method: data.shipping_method || 'undecided',
+                shipping_days: data.shipping_days || '2_3_days',
+                shipping_from_area_id: data.shipping_from ? String(data.shipping_from) : '',
+                category_mapping_id: data.category_mapping_id != null ? String(data.category_mapping_id) : null,
+                image_count: imageUrls.length,
+                submit_message: d.submit_message || null
+              }
+            })
+          } else if (submitReached) {
+            // 标记不确定：进入下方「在售对账」分支，匹配到新挂牌即判成功，避免重复上架
+            listingSubmitUncertain = true
+          } else if (failures.length) {
             listingPostHadStepErrors = true
             const detailMsg = formatWebDriveListingFailureMessage(failures)
             listingPostOverlayTitle.value = t('inventory.listingFailed')
@@ -2909,39 +2975,9 @@ export default defineComponent({
             if (d.sale_type_set && d.price_filled) parts.push(t('inventory.salePriceSet'))
             if (d.shipping_days_set) parts.push(t('inventory.shippingDaysSet'))
             if (d.shipping_from_set) parts.push(t('inventory.shippingFromSet'))
-            if (d.submitted === true) {
-              listingSubmittedOk = true
-              ElMessage.success(t('inventory.listingSuccess') + (d.submit_message ? `（${d.submit_message}）` : ''))
-              // 出品成功：记录本次提交的出品信息到系统日志（category='listing'）
-              reportLog({
-                level: 'success',
-                category: 'listing',
-                account_id: Number(accountId),
-                message: `${t('inventory.listingSuccess')}：${listing_title}（¥${safePrice}）`,
-                detail: {
-                  inventory_ids: ids,
-                  account_id: Number(accountId),
-                  title: listing_title,
-                  price: safePrice,
-                  status: data.status || '',
-                  sale_type: data.sale_type || 'instant_buy',
-                  auction_duration: data.auction_duration || 'normal',
-                  shipping_payer: data.shipping_payer || 'seller',
-                  shipping_method: data.shipping_method || 'undecided',
-                  shipping_days: data.shipping_days || '2_3_days',
-                  shipping_from_area_id: data.shipping_from ? String(data.shipping_from) : '',
-                  category_mapping_id: data.category_mapping_id != null ? String(data.category_mapping_id) : null,
-                  image_count: imageUrls.length,
-                  submit_message: d.submit_message || null
-                }
-              })
-            } else if (d.submitted === false && d.submit_message) {
-              ElMessage.warning(t('inventory.listingSubmitWarning', { msg: d.submit_message }))
-            } else {
-              ElMessage.success(
-                parts.length ? t('inventory.listingPageFilled', { parts: parts.join('、') }) : t('inventory.browserOpenedListing')
-              )
-            }
+            ElMessage.success(
+              parts.length ? t('inventory.listingPageFilled', { parts: parts.join('、') }) : t('inventory.browserOpenedListing')
+            )
           }
         }
       } catch {
@@ -2960,8 +2996,11 @@ export default defineComponent({
         listingPostProgressLabel.value = ''
       }
 
-      // ── 3. 出品联动：成功出品后，仅同步该账号在售列表并拉取新商品详情，立刻反映到在售页 ── //
-      if (listingSubmittedOk) {
+      // ── 3. 出品联动 / 失败对账 ──────────────────────────────────────────────── //
+      // 成功：同步该账号在售列表并拉取新商品详情，立刻反映到在售页（并绑定 on_sale_quantity）。
+      // 不确定：同样跑一遍在售同步——若匹配到新挂牌（在售数较出品前增加），即判定其实已上架成功，
+      //         不再提示失败、也无需重复出品；否则强提示人工核对，避免盲目重试造成重复上架。
+      if (listingSubmittedOk || listingSubmitUncertain) {
         const syncJobId =
           typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function'
             ? crypto.randomUUID()
@@ -2983,7 +3022,9 @@ export default defineComponent({
           }
         }
 
-        listingPostOverlayTitle.value = t('inventory.listingSyncingOnSale')
+        listingPostOverlayTitle.value = listingSubmitUncertain
+          ? t('inventory.listingReconciling')
+          : t('inventory.listingSyncingOnSale')
         listingPostOverlayFailed.value = false
         listingPostProgressLabel.value = t('inventory.connectingToServer')
         listingPostOverlayVisible.value = true
@@ -2995,7 +3036,7 @@ export default defineComponent({
             { timeout: 0 }
           )
         } catch {
-          // 联动同步失败不阻断出品成功提示：拦截器已弹窗
+          // 联动同步失败不阻断后续判定：拦截器已弹窗
         } finally {
           if (listingPostProgressTimer != null) {
             clearInterval(listingPostProgressTimer)
@@ -3005,13 +3046,66 @@ export default defineComponent({
           listingPostOverlayTitle.value = t('inventory.listingInProgress')
           listingPostProgressLabel.value = ''
         }
+
+        // 不确定 → 在售对账：在售数较出品前增加即视为已上架成功（无需重复出品）
+        if (listingSubmitUncertain) {
+          let matched = false
+          for (const invId of ids) {
+            try {
+              const r = await inventoryApi.get(Number(invId))
+              const cur = Number(r?.on_sale_quantity ?? 0)
+              const prev = Number(prevOnSaleById.get(Number(invId)) ?? 0)
+              if (cur > prev) {
+                matched = true
+                break
+              }
+            } catch {
+              /* 单条查询失败按未匹配处理 */
+            }
+          }
+          if (matched) {
+            listingSubmittedOk = true
+            ElMessage.success(t('inventory.listingSuccessReconciled'))
+            reportLog({
+              level: 'success',
+              category: 'listing',
+              account_id: Number(accountId),
+              message: `${t('inventory.listingSuccessReconciled')}：${listing_title}（¥${safePrice}）`,
+              detail: {
+                inventory_ids: ids,
+                account_id: Number(accountId),
+                title: listing_title,
+                price: safePrice,
+                image_count: imageUrls.length,
+                reconciled: true
+              }
+            })
+          } else {
+            // 未匹配：可能确未上架，也可能在售同步暂未抓到 → 提示人工核对，勿盲目重试
+            ElMessage.warning(t('inventory.listingUncertainCheck'))
+            reportLog({
+              level: 'warning',
+              category: 'listing',
+              account_id: Number(accountId),
+              message: `${t('inventory.listingUncertainCheck')}：${listing_title}（¥${safePrice}）`,
+              detail: {
+                inventory_ids: ids,
+                account_id: Number(accountId),
+                title: listing_title,
+                price: safePrice,
+                image_count: imageUrls.length,
+                uncertain: true
+              }
+            })
+          }
+        }
       }
 
       if (listingPostHadStepErrors) {
         ElMessage.info(
           t('inventory.listingAbortedFollowRed')
         )
-      } else {
+      } else if (!listingSubmitUncertain) {
         ElMessage.success(t('inventory.listingFieldsSaved'))
       }
       await load({ resetPage: false })
@@ -3526,6 +3620,94 @@ export default defineComponent({
       }
     }
 
+    /** 将当前表单整理为写库 payload（编辑 / 新建 / 实时保存共用）；返回 { payload, imgCount } */
+    function buildFormPayload() {
+      const payload = { ...form.value }
+      payload.price = Math.round(Number(payload.price ?? 0))
+      if (payload.mercari_item_id !== undefined && payload.mercari_item_id !== null) {
+        payload.mercari_item_id = String(payload.mercari_item_id).trim() || null
+      }
+      if (payload.on_sale_quantity != null) {
+        payload.on_sale_quantity = Math.max(0, Math.round(Number(payload.on_sale_quantity)))
+      }
+      delete payload.is_combined
+      delete payload.combined_items
+      delete payload.combined_quantity
+      delete payload.pending_outbound_qty
+      delete payload.sku
+      // 出品设置：表单字段映射为库存列名后写入数据库（供自动出品逻辑使用）
+      payload.listing_account_id =
+        payload.mercari_account_id != null ? Number(payload.mercari_account_id) : null
+      payload.shipping_from_area_id = String(payload.shipping_from || '').trim() || null
+      delete payload.mercari_account_id
+      delete payload.shipping_from
+      const imgs = (Array.isArray(payload.images) ? payload.images : []).filter(
+        (x) => x != null && String(x).trim()
+      )
+      payload.images = imgs
+      delete payload.image_front
+      delete payload.image_back
+      return { payload, imgCount: imgs.length }
+    }
+
+    function cancelFormAutosave() {
+      if (autosaveTimer) {
+        clearTimeout(autosaveTimer)
+        autosaveTimer = null
+      }
+    }
+
+    /** 表单任意字段变化后，节流调度一次后台实时保存 */
+    function scheduleFormAutosave() {
+      if (formAutosaveInitializing) return
+      if (!dialogVisible.value) return
+      cancelFormAutosave()
+      autosaveTimer = setTimeout(runFormAutosave, 700)
+    }
+
+    /** 后台静默保存当前表单：已有商品 -> 更新；新建商品 -> 必填项齐全后自动创建并回填 id */
+    async function runFormAutosave() {
+      autosaveTimer = null
+      if (!dialogVisible.value) return
+      if (autosaving.value) return scheduleFormAutosave()
+      if (inventorySaveBlockedByImageUpload.value) return scheduleFormAutosave()
+      applyQuantityEditToForm()
+      applyPriceEditToForm()
+      applyMercariIdListToForm()
+      const { payload, imgCount } = buildFormPayload()
+      if (imgCount > MAX_INVENTORY_IMAGES) return
+      const isNew = !payload.id
+      if (isNew) {
+        // 新建：必填项（条码 / 至少一张图片 / 合法单价）齐全后才自动创建，避免产生半成品记录
+        const hasBarcode = !!String(form.value.barcode || '').trim()
+        const isCombined = Number(form.value.is_combined || 0) === 1
+        const hasImage = isCombined || imgCount > 0
+        const priceVal = Number(form.value.price)
+        const priceOk = !Number.isNaN(priceVal) && priceVal >= 0
+        if (!hasBarcode || !hasImage || !priceOk) return
+      }
+      autosaving.value = true
+      autosaveInFlight = (async () => {
+        try {
+          if (isNew) {
+            const created = await inventoryApi.create(payload)
+            if (created && created.id != null) form.value.id = created.id
+            if (noBarcodeEntryMode.value) writeNoBarcodeFormSelectionsCache(payload)
+          } else {
+            await inventoryApi.update(payload.id, payload)
+          }
+          formAutosaved = true
+        } catch (e) {
+          // 实时保存为后台静默操作；失败时不打扰用户，仍可点击“保存”获得明确反馈
+          console.error('inventory autosave failed', e)
+        } finally {
+          autosaving.value = false
+          autosaveInFlight = null
+        }
+      })()
+      await autosaveInFlight
+    }
+
     async function submit() {
       applyQuantityEditToForm()
       applyPriceEditToForm()
@@ -3533,36 +3715,20 @@ export default defineComponent({
       await formRef.value.validate()
       submitting.value = true
       try {
-        const payload = { ...form.value }
-        payload.price = Math.round(Number(payload.price ?? 0))
-        if (payload.mercari_item_id !== undefined && payload.mercari_item_id !== null) {
-          payload.mercari_item_id = String(payload.mercari_item_id).trim() || null
+        // 等待可能正在进行的实时保存完成（其可能刚刚回填了新建商品的 id），避免重复创建
+        cancelFormAutosave()
+        if (autosaveInFlight) {
+          try {
+            await autosaveInFlight
+          } catch (e) {}
         }
-        if (payload.on_sale_quantity != null) {
-          payload.on_sale_quantity = Math.max(0, Math.round(Number(payload.on_sale_quantity)))
-        }
-        delete payload.is_combined
-        delete payload.combined_items
-        delete payload.combined_quantity
-        delete payload.pending_outbound_qty
-        delete payload.sku
-        // 出品设置：表单字段映射为库存列名后写入数据库（供自动出品逻辑使用）
-        payload.listing_account_id =
-          payload.mercari_account_id != null ? Number(payload.mercari_account_id) : null
-        payload.shipping_from_area_id = String(payload.shipping_from || '').trim() || null
-        delete payload.mercari_account_id
-        delete payload.shipping_from
-        const imgs = (Array.isArray(payload.images) ? payload.images : []).filter(
-          (x) => x != null && String(x).trim()
-        )
-        if (imgs.length > MAX_INVENTORY_IMAGES) {
+        formAutosaved = false
+        const { payload, imgCount } = buildFormPayload()
+        if (imgCount > MAX_INVENTORY_IMAGES) {
           ElMessage.warning(t('inventory.maxImagesAllowed', { n: MAX_INVENTORY_IMAGES }))
           submitting.value = false
           return
         }
-        payload.images = imgs
-        delete payload.image_front
-        delete payload.image_back
         if (payload.id) {
           await inventoryApi.update(payload.id, payload)
         } else {

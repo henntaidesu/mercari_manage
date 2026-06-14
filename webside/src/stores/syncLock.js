@@ -16,7 +16,7 @@ export const useSyncLockStore = defineStore('syncLock', () => {
 
   let subscribers = 0
   let timer = null
-  const POLL_MS = 2000
+  const POLL_MS = 10000
 
   async function refresh() {
     try {

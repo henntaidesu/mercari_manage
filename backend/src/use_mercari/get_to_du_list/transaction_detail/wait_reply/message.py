@@ -15,16 +15,15 @@ from ....sync.sync_progress import make_sync_reporter
 log = logging.getLogger(__name__)
 
 
-# 取引消息回复 textarea 的 placeholder 在不同代办类型下不一样：
-# - 默认（WaitShipping*）：「なにか分からないことがあれば質問してみましょう。」
-# - 待回复（IncomingMessage）：「このたびはご購入ありがとうございます。商品の発送まで今しばらくお待ちください。」
-# 任一命中即可，所以用 CSS OR 选择器一次抓两个。
-_REPLY_TEXTAREA_PLACEHOLDERS = (
-    "なにか分からないことがあれば質問してみましょう。",
-    "このたびはご購入ありがとうございます。商品の発送まで今しばらくお待ちください。",
-)
+# 取引消息回复 textarea：煤炉的 placeholder 文案随交易状态变化（待发货/已发货/待评价
+# 各不相同），早先按 placeholder 白名单匹配会因文案漏配而定位失败。改用结构化稳定选择器：
+# 容器 data-testid="transaction:chat-textarea" 内的可写框 textarea[name="chat"]
+# （同容器内还有一个无 name 的隐藏孪生框，不会被命中）。这样覆盖所有交易状态。
+_REPLY_TEXTAREA_SELECTOR = '[data-testid="transaction:chat-textarea"] textarea[name="chat"]'
 
 _REPLY_SEND_BUTTON_TEXT = "取引メッセージを送る"
+# 发送按钮的结构化兜底：容器 data-partner-id="send-chat" 内的 submit 按钮（不依赖文案）。
+_REPLY_SEND_BUTTON_SELECTOR = '[data-partner-id="send-chat"] button'
 
 async def send_transaction_message(
     todo_id: int,
@@ -73,16 +72,13 @@ async def send_transaction_message(
             raise RuntimeError("无法打开交易页，请重试") from exc
 
     report("locate_textarea", "正在定位回复输入框…")
-    # 找到回复 textarea：按多种 placeholder 取 OR 选择器，谁先可见就用谁
-    selector = ", ".join(
-        f'textarea[placeholder="{p}"]' for p in _REPLY_TEXTAREA_PLACEHOLDERS
-    )
-    textarea = page.locator(selector)
+    # 找到回复 textarea：用结构化稳定选择器（不依赖随状态变化的 placeholder 文案）
+    textarea = page.locator(_REPLY_TEXTAREA_SELECTOR)
     try:
         await textarea.first.wait_for(state="visible", timeout=8000)
     except Exception as exc:
         raise RuntimeError(
-            f"未找到回复输入框（placeholder 不匹配任何已知模板；当前 URL: {page.url}）"
+            f"未找到回复输入框（页面结构异常或未加载完；当前 URL: {page.url}）"
         ) from exc
 
     report("fill_text", "正在填入回复内容…")
@@ -94,14 +90,19 @@ async def send_transaction_message(
     try:
         await btn.first.wait_for(state="visible", timeout=4000)
     except Exception:
-        # fallback：直接 :has-text
-        btn = page.locator(f'button:has-text("{_REPLY_SEND_BUTTON_TEXT}")')
+        # fallback1：结构化选择器（容器 data-partner-id="send-chat"，不依赖文案）
+        btn = page.locator(_REPLY_SEND_BUTTON_SELECTOR)
         try:
             await btn.first.wait_for(state="visible", timeout=2000)
-        except Exception as exc:
-            raise RuntimeError(
-                f"未找到「{_REPLY_SEND_BUTTON_TEXT}」按钮（当前 URL: {page.url}）"
-            ) from exc
+        except Exception:
+            # fallback2：直接 :has-text
+            btn = page.locator(f'button:has-text("{_REPLY_SEND_BUTTON_TEXT}")')
+            try:
+                await btn.first.wait_for(state="visible", timeout=2000)
+            except Exception as exc:
+                raise RuntimeError(
+                    f"未找到「{_REPLY_SEND_BUTTON_TEXT}」按钮（当前 URL: {page.url}）"
+                ) from exc
 
     await btn.first.click()
     log.info(

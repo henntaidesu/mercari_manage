@@ -2,6 +2,7 @@
 """出品向导页面的选择器 / URL / 超时等常量"""
 from __future__ import annotations
 
+import os
 import urllib.request
 from typing import Dict, Tuple
 
@@ -16,6 +17,24 @@ DEFAULT_ELEMENT_TIMEOUT_MS = 12_000
 DEFAULT_PAGE_LOAD_TIMEOUT_MS = 12_000
 
 SALE_ELEMENT_TIMEOUT_MS = 8_000
+
+
+def _env_int_ms(name: str, default: int) -> int:
+    """读取毫秒级超时环境变量，非法或缺省时回落 default。"""
+    raw = (os.environ.get(name) or "").strip()
+    if not raw:
+        return default
+    try:
+        v = int(raw)
+    except ValueError:
+        return default
+    return v if v > 0 else default
+
+
+# 点击「出品する」后等待「出品が完了しました」成功文案的超时（毫秒）。
+# 网络较慢时成功弹窗/跳转可能 >12s；独立放宽并可由 LISTING_SUBMIT_CONFIRM_TIMEOUT_MS 覆盖，
+# 避免把「其实已上架、只是渲染慢」误判为失败而诱发重复上架。
+SUBMIT_CONFIRM_TIMEOUT_MS = _env_int_ms("LISTING_SUBMIT_CONFIRM_TIMEOUT_MS", 30_000)
 
 # 选类型/状态后可能进入 sell/wizard（煤炉中间向导页），用浏览器后退离开
 SELL_WIZARD_URL_FRAGMENT = "sell/wizard"
